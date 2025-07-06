@@ -5584,11 +5584,15 @@ class _RankingPageState extends State<RankingPage> {
   }
 }
 
+// CÓDIGO CORRIGIDO - COLE ESTE
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Adicionamos uma verificação antes de inicializar:
+  if (Firebase.apps.isEmpty) {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  }
   runApp(
     BjjApp(),
   );

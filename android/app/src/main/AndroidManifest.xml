@@ -3,6 +3,11 @@
         android:label="Match BJJ"
         android:name="${applicationName}"
         android:icon="@mipmap/launcher_icon">
+        <provider
+    android:name="com.google.firebase.provider.FirebaseInitProvider"
+    android:authorities="${applicationId}.firebaseinitprovider"
+    xmlns:tools="http://schemas.android.com/tools"
+    tools:node="remove" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
