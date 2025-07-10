@@ -1,5 +1,3 @@
-// lib/main.dart
-
 import 'package:flutter/material.dart';
 import 'dart:math';
 import 'dart:convert';
@@ -20,6 +18,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'models.dart';
+// Certifique-se que esses arquivos existem ou comente-os se não estiver usando flavors
 import 'firebase_options_dev.dart' as dev;
 import 'firebase_options_prod.dart' as prod;
 
@@ -452,6 +451,11 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
 
+  String? _faixa;
+  int? _graus;
+  final List<String> _faixasList = ['Azul', 'Roxa', 'Marrom', 'Preta'];
+  List<int> _grausList = [];
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -459,6 +463,16 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
     _academyNameController.dispose();
     _managerNameController.dispose();
     super.dispose();
+  }
+
+  List<int> _getGrausForFaixa(String? faixa) {
+    if (faixa == 'Preta') {
+      return List.generate(10, (i) => i + 1);
+    }
+    if (faixa != null) {
+      return [1, 2, 3, 4];
+    }
+    return [];
   }
 
   Future<void> _submit() async {
@@ -498,6 +512,12 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         'email': newUser.email,
         'academyId': academyRef.id,
         'role': 'manager',
+        'faixa': _faixa,
+        'graus': _graus,
+        'peso': null, // Gerente pode preencher depois
+        'createdAt': FieldValue.serverTimestamp(),
+        'mustChangePassword': false,
+        'isActive': true,
       });
 
       await batch.commit();
@@ -580,6 +600,41 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                             : null,
                   ),
                   const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _faixa,
+                    decoration: InputDecoration(
+                        labelText: 'Sua Faixa',
+                        prefixIcon: Icon(Icons.shield_outlined)),
+                    hint: Text("Selecione sua Faixa"),
+                    items: _faixasList
+                        .map((faixa) =>
+                            DropdownMenuItem(value: faixa, child: Text(faixa)))
+                        .toList(),
+                    onChanged: (value) => setState(() {
+                      _faixa = value;
+                      _grausList = _getGrausForFaixa(_faixa);
+                      _graus = null;
+                    }),
+                    validator: (value) =>
+                        value == null ? 'Selecione sua faixa' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  if (_faixa != null)
+                    DropdownButtonFormField<int>(
+                      value: _graus,
+                      decoration: InputDecoration(
+                          labelText: 'Seus Graus (opcional)',
+                          prefixIcon: Icon(Icons.star_outline_rounded)),
+                      hint: Text("Selecione seus Graus"),
+                      items: [
+                        DropdownMenuItem<int>(
+                            value: null, child: Text("Nenhum")),
+                        ..._grausList.map((g) => DropdownMenuItem(
+                            value: g, child: Text("$gº Grau"))),
+                      ],
+                      onChanged: (value) => setState(() => _graus = value),
+                    ),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _emailController,
                     decoration: InputDecoration(
@@ -661,6 +716,16 @@ class AuthGate extends StatelessWidget {
 
             final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
 
+            if (userModel.mustChangePassword) {
+              return ChangePasswordPage(isFirstLogin: true);
+            }
+
+            if (userModel.role == UserRole.student &&
+                userModel.studentRecordId == null) {
+              // Redireciona para a home do aluno, que mostrará a tela de perfil.
+              return StudentHomePage(user: userModel);
+            }
+
             switch (userModel.role) {
               case UserRole.manager:
                 return ManagerHomePage(user: userModel);
@@ -669,6 +734,7 @@ class AuthGate extends StatelessWidget {
               case UserRole.student:
                 return StudentHomePage(user: userModel);
               default:
+                FirebaseAuth.instance.signOut();
                 return LoginPage();
             }
           },
@@ -728,6 +794,222 @@ class EmptyStateWidget extends StatelessWidget {
   }
 }
 
+class SettingsPage extends StatelessWidget {
+  final UserModel user;
+  const SettingsPage({Key? key, required this.user}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Configurações"),
+      ),
+      body: AppBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(8.0),
+          children: [
+            if (user.role == UserRole.student ||
+                user.role == UserRole.teacher ||
+                user.role == UserRole.manager)
+              Card(
+                child: ListTile(
+                  leading: Icon(Icons.person_outline_rounded),
+                  title: Text("Editar Meu Perfil"),
+                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  onTap: () {
+                    if (user.role == UserRole.student) {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => EditStudentProfilePage(user: user),
+                      ));
+                    } else {
+                      // Para Manager ou Teacher
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => EditUserProfilePage(user: user),
+                      ));
+                    }
+                  },
+                ),
+              ),
+            Card(
+              child: ListTile(
+                leading: Icon(Icons.lock_reset_rounded),
+                title: Text("Alterar Senha"),
+                trailing: Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                onTap: () {
+                  Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => ChangePasswordPage(),
+                  ));
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- TELA DE EDIÇÃO DE PERFIL PARA GERENTE E PROFESSOR ---
+class EditUserProfilePage extends StatefulWidget {
+  final UserModel user;
+  const EditUserProfilePage({Key? key, required this.user}) : super(key: key);
+
+  @override
+  State<EditUserProfilePage> createState() => _EditUserProfilePageState();
+}
+
+class _EditUserProfilePageState extends State<EditUserProfilePage> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _weightController = TextEditingController();
+  String? _faixa;
+  int? _graus;
+  bool _isSaving = false;
+
+  final List<String> _faixasList = ['Azul', 'Roxa', 'Marrom', 'Preta'];
+  List<int> _grausList = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController.text = widget.user.name;
+    _weightController.text = widget.user.peso?.toString() ?? '';
+    _faixa = widget.user.faixa;
+    _graus = widget.user.graus;
+    _grausList = _getGrausForFaixa(_faixa);
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _weightController.dispose();
+    super.dispose();
+  }
+
+  List<int> _getGrausForFaixa(String? faixa) {
+    if (faixa == 'Preta') {
+      return List.generate(10, (i) => i + 1);
+    }
+    if (faixa != null) {
+      return [1, 2, 3, 4];
+    }
+    return [];
+  }
+
+  Future<void> _updateProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+
+    try {
+      final userRef =
+          FirebaseFirestore.instance.collection('users').doc(widget.user.uid);
+
+      await userRef.update({
+        'name': _nameController.text.trim(),
+        'peso': double.tryParse(_weightController.text.replaceAll(',', '.')) ??
+            widget.user.peso,
+        'faixa': _faixa,
+        'graus': _graus,
+      });
+
+      if (mounted) {
+        showBjjSnackBar(context, "Perfil atualizado com sucesso!",
+            type: 'success');
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted)
+        showBjjSnackBar(context, "Erro ao atualizar perfil: $e", type: 'error');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Editar Perfil")),
+      body: AppBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  TextFormField(
+                    controller: _nameController,
+                    decoration: InputDecoration(labelText: 'Nome Completo'),
+                    validator: (v) => v == null || v.trim().isEmpty
+                        ? 'Nome não pode ser vazio'
+                        : null,
+                  ),
+                  SizedBox(height: 16),
+                  TextFormField(
+                    controller: _weightController,
+                    decoration: InputDecoration(labelText: 'Peso (kg)'),
+                    keyboardType:
+                        TextInputType.numberWithOptions(decimal: true),
+                    validator: (v) {
+                      if (v == null || v.isEmpty) return 'Peso inválido';
+                      final x = double.tryParse(v.replaceAll(',', '.'));
+                      return (x == null || x <= 0)
+                          ? 'Peso inválido (deve ser > 0)'
+                          : null;
+                    },
+                  ),
+                  SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _faixa,
+                    decoration: InputDecoration(labelText: 'Faixa'),
+                    items: _faixasList
+                        .map((faixa) =>
+                            DropdownMenuItem(value: faixa, child: Text(faixa)))
+                        .toList(),
+                    onChanged: (value) => setState(() {
+                      _faixa = value;
+                      _grausList = _getGrausForFaixa(_faixa);
+                      _graus = null;
+                    }),
+                    validator: (value) =>
+                        value == null ? 'Selecione sua faixa' : null,
+                  ),
+                  if (_faixa != null) ...[
+                    SizedBox(height: 16),
+                    DropdownButtonFormField<int>(
+                      value: _graus,
+                      decoration:
+                          InputDecoration(labelText: 'Graus (opcional)'),
+                      items: [
+                        DropdownMenuItem<int>(
+                            value: null, child: Text("Nenhum")),
+                        ..._grausList.map((g) => DropdownMenuItem(
+                            value: g, child: Text("$gº Grau"))),
+                      ],
+                      onChanged: (value) => setState(() => _graus = value),
+                    ),
+                  ],
+                  SizedBox(height: 24),
+                  _isSaving
+                      ? Center(child: CircularProgressIndicator())
+                      : ElevatedButton.icon(
+                          onPressed: _updateProfile,
+                          icon: Icon(Icons.save),
+                          label: Text("Salvar Alterações"),
+                          style: ElevatedButton.styleFrom(
+                              padding: EdgeInsets.symmetric(vertical: 16)),
+                        ),
+                ],
+              ),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // --- TELAS DO GERENTE ---
 class ManagerHomePage extends StatefulWidget {
   final UserModel user;
@@ -740,6 +1022,12 @@ class ManagerHomePage extends StatefulWidget {
 class _ManagerHomePageState extends State<ManagerHomePage> {
   int _paginaAtual = 0;
   late final List<Widget> _telas;
+  final List<String> _titulos = const [
+    'Painel Principal',
+    'Gerenciar Alunos',
+    'Gerenciar Professores',
+    'Mensalidades'
+  ];
 
   @override
   void initState() {
@@ -748,6 +1036,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       ManagerDashboardPage(user: widget.user),
       AlunosManagerPage(academyId: widget.user.academyId),
       ProfessoresManagerPage(academyId: widget.user.academyId),
+      MonthlyFeeManagerPage(academyId: widget.user.academyId),
     ];
   }
 
@@ -757,9 +1046,77 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     });
   }
 
+  void _onAdicionarAluno() {
+    showDialog(
+      context: context,
+      builder: (_) =>
+          AdicionarAlunoDialog(onAlunoAdicionado: (novoAluno) async {
+        try {
+          await FirebaseFirestore.instance
+              .collection('academies')
+              .doc(widget.user.academyId)
+              .collection('students')
+              .add(novoAluno.toJson());
+
+          if (mounted) {
+            showBjjSnackBar(
+                context, '${novoAluno.nome} adicionado com sucesso!',
+                type: 'success');
+          }
+        } catch (e) {
+          if (mounted) {
+            showBjjSnackBar(context, 'Erro ao adicionar aluno: $e',
+                type: 'error');
+          }
+        }
+      }),
+    );
+  }
+
+  void _onAdicionarProfessor() async {
+    final result = await showDialog<Map<String, String>?>(
+      context: context,
+      builder: (_) => AdicionarProfessorDialog(
+        academyId: widget.user.academyId,
+      ),
+    );
+
+    if (result != null && mounted) {
+      final name = result['name']!;
+      final email = result['email']!;
+      final temporaryPassword = result['password']!;
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text("Professor Criado!"),
+          content: SelectableText(
+              "A conta para $name foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(), child: Text("OK"))
+          ],
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(
+        title: Text(_titulos[_paginaAtual]),
+        actions: [
+          IconButton(
+              icon: Icon(Icons.settings),
+              tooltip: 'Configurações',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => SettingsPage(user: widget.user)))),
+          IconButton(
+              icon: Icon(Icons.logout),
+              tooltip: 'Sair',
+              onPressed: () => FirebaseAuth.instance.signOut()),
+        ],
+      ),
       body: IndexedStack(index: _paginaAtual, children: _telas),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _paginaAtual,
@@ -777,8 +1134,25 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
             icon: Icon(Icons.school_rounded),
             label: 'Professores',
           ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.monetization_on_rounded),
+            label: 'Mensalidades',
+          ),
         ],
       ),
+      floatingActionButton: _paginaAtual == 1
+          ? FloatingActionButton(
+              onPressed: _onAdicionarAluno,
+              child: Icon(Icons.add_rounded),
+              tooltip: 'Adicionar Aluno',
+            )
+          : _paginaAtual == 2
+              ? FloatingActionButton(
+                  onPressed: _onAdicionarProfessor,
+                  child: Icon(Icons.add_rounded),
+                  tooltip: 'Adicionar Professor',
+                )
+              : null,
     );
   }
 }
@@ -789,34 +1163,19 @@ class ManagerDashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Painel Principal"),
-        actions: [
-          IconButton(
-              icon: Icon(Icons.settings),
-              onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => ChangePasswordPage()))),
-          IconButton(
-              icon: Icon(Icons.logout),
-              onPressed: () => FirebaseAuth.instance.signOut()),
-        ],
-      ),
-      body: AppBackground(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.manage_accounts,
-                  size: 80, color: BjjApp.primaryAccent),
-              SizedBox(height: 20),
-              Text('Bem-vindo, ${user.name}!',
-                  style: Theme.of(context).textTheme.headlineSmall),
-              SizedBox(height: 10),
-              Text('ID da sua Academia: ${user.academyId}',
-                  style: TextStyle(color: BjjApp.textHint)),
-            ],
-          ),
+    return AppBackground(
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.manage_accounts, size: 80, color: BjjApp.primaryAccent),
+            SizedBox(height: 20),
+            Text('Bem-vindo, ${user.name}!',
+                style: Theme.of(context).textTheme.headlineSmall),
+            SizedBox(height: 10),
+            Text('ID da sua Academia: ${user.academyId}',
+                style: TextStyle(color: BjjApp.textHint)),
+          ],
         ),
       ),
     );
@@ -833,107 +1192,214 @@ class AlunosManagerPage extends StatefulWidget {
 }
 
 class _AlunosManagerPageState extends State<AlunosManagerPage> {
-  Future<void> _adicionarAluno(Aluno novoAluno) async {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _deleteAluno(Aluno aluno) async {
     try {
-      await FirebaseFirestore.instance
+      final firestore = FirebaseFirestore.instance;
+      final batch = firestore.batch();
+
+      final studentDocRef = firestore
           .collection('academies')
           .doc(widget.academyId)
           .collection('students')
-          .add(novoAluno.toJson());
+          .doc(aluno.id);
+      batch.delete(studentDocRef);
+
+      if (aluno.userId != null) {
+        final userDocRef = firestore.collection('users').doc(aluno.userId);
+        batch.delete(userDocRef);
+      }
+      await batch.commit();
 
       if (mounted) {
-        showBjjSnackBar(context, '${novoAluno.nome} adicionado com sucesso!',
+        showBjjSnackBar(context, 'Aluno ${aluno.nome} excluído com sucesso.',
             type: 'success');
       }
     } catch (e) {
       if (mounted) {
-        showBjjSnackBar(context, 'Erro ao adicionar aluno: $e', type: 'error');
+        showBjjSnackBar(context, 'Erro ao excluir aluno: $e', type: 'error');
       }
     }
   }
 
-  void _showCreateAccessDialog(Aluno aluno) {
+  void _confirmDeleteAluno(Aluno aluno) {
     showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Confirmar Exclusão"),
+        content: Text(
+            "Tem certeza que deseja excluir permanentemente o aluno ${aluno.nome}? Esta ação removerá o aluno da lista e também seu acesso de login, caso exista. Esta ação não pode ser desfeita."),
+        actions: [
+          TextButton(
+            child: Text("Cancelar"),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: BjjApp.errorColor,
+                foregroundColor: Colors.white),
+            child: Text("Excluir"),
+            onPressed: () {
+              Navigator.of(context).pop();
+              _deleteAluno(aluno);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showCreateAccessDialog(Aluno aluno) async {
+    final result = await showDialog<Map<String, dynamic>?>(
       context: context,
       builder: (_) => CreateStudentAccessDialog(
         academyId: widget.academyId,
         aluno: aluno,
       ),
     );
+
+    if (result?['success'] == true && mounted) {
+      final email = result!['email'];
+      const temporaryPassword = 'mudar123';
+      showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: Text("Acesso Criado!"),
+          content: SelectableText(
+              "A conta para ${aluno.nome} foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.of(context).pop(), child: Text("OK"))
+          ],
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Gerenciar Alunos"),
-        actions: [
-          IconButton(
-              icon: Icon(Icons.logout),
-              onPressed: () => FirebaseAuth.instance.signOut()),
-        ],
-      ),
-      body: AppBackground(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('academies')
-              .doc(widget.academyId)
-              .collection('students')
-              .orderBy('nome')
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(child: Text("Erro: ${snapshot.error}"));
-            }
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return EmptyStateWidget(
-                icon: Icons.no_accounts_rounded,
-                title: 'Nenhum Aluno Cadastrado',
-                message:
-                    'Clique no botão "+" para adicionar o primeiro aluno da sua academia.',
-              );
-            }
+    return AppBackground(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: 'Buscar aluno por nome...',
+                prefixIcon: Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear),
+                        onPressed: () => _searchController.clear(),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('academies')
+                  .doc(widget.academyId)
+                  .collection('students')
+                  .orderBy('nome')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text("Erro: ${snapshot.error}"));
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return EmptyStateWidget(
+                    icon: Icons.no_accounts_rounded,
+                    title: 'Nenhum Aluno Cadastrado',
+                    message:
+                        'Clique no botão "+" para adicionar o primeiro aluno da sua academia.',
+                  );
+                }
 
-            final alunos = snapshot.data!.docs.map((doc) {
-              return Aluno.fromJson(doc.id, doc.data() as Map<String, dynamic>);
-            }).toList();
+                final allAlunos = snapshot.data!.docs.map((doc) {
+                  return Aluno.fromJson(
+                      doc.id, doc.data() as Map<String, dynamic>);
+                }).toList();
 
-            return ListView.builder(
-              padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
-              itemCount: alunos.length,
-              itemBuilder: (context, index) {
-                final aluno = alunos[index];
-                return Card(
-                  child: ListTile(
-                    title: Text(aluno.nome,
-                        style: Theme.of(context).textTheme.titleMedium),
-                    subtitle: Text('${aluno.faixa} - ${aluno.peso}kg'),
-                    trailing: aluno.userId == null
-                        ? TextButton(
-                            child: Text("Criar Acesso"),
-                            onPressed: () => _showCreateAccessDialog(aluno),
-                          )
-                        : Icon(Icons.check_circle, color: BjjApp.successColor),
-                  ),
+                final filteredAlunos = allAlunos.where((aluno) {
+                  return aluno.nome
+                      .toLowerCase()
+                      .contains(_searchQuery.toLowerCase());
+                }).toList();
+
+                if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
+                  return EmptyStateWidget(
+                    icon: Icons.person_search,
+                    title: "Nenhum Aluno Encontrado",
+                    message:
+                        "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
+                  itemCount: filteredAlunos.length,
+                  itemBuilder: (context, index) {
+                    final aluno = filteredAlunos[index];
+                    return Card(
+                      child: ListTile(
+                        title: Text(aluno.nome,
+                            style: Theme.of(context).textTheme.titleMedium),
+                        subtitle: Text('${aluno.faixa} - ${aluno.peso}kg'),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (aluno.userId == null)
+                              TextButton(
+                                child: Text("Criar Acesso"),
+                                onPressed: () => _showCreateAccessDialog(aluno),
+                              )
+                            else
+                              Tooltip(
+                                message: "Acesso de aluno já criado",
+                                child: Icon(Icons.check_circle,
+                                    color: BjjApp.successColor),
+                              ),
+                            SizedBox(width: 8),
+                            IconButton(
+                              icon: Icon(Icons.delete_outline_rounded,
+                                  color: BjjApp.errorColor),
+                              onPressed: () => _confirmDeleteAluno(aluno),
+                              tooltip: 'Excluir Aluno',
+                            )
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 );
               },
-            );
-          },
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          showDialog(
-            context: context,
-            builder: (_) =>
-                AdicionarAlunoDialog(onAlunoAdicionado: _adicionarAluno),
-          );
-        },
-        child: Icon(Icons.add_rounded),
-        tooltip: 'Adicionar Aluno',
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -941,7 +1407,8 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
 
 class AdicionarAlunoDialog extends StatefulWidget {
   final Function(Aluno) onAlunoAdicionado;
-  AdicionarAlunoDialog({required this.onAlunoAdicionado});
+  final Aluno? alunoParaEditar; // Parâmetro opcional para edição
+  AdicionarAlunoDialog({required this.onAlunoAdicionado, this.alunoParaEditar});
   @override
   _AdicionarAlunoDialogState createState() => _AdicionarAlunoDialogState();
 }
@@ -969,14 +1436,39 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
     'Marrom',
     'Preta'
   ];
-  final List<int> grausList = [1, 2, 3, 4, 5, 6];
+  List<int> grausList = [];
   final formKey = GlobalKey<FormState>();
+
+  bool get isEditing => widget.alunoParaEditar != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (isEditing) {
+      final aluno = widget.alunoParaEditar!;
+      nC.text = aluno.nome;
+      pC.text = aluno.peso.toString();
+      fS = aluno.faixa;
+      gS = aluno.graus;
+      grausList = _getGrausForFaixa(fS);
+    }
+  }
+
+  List<int> _getGrausForFaixa(String? faixa) {
+    if (faixa == 'Preta') {
+      return List.generate(10, (i) => i + 1);
+    }
+    if (faixa != null) {
+      return [1, 2, 3, 4];
+    }
+    return [];
+  }
 
   @override
   Widget build(BuildContext context) {
     bool mostrarGrausDropdown = fS != null;
     return AlertDialog(
-      title: Text('Adicionar Novo Aluno'),
+      title: Text(isEditing ? 'Editar Aluno' : 'Adicionar Novo Aluno'),
       content: SingleChildScrollView(
           child: Form(
               key: formKey,
@@ -999,6 +1491,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                     hint: Text("Selecione a Faixa"),
                     onChanged: (v) => setState(() {
                           fS = v;
+                          grausList = _getGrausForFaixa(fS);
+                          gS = null;
                         }),
                     items: faixasList
                         .map((v) =>
@@ -1042,16 +1536,26 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
             child: Text('Cancelar'),
             onPressed: () => Navigator.of(context).pop()),
         ElevatedButton.icon(
-            icon: Icon(Icons.person_add_rounded, size: 18),
-            label: Text('Adicionar'),
+            icon: Icon(
+                isEditing ? Icons.save_rounded : Icons.person_add_alt_1_rounded,
+                size: 18),
+            label: Text(isEditing ? 'Salvar' : 'Adicionar'),
             onPressed: () {
               if (formKey.currentState!.validate()) {
-                widget.onAlunoAdicionado(Aluno.novo(
+                final double peso = double.parse(pC.text.replaceAll(',', '.'));
+                // Se estiver editando, cria um Aluno com o ID existente.
+                // Se não, cria um Aluno novo (ID será gerado pelo Firestore depois).
+                final alunoResult = Aluno(
+                  id: isEditing ? widget.alunoParaEditar!.id : '',
                   nome: nC.text.trim(),
                   faixa: fS!,
-                  peso: double.parse(pC.text.replaceAll(',', '.')),
+                  peso: peso,
                   graus: gS,
-                ));
+                  // Mantém o userId se já existir
+                  userId: isEditing ? widget.alunoParaEditar!.userId : null,
+                );
+
+                widget.onAlunoAdicionado(alunoResult);
                 Navigator.of(context).pop();
               }
             })
@@ -1085,7 +1589,6 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
     final email = _emailController.text.trim();
 
     try {
-      // Usar um nome de app temporário e único para evitar conflitos
       final tempApp = await Firebase.initializeApp(
         name: 'temp_student_creation_${DateTime.now().millisecondsSinceEpoch}',
         options: Firebase.app().options,
@@ -1113,6 +1616,7 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
 
       final userRef =
           FirebaseFirestore.instance.collection('users').doc(newUser.uid);
+
       batch.set(userRef, {
         'name': widget.aluno.nome,
         'email': email,
@@ -1120,25 +1624,15 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
         'role': 'student',
         'studentRecordId': widget.aluno.id,
         'createdAt': FieldValue.serverTimestamp(),
+        'mustChangePassword': true,
+        'isActive': true,
       });
 
       await batch.commit();
-      await tempApp.delete(); // Limpar a instância temporária do app
+      await tempApp.delete();
 
       if (mounted) {
-        Navigator.of(context).pop();
-        showDialog(
-            context: context,
-            builder: (_) => AlertDialog(
-                  title: Text("Acesso Criado!"),
-                  content: Text(
-                      "A conta para ${widget.aluno.nome} foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login."),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Text("OK"))
-                  ],
-                ));
+        Navigator.of(context).pop({'success': true, 'email': email});
       }
     } on FirebaseAuthException catch (e) {
       String message = 'Erro ao criar acesso.';
@@ -1200,8 +1694,205 @@ class ProfessoresManagerPage extends StatefulWidget {
 }
 
 class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
-  Future<void> _adicionarProfessor(String name, String email) async {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _deleteProfessor(UserModel professor) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(professor.uid)
+          .delete();
+
+      if (mounted) {
+        showBjjSnackBar(
+            context, 'Professor ${professor.name} excluído com sucesso.',
+            type: 'success');
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao excluir professor: $e',
+            type: 'error');
+      }
+    }
+  }
+
+  void _confirmDeleteProfessor(UserModel professor) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text("Confirmar Exclusão"),
+        content: Text(
+            "Tem certeza que deseja excluir permanentemente o professor ${professor.name}? Esta ação removerá seu acesso de login. Esta ação não pode ser desfeita."),
+        actions: [
+          TextButton(
+            child: Text("Cancelar"),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: BjjApp.errorColor,
+                foregroundColor: Colors.white),
+            child: Text("Excluir"),
+            onPressed: () {
+              Navigator.of(context).pop();
+              _deleteProfessor(professor);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBackground(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: 'Buscar professor por nome...',
+                prefixIcon: Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear),
+                        onPressed: () => _searchController.clear(),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('users')
+                  .where('academyId', isEqualTo: widget.academyId)
+                  .where('role', isEqualTo: 'teacher')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text("Erro: ${snapshot.error}"));
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return EmptyStateWidget(
+                    icon: Icons.school_outlined,
+                    title: 'Nenhum Professor Cadastrado',
+                    message:
+                        'Clique no botão "+" para adicionar o primeiro professor.',
+                  );
+                }
+
+                final allProfessores = snapshot.data!.docs.map((doc) {
+                  return UserModel.fromFirestore(doc);
+                }).toList();
+
+                final filteredProfessores = allProfessores.where((prof) {
+                  return prof.name
+                      .toLowerCase()
+                      .contains(_searchQuery.toLowerCase());
+                }).toList();
+
+                if (filteredProfessores.isEmpty && _searchQuery.isNotEmpty) {
+                  return EmptyStateWidget(
+                    icon: Icons.person_search,
+                    title: "Nenhum Professor Encontrado",
+                    message:
+                        "Nenhum professor corresponde à sua busca '$_searchQuery'.",
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
+                  itemCount: filteredProfessores.length,
+                  itemBuilder: (context, index) {
+                    final professor = filteredProfessores[index];
+                    return Card(
+                      child: ListTile(
+                        leading:
+                            CircleAvatar(child: Icon(Icons.school_rounded)),
+                        title: Text(professor.name,
+                            style: Theme.of(context).textTheme.titleMedium),
+                        subtitle: Text(professor.email),
+                        trailing: IconButton(
+                          icon: Icon(Icons.delete_outline_rounded,
+                              color: BjjApp.errorColor),
+                          onPressed: () => _confirmDeleteProfessor(professor),
+                          tooltip: 'Excluir Professor',
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AdicionarProfessorDialog extends StatefulWidget {
+  final String academyId;
+  const AdicionarProfessorDialog({Key? key, required this.academyId})
+      : super(key: key);
+
+  @override
+  State<AdicionarProfessorDialog> createState() =>
+      _AdicionarProfessorDialogState();
+}
+
+class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
+  String? _faixa;
+  int? _graus;
+  final List<String> _faixasList = ['Azul', 'Roxa', 'Marrom', 'Preta'];
+  List<int> _grausList = [];
+
+  List<int> _getGrausForFaixa(String? faixa) {
+    if (faixa == 'Preta') {
+      return List.generate(10, (i) => i + 1);
+    }
+    if (faixa != null) {
+      return [1, 2, 3, 4];
+    }
+    return [];
+  }
+
+  void _submit() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    setState(() => _isLoading = true);
+
     const temporaryPassword = 'mudar123';
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
 
     try {
       final tempApp = await Firebase.initializeApp(
@@ -1218,7 +1909,7 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
 
       if (newUser == null) {
         await tempApp.delete();
-        throw Exception("Falha ao criar a conta de autenticação.");
+        throw Exception("Falha ao criar la cuenta de autenticação.");
       }
 
       await FirebaseFirestore.instance
@@ -1229,24 +1920,22 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
         'email': email,
         'academyId': widget.academyId,
         'role': 'teacher',
+        'faixa': _faixa,
+        'graus': _graus,
+        'peso': null, // Professor pode preencher depois
         'createdAt': FieldValue.serverTimestamp(),
+        'mustChangePassword': true,
+        'isActive': true,
       });
 
       await tempApp.delete();
 
       if (mounted) {
-        showDialog(
-            context: context,
-            builder: (_) => AlertDialog(
-                  title: Text("Professor Criado!"),
-                  content: Text(
-                      "A conta para $name foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
-                  actions: [
-                    TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: Text("OK"))
-                  ],
-                ));
+        Navigator.of(context).pop({
+          'name': name,
+          'email': email,
+          'password': temporaryPassword,
+        });
       }
     } on FirebaseAuthException catch (e) {
       String message = 'Erro ao criar professor.';
@@ -1257,112 +1946,14 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
       }
       if (mounted) showBjjSnackBar(context, message, type: 'error');
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         showBjjSnackBar(context, 'Ocorreu um erro inesperado: $e',
             type: 'error');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Gerenciar Professores"),
-        actions: [
-          IconButton(
-              icon: Icon(Icons.logout),
-              onPressed: () => FirebaseAuth.instance.signOut()),
-        ],
-      ),
-      body: AppBackground(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('users')
-              .where('academyId', isEqualTo: widget.academyId)
-              .where('role', isEqualTo: 'teacher')
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(child: Text("Erro: ${snapshot.error}"));
-            }
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-              return EmptyStateWidget(
-                icon: Icons.school_outlined,
-                title: 'Nenhum Professor Cadastrado',
-                message:
-                    'Clique no botão "+" para adicionar o primeiro professor.',
-              );
-            }
-
-            final professores = snapshot.data!.docs.map((doc) {
-              return UserModel.fromFirestore(doc);
-            }).toList();
-
-            return ListView.builder(
-              padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
-              itemCount: professores.length,
-              itemBuilder: (context, index) {
-                final professor = professores[index];
-                return Card(
-                  child: ListTile(
-                    leading: CircleAvatar(child: Icon(Icons.school_rounded)),
-                    title: Text(professor.name,
-                        style: Theme.of(context).textTheme.titleMedium),
-                    subtitle: Text(professor.email),
-                    trailing: Icon(Icons.more_vert),
-                  ),
-                );
-              },
-            );
-          },
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          showDialog(
-            context: context,
-            builder: (_) => AdicionarProfessorDialog(
-                onProfessorAdicionado: _adicionarProfessor),
-          );
-        },
-        child: Icon(Icons.add_rounded),
-        tooltip: 'Adicionar Professor',
-      ),
-    );
-  }
-}
-
-class AdicionarProfessorDialog extends StatefulWidget {
-  final Future<void> Function(String name, String email) onProfessorAdicionado;
-  const AdicionarProfessorDialog(
-      {Key? key, required this.onProfessorAdicionado})
-      : super(key: key);
-
-  @override
-  State<AdicionarProfessorDialog> createState() =>
-      _AdicionarProfessorDialogState();
-}
-
-class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
-  final _nameController = TextEditingController();
-  final _emailController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
-
-  void _submit() {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
-      widget
-          .onProfessorAdicionado(
-              _nameController.text.trim(), _emailController.text.trim())
-          .whenComplete(() {
-        if (mounted) {
-          Navigator.of(context).pop();
-        }
-      });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -1372,30 +1963,67 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
       title: Text('Adicionar Novo Professor'),
       content: Form(
         key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'Nome do Professor',
-                prefixIcon: Icon(Icons.person_add_alt_1_rounded),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: InputDecoration(
+                  labelText: 'Nome do Professor',
+                  prefixIcon: Icon(Icons.person_add_alt_1_rounded),
+                ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Nome inválido' : null,
               ),
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Nome inválido' : null,
-            ),
-            SizedBox(height: 16),
-            TextFormField(
-              controller: _emailController,
-              decoration: InputDecoration(
-                labelText: 'E-mail (para login)',
-                prefixIcon: Icon(Icons.email_outlined),
+              SizedBox(height: 16),
+              TextFormField(
+                controller: _emailController,
+                decoration: InputDecoration(
+                  labelText: 'E-mail (para login)',
+                  prefixIcon: Icon(Icons.email_outlined),
+                ),
+                keyboardType: TextInputType.emailAddress,
+                validator: (v) =>
+                    (v == null || !v.contains('@')) ? 'E-mail inválido' : null,
               ),
-              keyboardType: TextInputType.emailAddress,
-              validator: (v) =>
-                  (v == null || !v.contains('@')) ? 'E-mail inválido' : null,
-            ),
-          ],
+              SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _faixa,
+                decoration: InputDecoration(
+                    labelText: 'Faixa',
+                    prefixIcon: Icon(Icons.shield_outlined)),
+                hint: Text("Selecione a Faixa"),
+                items: _faixasList
+                    .map((faixa) =>
+                        DropdownMenuItem(value: faixa, child: Text(faixa)))
+                    .toList(),
+                onChanged: (value) => setState(() {
+                  _faixa = value;
+                  _grausList = _getGrausForFaixa(_faixa);
+                  _graus = null;
+                }),
+                validator: (value) =>
+                    value == null ? 'Selecione a faixa' : null,
+              ),
+              if (_faixa != null) ...[
+                SizedBox(height: 16),
+                DropdownButtonFormField<int>(
+                  value: _graus,
+                  decoration: InputDecoration(
+                      labelText: 'Graus (opcional)',
+                      prefixIcon: Icon(Icons.star_outline_rounded)),
+                  hint: Text("Selecione os Graus"),
+                  items: [
+                    DropdownMenuItem<int>(value: null, child: Text("Nenhum")),
+                    ..._grausList.map((g) =>
+                        DropdownMenuItem(value: g, child: Text("$gº Grau"))),
+                  ],
+                  onChanged: (value) => setState(() => _graus = value),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
       actions: [
@@ -1417,6 +2045,505 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
   }
 }
 
+// --- TELA DE MENSALIDADES (ATUALIZADA) ---
+class MonthlyFeeManagerPage extends StatefulWidget {
+  final String academyId;
+  const MonthlyFeeManagerPage({Key? key, required this.academyId})
+      : super(key: key);
+
+  @override
+  _MonthlyFeeManagerPageState createState() => _MonthlyFeeManagerPageState();
+}
+
+class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  List<Aluno> _allStudentsWithStatus = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchStudentsWithPaymentStatus();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchStudentsWithPaymentStatus() async {
+    setState(() => _isLoading = true);
+    final now = DateTime.now();
+    final firestore = FirebaseFirestore.instance;
+
+    final studentsSnapshot = await firestore
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('students')
+        .orderBy('nome')
+        .get();
+    final students = studentsSnapshot.docs
+        .map((doc) => Aluno.fromJson(doc.id, doc.data()!))
+        .toList();
+
+    final paymentsSnapshot = await firestore
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('monthly_fees')
+        .where('paymentYear', isEqualTo: now.year)
+        .where('paymentMonth', isEqualTo: now.month)
+        .get();
+
+    final paidStudentIds =
+        paymentsSnapshot.docs.map((doc) => doc['studentId'] as String).toSet();
+
+    for (var student in students) {
+      if (paidStudentIds.contains(student.id)) {
+        student.paymentStatus = PaymentStatus.pago;
+      } else {
+        // Regra de negócio: Vencimento dia 10
+        student.paymentStatus =
+            (now.day > 10) ? PaymentStatus.atrasado : PaymentStatus.pendente;
+      }
+    }
+
+    if (mounted) {
+      setState(() {
+        _allStudentsWithStatus = students;
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _showAddPaymentDialog(Aluno student) async {
+    final bool? success = await showDialog<bool>(
+      context: context,
+      builder: (_) =>
+          AddPaymentDialog(academyId: widget.academyId, student: student),
+    );
+
+    if (success == true) {
+      showBjjSnackBar(context, "Pagamento registrado com sucesso!",
+          type: 'success');
+      _fetchStudentsWithPaymentStatus(); // Recarrega os dados
+    }
+  }
+
+  void _navigateToHistory(Aluno student) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => StudentPaymentHistoryPage(
+          academyId: widget.academyId, student: student),
+    ));
+  }
+
+  Widget _buildStatusChip(PaymentStatus status) {
+    Color color;
+    String label;
+    IconData icon;
+
+    switch (status) {
+      case PaymentStatus.pago:
+        color = BjjApp.successColor;
+        label = "Em dia";
+        icon = Icons.check_circle_rounded;
+        break;
+      case PaymentStatus.pendente:
+        color = BjjApp.warningColor;
+        label = "Pendente";
+        icon = Icons.hourglass_empty_rounded;
+        break;
+      case PaymentStatus.atrasado:
+        color = BjjApp.errorColor;
+        label = "Atrasado";
+        icon = Icons.error_rounded;
+        break;
+    }
+
+    return Chip(
+      avatar: Icon(icon, color: Colors.white, size: 16),
+      label: Text(label,
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      backgroundColor: color,
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filteredStudents = _allStudentsWithStatus.where((student) {
+      return student.nome.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList();
+
+    return AppBackground(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: 'Buscar aluno por nome...',
+                prefixIcon: Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear),
+                        onPressed: () => _searchController.clear(),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+          Expanded(
+            child: _isLoading
+                ? Center(child: CircularProgressIndicator())
+                : _allStudentsWithStatus.isEmpty
+                    ? EmptyStateWidget(
+                        icon: Icons.no_accounts_rounded,
+                        title: 'Nenhum Aluno Cadastrado',
+                        message: 'Adicione alunos na aba "Gerenciar Alunos".',
+                      )
+                    : RefreshIndicator(
+                        onRefresh: _fetchStudentsWithPaymentStatus,
+                        child: filteredStudents.isEmpty &&
+                                _searchQuery.isNotEmpty
+                            ? EmptyStateWidget(
+                                icon: Icons.person_search,
+                                title: "Nenhum Aluno Encontrado",
+                                message:
+                                    "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.fromLTRB(
+                                    8.0, 8.0, 8.0, 80.0),
+                                itemCount: filteredStudents.length,
+                                itemBuilder: (context, index) {
+                                  final student = filteredStudents[index];
+                                  final bool isPaid = student.paymentStatus ==
+                                      PaymentStatus.pago;
+                                  return Card(
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(12.0),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(student.nome,
+                                              style: Theme.of(context)
+                                                  .textTheme
+                                                  .titleMedium),
+                                          Divider(
+                                              height: 16,
+                                              color: BjjApp.borderNormal),
+                                          Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              _buildStatusChip(
+                                                  student.paymentStatus),
+                                              Row(
+                                                children: [
+                                                  if (!isPaid)
+                                                    TextButton.icon(
+                                                      icon: Icon(Icons.payment,
+                                                          size: 20),
+                                                      label: Text("Registrar"),
+                                                      onPressed: () =>
+                                                          _showAddPaymentDialog(
+                                                              student),
+                                                    ),
+                                                  TextButton.icon(
+                                                    icon: Icon(Icons.history,
+                                                        size: 20,
+                                                        color: BjjApp.textHint),
+                                                    label: Text("Histórico",
+                                                        style: TextStyle(
+                                                            color: BjjApp
+                                                                .textHint)),
+                                                    onPressed: () =>
+                                                        _navigateToHistory(
+                                                            student),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          )
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- NOVA TELA DE HISTÓRICO DE PAGAMENTOS ---
+class StudentPaymentHistoryPage extends StatefulWidget {
+  final String academyId;
+  final Aluno student;
+  const StudentPaymentHistoryPage(
+      {Key? key, required this.academyId, required this.student})
+      : super(key: key);
+
+  @override
+  _StudentPaymentHistoryPageState createState() =>
+      _StudentPaymentHistoryPageState();
+}
+
+class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
+  late Future<Map<int, List<MonthlyFee>>> _historyFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _historyFuture = _fetchPaymentHistory();
+  }
+
+  Future<Map<int, List<MonthlyFee>>> _fetchPaymentHistory() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('monthly_fees')
+        .where('studentId', isEqualTo: widget.student.id)
+        .orderBy('paymentDate', descending: true)
+        .get();
+
+    final payments =
+        snapshot.docs.map((doc) => MonthlyFee.fromFirestore(doc)).toList();
+
+    // Agrupa por ano
+    final Map<int, List<MonthlyFee>> groupedByYear = {};
+    for (var payment in payments) {
+      groupedByYear.putIfAbsent(payment.paymentYear, () => []).add(payment);
+    }
+    return groupedByYear;
+  }
+
+  String _getMonthName(int month) {
+    // Usando DateFormat para obter o nome do mês formatado em português.
+    // Cria uma data qualquer com o mês desejado.
+    return DateFormat.MMMM('pt_BR').format(DateTime(0, month)).capitalize();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Histórico de ${widget.student.nome}"),
+      ),
+      body: AppBackground(
+        child: FutureBuilder<Map<int, List<MonthlyFee>>>(
+          future: _historyFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.hasError) {
+              return Center(child: Text("Erro: ${snapshot.error}"));
+            }
+            if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return EmptyStateWidget(
+                icon: Icons.receipt_long_rounded,
+                title: 'Nenhum Pagamento Registrado',
+                message:
+                    'Este aluno ainda não possui um histórico de pagamentos.',
+              );
+            }
+
+            final history = snapshot.data!;
+            final years = history.keys.toList()..sort((a, b) => b.compareTo(a));
+
+            return ListView.builder(
+              padding: const EdgeInsets.all(8.0),
+              itemCount: years.length,
+              itemBuilder: (context, index) {
+                final year = years[index];
+                final paymentsForYear = history[year]!;
+
+                return Card(
+                  margin: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  child: ExpansionTile(
+                    initiallyExpanded: year == DateTime.now().year,
+                    title: Text(year.toString(),
+                        style: Theme.of(context).textTheme.titleLarge),
+                    children: paymentsForYear.map((payment) {
+                      return ListTile(
+                        leading: Icon(Icons.check_circle,
+                            color: BjjApp.successColor),
+                        title: Text(_getMonthName(payment.paymentMonth)),
+                        subtitle: Text(
+                            'Pago em: ${DateFormat.yMd('pt_BR').format(payment.paymentDate)} - ${payment.paymentMethod}'),
+                        trailing: Text(
+                          'R\$ ${payment.amount.toStringAsFixed(2)}',
+                          style: TextStyle(
+                              color: BjjApp.textPrimary,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+// Extensão para capitalizar a primeira letra
+extension StringExtension on String {
+  String capitalize() {
+    return "${this[0].toUpperCase()}${this.substring(1)}";
+  }
+}
+
+// --- DIÁLOGO PARA ADICIONAR PAGAMENTO ---
+class AddPaymentDialog extends StatefulWidget {
+  final String academyId;
+  final Aluno student;
+
+  const AddPaymentDialog(
+      {Key? key, required this.academyId, required this.student})
+      : super(key: key);
+
+  @override
+  _AddPaymentDialogState createState() => _AddPaymentDialogState();
+}
+
+class _AddPaymentDialogState extends State<AddPaymentDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _amountController = TextEditingController();
+  String? _paymentMethod;
+  bool _isLoading = false;
+
+  final List<String> _paymentMethods = [
+    'Dinheiro',
+    'Pix',
+    'Cartão de Débito',
+    'Cartão de Crédito'
+  ];
+
+  @override
+  void dispose() {
+    _amountController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submitPayment() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+    setState(() => _isLoading = true);
+
+    final now = DateTime.now();
+    final newPayment = MonthlyFee(
+      id: '', // será gerado pelo firestore
+      studentId: widget.student.id,
+      amount: double.parse(_amountController.text.replaceAll(',', '.')),
+      paymentDate: now,
+      paymentMethod: _paymentMethod!,
+      paymentYear: now.year,
+      paymentMonth: now.month,
+    );
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('monthly_fees')
+          .add(newPayment.toMap());
+
+      if (mounted) {
+        Navigator.of(context).pop(true); // Retorna sucesso
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, "Erro ao registrar pagamento: $e",
+            type: 'error');
+        Navigator.of(context).pop(false);
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text("Registrar Pagamento para ${widget.student.nome}"),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _amountController,
+                decoration: InputDecoration(
+                  labelText: 'Valor (R\$)',
+                  prefixIcon: Icon(Icons.attach_money_rounded),
+                ),
+                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                validator: (v) {
+                  if (v == null || v.isEmpty) return 'Valor inválido';
+                  final x = double.tryParse(v.replaceAll(',', '.'));
+                  return (x == null || x <= 0)
+                      ? 'O valor deve ser positivo'
+                      : null;
+                },
+              ),
+              SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _paymentMethod,
+                decoration: InputDecoration(
+                  labelText: 'Método de Pagamento',
+                  prefixIcon: Icon(Icons.payment_rounded),
+                ),
+                hint: Text("Selecione o método"),
+                items: _paymentMethods
+                    .map((method) =>
+                        DropdownMenuItem(value: method, child: Text(method)))
+                    .toList(),
+                onChanged: (value) => setState(() => _paymentMethod = value),
+                validator: (v) => v == null ? 'Selecione um método' : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text("Cancelar")),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _submitPayment,
+          child: _isLoading
+              ? SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : Text("Confirmar"),
+        ),
+      ],
+    );
+  }
+}
+
 // --- TELAS DO PROFESSOR ---
 class TeacherHomePage extends StatefulWidget {
   final UserModel user;
@@ -1428,59 +2555,199 @@ class TeacherHomePage extends StatefulWidget {
 
 class _TeacherHomePageState extends State<TeacherHomePage> {
   int _paginaAtual = 0;
-  late final List<Widget> _telas;
-  List<Aluno> _todosOsAlunosDaAcademia = [];
+  List<Widget> _telas = [];
   bool _isLoadingAlunos = true;
+  List<Aluno> _todosParticipantesDaAcademia = [];
+  Map<String, dynamic> _sparringState = {};
+  StreamSubscription? _sparringStateSubscription;
+  bool get _isSparringMode => _sparringState['isSparringMode'] ?? false;
+
+  final List<String> _titulos = const [
+    'Painel do Professor',
+    'Gerenciar Alunos', // Novo
+    'Check-in',
+    'Estudos',
+    'Sorteio',
+    'Placar'
+  ];
 
   @override
   void initState() {
     super.initState();
-    _fetchAlunosDaAcademia();
+    _fetchParticipantsAndBuildScreens();
+    _listenToSparringState();
   }
 
-  Future<void> _fetchAlunosDaAcademia() async {
+  @override
+  void dispose() {
+    _sparringStateSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _fetchParticipantsAndBuildScreens() async {
     if (!mounted) return;
     setState(() => _isLoadingAlunos = true);
     try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('academies')
-          .doc(widget.user.academyId)
-          .collection('students')
-          .orderBy('nome')
-          .get();
+      final firestore = FirebaseFirestore.instance;
+      final academyId = widget.user.academyId;
 
-      final alunos = snapshot.docs
+      // Fetch students
+      final studentsSnapshot = await firestore
+          .collection('academies')
+          .doc(academyId)
+          .collection('students')
+          .orderBy('nome') // Ordenação aqui
+          .get();
+      final studentParticipants = studentsSnapshot.docs
           .map((doc) => Aluno.fromJson(doc.id, doc.data()))
           .toList();
+
+      // Fetch ONLY teachers (NOT managers)
+      final usersSnapshot = await firestore
+          .collection('users')
+          .where('academyId', isEqualTo: academyId)
+          .where('role', isEqualTo: 'teacher')
+          .get();
+      final userParticipants = usersSnapshot.docs
+          .map((doc) => Aluno.fromUserModel(UserModel.fromFirestore(doc)))
+          .toList();
+
+      // Combine and sort
+      final allParticipants = [...studentParticipants, ...userParticipants];
+      allParticipants.sort((a, b) => a.nome.compareTo(b.nome));
+
       if (mounted) {
-        setState(() {
-          _todosOsAlunosDaAcademia = alunos;
-          _isLoadingAlunos = false;
-        });
+        _todosParticipantesDaAcademia = allParticipants;
+        _buildScreens();
+        setState(() => _isLoadingAlunos = false);
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoadingAlunos = false);
-        showBjjSnackBar(context, 'Erro ao carregar lista de alunos.',
+        showBjjSnackBar(context, 'Erro ao carregar lista de participantes.',
             type: 'error');
+        _buildScreens();
       }
     }
   }
 
   void _buildScreens() {
     _telas = [
-      TeacherDashboardPage(user: widget.user),
+      TeacherDashboardPage(
+        user: widget.user,
+        isSparringMode: _isSparringMode,
+        onNavigateToSparring: () {
+          Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => SparringTeacherPage(
+                  academyId: widget.user.academyId,
+                  todosAlunos: _todosParticipantesDaAcademia)));
+        },
+      ),
+      AlunosTeacherPage(academyId: widget.user.academyId), // Novo
       CheckinTeacherPage(
           academyId: widget.user.academyId,
-          todosAlunosDaAcademia: _todosOsAlunosDaAcademia),
+          todosParticipantesDaAcademia: _todosParticipantesDaAcademia),
       StudiesTeacherPage(user: widget.user),
       SorteioTeacherPage(
           academyId: widget.user.academyId,
-          todosAlunosDaAcademia: _todosOsAlunosDaAcademia),
-      PlacarSetupPage(
+          todosParticipantesDaAcademia: _todosParticipantesDaAcademia,
+          isSparringMode: _isSparringMode,
+          onIniciarSparring: _startSparring,
+          onCheckinAlunos: _checkinStudents),
+      MatchSetupPage(
           academyId: widget.user.academyId,
-          todosAlunosDaAcademia: _todosOsAlunosDaAcademia),
+          todosAlunosDaAcademia: _todosParticipantesDaAcademia),
     ];
+  }
+
+  void _listenToSparringState() {
+    _sparringStateSubscription = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('state')
+        .doc('sparring')
+        .snapshots()
+        .listen((doc) {
+      if (mounted) {
+        setState(() {
+          _sparringState = doc.exists ? doc.data()! : {};
+          _buildScreens();
+        });
+      }
+    });
+  }
+
+  Future<void> _startSparring(List<List<String>> rounds, String generationType,
+      List<Aluno> participants) async {
+    final newState = {
+      'isSparringMode': true,
+      'currentRoundIndex': 1,
+      'allRounds': rounds.map((round) => {'fights': round}).toList(),
+      'generationType': generationType,
+      'participantIds': participants.map((p) => p.id).toList(),
+    };
+    await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('state')
+        .doc('sparring')
+        .set(newState);
+
+    Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => SparringTeacherPage(
+            academyId: widget.user.academyId,
+            todosAlunos: _todosParticipantesDaAcademia)));
+  }
+
+  Future<void> _checkinStudents(List<Aluno> studentsToCheckin) async {
+    final now = DateTime.now();
+    final dateOnly = DateTime(now.year, now.month, now.day);
+    final checkinRef = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('checkins');
+    final batch = FirebaseFirestore.instance.batch();
+    int count = 0;
+    for (var student in studentsToCheckin) {
+      batch.set(checkinRef.doc(), {
+        'studentId': student.id,
+        'date': Timestamp.fromDate(dateOnly),
+      });
+      count++;
+    }
+    await batch.commit();
+    if (mounted) {
+      showBjjSnackBar(context, '$count check-ins confirmados!',
+          type: 'success');
+    }
+  }
+
+  void _onAdicionarAluno() {
+    showDialog(
+      context: context,
+      builder: (_) =>
+          AdicionarAlunoDialog(onAlunoAdicionado: (novoAluno) async {
+        try {
+          await FirebaseFirestore.instance
+              .collection('academies')
+              .doc(widget.user.academyId)
+              .collection('students')
+              .add(novoAluno.toJson());
+
+          if (mounted) {
+            showBjjSnackBar(
+                context, '${novoAluno.nome} adicionado com sucesso!',
+                type: 'success');
+            _fetchParticipantsAndBuildScreens(); // Recarrega a lista
+          }
+        } catch (e) {
+          if (mounted) {
+            showBjjSnackBar(context, 'Erro ao adicionar aluno: $e',
+                type: 'error');
+          }
+        }
+      }),
+    );
   }
 
   @override
@@ -1491,9 +2758,21 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
               AppBackground(child: Center(child: CircularProgressIndicator())));
     }
 
-    _buildScreens();
-
     return Scaffold(
+      appBar: AppBar(
+        title: Text(_titulos[_paginaAtual]),
+        actions: [
+          IconButton(
+              icon: Icon(Icons.settings),
+              tooltip: 'Configurações',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => SettingsPage(user: widget.user)))),
+          IconButton(
+              icon: Icon(Icons.logout),
+              tooltip: 'Sair',
+              onPressed: () => FirebaseAuth.instance.signOut()),
+        ],
+      ),
       body: IndexedStack(index: _paginaAtual, children: _telas),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _paginaAtual,
@@ -1502,6 +2781,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_rounded),
             label: 'Início',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.people_alt_rounded),
+            label: 'Alunos',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.check_circle_outline_rounded),
@@ -1521,41 +2804,240 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           ),
         ],
       ),
+      floatingActionButton: _paginaAtual == 1 // Aba Alunos
+          ? FloatingActionButton(
+              onPressed: _onAdicionarAluno,
+              child: Icon(Icons.add),
+              tooltip: 'Adicionar Aluno',
+            )
+          : _paginaAtual == 3 // Aba Estudos
+              ? FloatingActionButton(
+                  onPressed: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) =>
+                          EditStudyPage(user: widget.user, study: null),
+                    ));
+                  },
+                  child: Icon(Icons.add),
+                  tooltip: 'Criar Novo Estudo',
+                )
+              : null,
+    );
+  }
+}
+
+class AlunosTeacherPage extends StatefulWidget {
+  final String academyId;
+  const AlunosTeacherPage({Key? key, required this.academyId})
+      : super(key: key);
+
+  @override
+  State<AlunosTeacherPage> createState() => _AlunosTeacherPageState();
+}
+
+class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _editAluno(Aluno aluno) {
+    showDialog(
+      context: context,
+      builder: (_) => AdicionarAlunoDialog(
+        alunoParaEditar: aluno,
+        onAlunoAdicionado: (alunoEditado) async {
+          try {
+            await FirebaseFirestore.instance
+                .collection('academies')
+                .doc(widget.academyId)
+                .collection('students')
+                .doc(alunoEditado.id)
+                .update(alunoEditado.toJson());
+            if (mounted) {
+              showBjjSnackBar(
+                  context, '${alunoEditado.nome} atualizado com sucesso!',
+                  type: 'success');
+            }
+          } catch (e) {
+            if (mounted) {
+              showBjjSnackBar(context, 'Erro ao atualizar aluno: $e',
+                  type: 'error');
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBackground(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: 'Buscar aluno por nome...',
+                prefixIcon: Icon(Icons.search),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear),
+                        onPressed: () => _searchController.clear(),
+                      )
+                    : null,
+              ),
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('academies')
+                  .doc(widget.academyId)
+                  .collection('students')
+                  .orderBy('nome')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text("Erro: ${snapshot.error}"));
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return EmptyStateWidget(
+                    icon: Icons.no_accounts_rounded,
+                    title: 'Nenhum Aluno Cadastrado',
+                    message:
+                        'Clique no botão "+" para adicionar o primeiro aluno da sua academia.',
+                  );
+                }
+
+                final allAlunos = snapshot.data!.docs.map((doc) {
+                  return Aluno.fromJson(
+                      doc.id, doc.data() as Map<String, dynamic>);
+                }).toList();
+
+                final filteredAlunos = allAlunos.where((aluno) {
+                  return aluno.nome
+                      .toLowerCase()
+                      .contains(_searchQuery.toLowerCase());
+                }).toList();
+
+                if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
+                  return EmptyStateWidget(
+                    icon: Icons.person_search,
+                    title: "Nenhum Aluno Encontrado",
+                    message:
+                        "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
+                  itemCount: filteredAlunos.length,
+                  itemBuilder: (context, index) {
+                    final aluno = filteredAlunos[index];
+                    return Card(
+                      child: ListTile(
+                        title: Text(aluno.nome,
+                            style: Theme.of(context).textTheme.titleMedium),
+                        subtitle: Text(
+                            '${aluno.faixa}${aluno.graus != null ? ' - ${aluno.graus}º' : ''} - ${aluno.peso}kg'),
+                        trailing: IconButton(
+                          icon: Icon(Icons.edit_outlined,
+                              color: BjjApp.primaryAccent),
+                          onPressed: () => _editAluno(aluno),
+                          tooltip: 'Editar Aluno',
+                        ),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
 class TeacherDashboardPage extends StatelessWidget {
   final UserModel user;
-  const TeacherDashboardPage({Key? key, required this.user}) : super(key: key);
+  final bool isSparringMode;
+  final VoidCallback onNavigateToSparring;
+
+  const TeacherDashboardPage(
+      {Key? key,
+      required this.user,
+      required this.isSparringMode,
+      required this.onNavigateToSparring})
+      : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text("Painel do Professor"), actions: [
-        IconButton(
-            icon: Icon(Icons.settings),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => ChangePasswordPage()))),
-        IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: () => FirebaseAuth.instance.signOut()),
-      ]),
-      body: AppBackground(
-        child: Center(
+    return AppBackground(
+      child: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Icon(Icons.school, size: 80, color: BjjApp.successColor),
-              SizedBox(height: 20),
               Text('Bem-vindo, Prof. ${user.name}!',
+                  textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall),
-              SizedBox(height: 10),
-              Text(
-                'Use a barra de navegação para gerenciar seus treinos.',
-                style: TextStyle(color: BjjApp.textHint),
-                textAlign: TextAlign.center,
-              ),
+              SizedBox(height: 32),
+              if (isSparringMode)
+                Card(
+                  elevation: 5,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: BjjApp.primaryAccent, width: 2),
+                  ),
+                  child: InkWell(
+                    onTap: onNavigateToSparring,
+                    child: Padding(
+                      padding: const EdgeInsets.all(20.0),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.sports_kabaddi_rounded,
+                              color: BjjApp.primaryAccent, size: 30),
+                          SizedBox(width: 16),
+                          Text("Ver Treino em Andamento",
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(color: BjjApp.primaryAccent)),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+              else
+                Text(
+                  'Use a barra de navegação para gerenciar suas aulas.',
+                  style: TextStyle(color: BjjApp.textHint, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
             ],
           ),
         ),
@@ -1566,9 +3048,11 @@ class TeacherDashboardPage extends StatelessWidget {
 
 class CheckinTeacherPage extends StatefulWidget {
   final String academyId;
-  final List<Aluno> todosAlunosDaAcademia;
+  final List<Aluno> todosParticipantesDaAcademia;
   const CheckinTeacherPage(
-      {Key? key, required this.academyId, required this.todosAlunosDaAcademia})
+      {Key? key,
+      required this.academyId,
+      required this.todosParticipantesDaAcademia})
       : super(key: key);
 
   @override
@@ -1576,38 +3060,204 @@ class CheckinTeacherPage extends StatefulWidget {
 }
 
 class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
-  Aluno? _alunoSelecionado;
+  void _navigateToBulkCheckin() async {
+    final checkedInCount = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => BulkCheckinPage(
+          academyId: widget.academyId,
+          todosParticipantesDaAcademia: widget.todosParticipantesDaAcademia,
+        ),
+      ),
+    );
 
-  Future<void> _saveCheckin(DateTime date) async {
-    if (_alunoSelecionado == null) return;
-    final dateOnly = DateTime(date.year, date.month, date.day);
+    if (checkedInCount != null && checkedInCount > 0 && mounted) {
+      showBjjSnackBar(context, '$checkedInCount presenças confirmadas!',
+          type: 'success');
+    }
+  }
 
+  void _navigateToRetroactiveCheckin() async {
+    final checkedInCount = await Navigator.of(context).push<int>(
+      MaterialPageRoute(
+        builder: (_) => RetroactiveCheckinPage(
+          academyId: widget.academyId,
+          todosParticipantesDaAcademia: widget.todosParticipantesDaAcademia,
+        ),
+      ),
+    );
+
+    if (checkedInCount != null && mounted) {
+      if (checkedInCount > 0) {
+        showBjjSnackBar(
+            context, '$checkedInCount presenças retroativas confirmadas!',
+            type: 'success');
+      } else {
+        showBjjSnackBar(context, 'Nenhuma presença nova foi registrada.',
+            type: 'info');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AppBackground(
+      child: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          Card(
+            child: ListTile(
+              contentPadding:
+                  EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              leading: Icon(Icons.checklist_rtl_rounded,
+                  color: BjjApp.primaryAccent, size: 40),
+              title: Text("Fazer Chamada da Turma",
+                  style: Theme.of(context).textTheme.titleMedium),
+              subtitle: Text("Registre a presença de hoje."),
+              trailing:
+                  Icon(Icons.arrow_forward_ios_rounded, color: BjjApp.textHint),
+              onTap: _navigateToBulkCheckin,
+            ),
+          ),
+          SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              contentPadding:
+                  EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              leading: Icon(Icons.edit_calendar_rounded,
+                  color: BjjApp.warningColor, size: 40),
+              title: Text("Lançar Check-in Retroativo",
+                  style: Theme.of(context).textTheme.titleMedium),
+              subtitle: Text("Registre uma presença de um dia anterior."),
+              trailing:
+                  Icon(Icons.arrow_forward_ios_rounded, color: BjjApp.textHint),
+              onTap: _navigateToRetroactiveCheckin,
+            ),
+          ),
+          SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              contentPadding:
+                  EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              leading: Icon(Icons.leaderboard_rounded,
+                  color: BjjApp.infoColor, size: 40),
+              title: Text("Ver Ranking de Presença",
+                  style: Theme.of(context).textTheme.titleMedium),
+              subtitle: Text("Acompanhe a frequência dos participantes."),
+              trailing:
+                  Icon(Icons.arrow_forward_ios_rounded, color: BjjApp.textHint),
+              onTap: () {
+                if (widget.todosParticipantesDaAcademia.isEmpty) {
+                  showBjjSnackBar(context, 'Cadastre participantes primeiro.',
+                      type: 'info');
+                  return;
+                }
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        RankingTeacherPage(academyId: widget.academyId),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BulkCheckinPage extends StatefulWidget {
+  final String academyId;
+  final List<Aluno> todosParticipantesDaAcademia;
+
+  const BulkCheckinPage({
+    Key? key,
+    required this.academyId,
+    required this.todosParticipantesDaAcademia,
+  }) : super(key: key);
+
+  @override
+  _BulkCheckinPageState createState() => _BulkCheckinPageState();
+}
+
+class _BulkCheckinPageState extends State<BulkCheckinPage> {
+  final Set<String> _selectedStudentIds = {};
+  bool _isLoading = false;
+  final _searchController = TextEditingController();
+  List<Aluno> _filteredParticipants = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredParticipants = widget.todosParticipantesDaAcademia;
+    _searchController.addListener(_filterParticipants);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_filterParticipants);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filterParticipants() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredParticipants =
+          widget.todosParticipantesDaAcademia.where((aluno) {
+        return aluno.nome.toLowerCase().contains(query);
+      }).toList();
+    });
+  }
+
+  Future<void> _saveBulkCheckin() async {
+    if (_selectedStudentIds.isEmpty) {
+      showBjjSnackBar(context, 'Nenhum participante selecionado.',
+          type: 'warning');
+      return;
+    }
+    setState(() => _isLoading = true);
+    final now = DateTime.now();
+    final dateOnly = DateTime(now.year, now.month, now.day);
     final checkinRef = FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.academyId)
         .collection('checkins');
 
-    final querySnapshot = await checkinRef
-        .where('studentId', isEqualTo: _alunoSelecionado!.id)
-        .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
-        .limit(1)
-        .get();
-
-    if (querySnapshot.docs.isEmpty) {
-      await checkinRef.add({
-        'studentId': _alunoSelecionado!.id,
-        'date': Timestamp.fromDate(dateOnly),
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-      if (mounted) {
-        showBjjSnackBar(
-            context, 'Check-in para ${_alunoSelecionado!.nome} salvo!',
-            type: 'success');
+    try {
+      final querySnapshot = await checkinRef
+          .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
+          .where('studentId', whereIn: _selectedStudentIds.toList())
+          .get();
+      final alreadyCheckedInIds =
+          querySnapshot.docs.map((doc) => doc['studentId'] as String).toSet();
+      final batch = FirebaseFirestore.instance.batch();
+      int newCheckinsCount = 0;
+      for (final studentId in _selectedStudentIds) {
+        if (!alreadyCheckedInIds.contains(studentId)) {
+          final newDoc = checkinRef.doc();
+          batch.set(newDoc, {
+            'studentId': studentId,
+            'date': Timestamp.fromDate(dateOnly),
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          newCheckinsCount++;
+        }
       }
-    } else {
+
+      if (newCheckinsCount > 0) {
+        await batch.commit();
+      }
       if (mounted) {
-        showBjjSnackBar(context, 'Este aluno já possui check-in neste dia.',
-            type: 'warning');
+        Navigator.of(context).pop(newCheckinsCount);
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao salvar presenças: $e', type: 'error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
@@ -1616,77 +3266,285 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Check-in de Presença"),
-        actions: [
-          IconButton(
-              icon: Icon(Icons.logout),
-              onPressed: () => FirebaseAuth.instance.signOut()),
-        ],
+        title: Text("Chamada da Turma"),
       ),
       body: AppBackground(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            children: [
-              Card(
-                child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: [
-                        DropdownButtonFormField<Aluno>(
-                          value: _alunoSelecionado,
-                          isExpanded: true,
-                          decoration:
-                              InputDecoration(labelText: 'Selecione o Aluno'),
-                          items: widget.todosAlunosDaAcademia.map((aluno) {
-                            return DropdownMenuItem<Aluno>(
-                              value: aluno,
-                              child: Text(aluno.nome,
-                                  overflow: TextOverflow.ellipsis),
-                            );
-                          }).toList(),
-                          onChanged: (aluno) =>
-                              setState(() => _alunoSelecionado = aluno),
-                        ),
-                        SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          icon: Icon(Icons.check_circle_outline_rounded),
-                          label: Text('Fazer Check-in Hoje'),
-                          onPressed: _alunoSelecionado == null
-                              ? null
-                              : () => _saveCheckin(DateTime.now()),
-                          style: ElevatedButton.styleFrom(
-                              minimumSize: Size(double.infinity, 48)),
-                        ),
-                        SizedBox(height: 12),
-                        Center(
-                          child: TextButton.icon(
-                            icon: Icon(Icons.leaderboard_rounded,
-                                color: BjjApp.primaryAccent),
-                            label: Text('Ver Ranking de Presença'),
-                            onPressed: () {
-                              if (widget.todosAlunosDaAcademia.isEmpty) {
-                                showBjjSnackBar(
-                                    context, 'Cadastre alunos primeiro.',
-                                    type: 'info');
-                                return;
-                              }
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => RankingTeacherPage(
-                                      academyId: widget.academyId),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
-                      ],
-                    )),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  labelText: 'Buscar por nome...',
+                  prefixIcon: Icon(Icons.search),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                          },
+                        )
+                      : null,
+                ),
               ),
-            ],
-          ),
+            ),
+            Expanded(
+              child: _filteredParticipants.isEmpty
+                  ? EmptyStateWidget(
+                      icon: Icons.person_off,
+                      title: "Nenhum Participante Encontrado",
+                      message: _searchController.text.isNotEmpty
+                          ? "Verifique o nome digitado."
+                          : "Adicione alunos ou professores para fazer a chamada.",
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
+                      itemCount: _filteredParticipants.length,
+                      itemBuilder: (context, index) {
+                        final aluno = _filteredParticipants[index];
+                        final isSelected =
+                            _selectedStudentIds.contains(aluno.id);
+                        return Card(
+                          child: CheckboxListTile(
+                            title: Text(aluno.nome),
+                            subtitle: Text(aluno.faixa),
+                            value: isSelected,
+                            onChanged: (bool? value) {
+                              setState(() {
+                                if (value == true) {
+                                  _selectedStudentIds.add(aluno.id);
+                                } else {
+                                  _selectedStudentIds.remove(aluno.id);
+                                }
+                              });
+                            },
+                            secondary: Icon(Icons.person_outline),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
         ),
       ),
+      floatingActionButton: _isLoading
+          ? FloatingActionButton(
+              onPressed: null,
+              child: CircularProgressIndicator(
+                  color: BjjApp.primaryAccentForeground),
+            )
+          : FloatingActionButton.extended(
+              onPressed: _saveBulkCheckin,
+              label: Text("Confirmar (${_selectedStudentIds.length})"),
+              icon: Icon(Icons.check_circle_outline),
+            ),
+    );
+  }
+}
+
+class RetroactiveCheckinPage extends StatefulWidget {
+  final String academyId;
+  final List<Aluno> todosParticipantesDaAcademia;
+
+  const RetroactiveCheckinPage({
+    Key? key,
+    required this.academyId,
+    required this.todosParticipantesDaAcademia,
+  }) : super(key: key);
+
+  @override
+  _RetroactiveCheckinPageState createState() => _RetroactiveCheckinPageState();
+}
+
+class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
+  final Set<String> _selectedStudentIds = {};
+  DateTime _selectedDate = DateTime.now();
+  bool _isLoading = false;
+  final _searchController = TextEditingController();
+  List<Aluno> _filteredParticipants = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredParticipants = widget.todosParticipantesDaAcademia;
+    _searchController.addListener(_filterParticipants);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_filterParticipants);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filterParticipants() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredParticipants =
+          widget.todosParticipantesDaAcademia.where((aluno) {
+        return aluno.nome.toLowerCase().contains(query);
+      }).toList();
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      locale: const Locale('pt', 'BR'),
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
+  }
+
+  Future<void> _saveRetroactiveCheckin() async {
+    if (_selectedStudentIds.isEmpty) {
+      showBjjSnackBar(context, 'Nenhum participante selecionado.',
+          type: 'warning');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    final dateOnly =
+        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final checkinRef = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('checkins');
+
+    try {
+      final querySnapshot = await checkinRef
+          .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
+          .where('studentId', whereIn: _selectedStudentIds.toList())
+          .get();
+
+      final alreadyCheckedInIds =
+          querySnapshot.docs.map((doc) => doc['studentId'] as String).toSet();
+
+      final batch = FirebaseFirestore.instance.batch();
+      int newCheckinsCount = 0;
+
+      for (final studentId in _selectedStudentIds) {
+        if (!alreadyCheckedInIds.contains(studentId)) {
+          final newDoc = checkinRef.doc();
+          batch.set(newDoc, {
+            'studentId': studentId,
+            'date': Timestamp.fromDate(dateOnly),
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          newCheckinsCount++;
+        }
+      }
+
+      if (newCheckinsCount > 0) {
+        await batch.commit();
+      }
+
+      if (mounted) {
+        Navigator.of(context).pop(newCheckinsCount);
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao salvar presenças: $e', type: 'error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text("Check-in Retroativo"),
+      ),
+      body: AppBackground(
+        child: Column(
+          children: [
+            Card(
+              margin: const EdgeInsets.all(16),
+              child: ListTile(
+                leading:
+                    Icon(Icons.calendar_month, color: BjjApp.primaryAccent),
+                title: Text("Data do Check-in"),
+                subtitle:
+                    Text(DateFormat.yMMMMd('pt_BR').format(_selectedDate)),
+                onTap: _pickDate,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: TextField(
+                controller: _searchController,
+                decoration: InputDecoration(
+                  labelText: 'Buscar por nome...',
+                  prefixIcon: Icon(Icons.search),
+                  suffixIcon: _searchController.text.isNotEmpty
+                      ? IconButton(
+                          icon: Icon(Icons.clear),
+                          onPressed: () {
+                            _searchController.clear();
+                          },
+                        )
+                      : null,
+                ),
+              ),
+            ),
+            Expanded(
+              child: _filteredParticipants.isEmpty
+                  ? EmptyStateWidget(
+                      icon: Icons.person_search,
+                      title: "Nenhum Participante Encontrado")
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+                      itemCount: _filteredParticipants.length,
+                      itemBuilder: (context, index) {
+                        final aluno = _filteredParticipants[index];
+                        final isSelected =
+                            _selectedStudentIds.contains(aluno.id);
+                        return Card(
+                          child: CheckboxListTile(
+                            title: Text(aluno.nome),
+                            subtitle: Text(aluno.faixa),
+                            value: isSelected,
+                            onChanged: (bool? value) {
+                              setState(() {
+                                if (value == true) {
+                                  _selectedStudentIds.add(aluno.id);
+                                } else {
+                                  _selectedStudentIds.remove(aluno.id);
+                                }
+                              });
+                            },
+                            secondary: Icon(Icons.person_outline),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      floatingActionButton: _isLoading
+          ? FloatingActionButton(
+              onPressed: null,
+              child: CircularProgressIndicator(
+                  color: BjjApp.primaryAccentForeground),
+            )
+          : FloatingActionButton.extended(
+              onPressed: _saveRetroactiveCheckin,
+              label: Text("Confirmar (${_selectedStudentIds.length})"),
+              icon: Icon(Icons.check_circle_outline),
+            ),
     );
   }
 }
@@ -1702,7 +3560,7 @@ class RankingTeacherPage extends StatefulWidget {
 
 class _RankingTeacherPageState extends State<RankingTeacherPage> {
   Map<String, int> _checkinCounts = {};
-  List<Aluno> _todosAlunos = [];
+  List<Aluno> _todosParticipantes = [];
   bool _isLoading = true;
   String _filter = 'total';
 
@@ -1717,27 +3575,44 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
     setState(() => _isLoading = true);
 
     try {
-      final alunosSnapshot = await FirebaseFirestore.instance
+      final firestore = FirebaseFirestore.instance;
+      final academyId = widget.academyId;
+
+      // Fetch students
+      final alunosSnapshot = await firestore
           .collection('academies')
-          .doc(widget.academyId)
+          .doc(academyId)
           .collection('students')
           .get();
       final fetchedAlunos = alunosSnapshot.docs
           .map((doc) => Aluno.fromJson(doc.id, doc.data()))
           .toList();
 
-      final checkinsSnapshot = await FirebaseFirestore.instance
+      // Fetch ONLY teachers
+      final usersSnapshot = await firestore
+          .collection('users')
+          .where('academyId', isEqualTo: academyId)
+          .where('role', isEqualTo: 'teacher')
+          .get();
+      final fetchedUsersAsAlunos = usersSnapshot.docs
+          .map((doc) => Aluno.fromUserModel(UserModel.fromFirestore(doc)))
+          .toList();
+
+      final allParticipants = [...fetchedAlunos, ...fetchedUsersAsAlunos];
+
+      final checkinsSnapshot = await firestore
           .collection('academies')
-          .doc(widget.academyId)
+          .doc(academyId)
           .collection('checkins')
           .get();
       final allCheckins = checkinsSnapshot.docs
-          .map((doc) => CheckinEntry.fromJson(doc.id, doc.data()))
+          .map((doc) =>
+              CheckinEntry.fromJson(doc.id, doc.data() as Map<String, dynamic>))
           .toList();
 
       final now = DateTime.now();
       final Map<String, int> counts = {
-        for (var aluno in fetchedAlunos) aluno.id: 0
+        for (var participant in allParticipants) participant.id: 0
       };
 
       for (var checkin in allCheckins) {
@@ -1766,7 +3641,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
 
       if (mounted) {
         setState(() {
-          _todosAlunos = fetchedAlunos;
+          _todosParticipantes = allParticipants;
           _checkinCounts = counts;
           _isLoading = false;
         });
@@ -1781,8 +3656,8 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
 
   @override
   Widget build(BuildContext context) {
-    final rankedAlunos = List<Aluno>.from(_todosAlunos);
-    rankedAlunos.sort((a, b) {
+    final rankedParticipantes = List<Aluno>.from(_todosParticipantes);
+    rankedParticipantes.sort((a, b) {
       final countA = _checkinCounts[a.id] ?? 0;
       final countB = _checkinCounts[b.id] ?? 0;
       return countB.compareTo(countA) != 0
@@ -1813,15 +3688,15 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
             Expanded(
               child: _isLoading
                   ? Center(child: CircularProgressIndicator())
-                  : rankedAlunos.isEmpty
+                  : rankedParticipantes.isEmpty
                       ? EmptyStateWidget(
                           icon: Icons.group_off_rounded,
-                          title: "Nenhum aluno encontrado.")
+                          title: "Nenhum participante encontrado.")
                       : ListView.builder(
                           padding: const EdgeInsets.fromLTRB(8.0, 0, 8.0, 16.0),
-                          itemCount: rankedAlunos.length,
+                          itemCount: rankedParticipantes.length,
                           itemBuilder: (context, index) {
-                            final aluno = rankedAlunos[index];
+                            final aluno = rankedParticipantes[index];
                             final count = _checkinCounts[aluno.id] ?? 0;
                             final rank = index + 1;
                             Widget leadingIcon;
@@ -1871,94 +3746,74 @@ class StudiesTeacherPage extends StatelessWidget {
   final UserModel user;
   const StudiesTeacherPage({Key? key, required this.user}) : super(key: key);
 
-  void _navigateToStudyDetails(BuildContext context,
-      {StudyInstructional? study}) {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => EditStudyPage(user: user, study: study),
-    ));
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Cadernos de Estudo"),
-        actions: [
-          IconButton(
-              onPressed: () => FirebaseAuth.instance.signOut(),
-              icon: Icon(Icons.logout))
-        ],
-      ),
-      body: AppBackground(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('academies')
-              .doc(user.academyId)
-              .collection('instructionals')
-              .orderBy('updatedAt', descending: true)
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting)
-              return Center(child: CircularProgressIndicator());
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
-              return EmptyStateWidget(
-                  icon: Icons.book_outlined,
-                  title: "Nenhum Estudo Criado",
-                  message:
-                      "Clique no '+' para criar o primeiro caderno de estudos.");
+    return AppBackground(
+      child: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('academies')
+            .doc(user.academyId)
+            .collection('instructionals')
+            .orderBy('updatedAt', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting)
+            return Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+            return EmptyStateWidget(
+                icon: Icons.book_outlined,
+                title: "Nenhum Estudo Criado",
+                message:
+                    "Clique no '+' para criar o primeiro caderno de estudos.");
 
-            final studiesDocs = snapshot.data!.docs;
+          final studiesDocs = snapshot.data!.docs;
 
-            final visibleStudies = studiesDocs.where((doc) {
-              final study = StudyInstructional.fromFirestore(doc);
-              return study.visibility == 'public' ||
-                  study.createdByUid == user.uid;
-            }).toList();
+          final visibleStudies = studiesDocs.where((doc) {
+            final study = StudyInstructional.fromFirestore(doc);
+            return study.visibility == 'public' ||
+                study.createdByUid == user.uid;
+          }).toList();
 
-            if (visibleStudies.isEmpty)
-              return EmptyStateWidget(
-                  icon: Icons.book_outlined,
-                  title: "Nenhum Estudo Para Mostrar",
-                  message:
-                      "Crie um novo estudo ou peça para outros professores tornarem os seus públicos.");
+          if (visibleStudies.isEmpty)
+            return EmptyStateWidget(
+                icon: Icons.book_outlined,
+                title: "Nenhum Estudo Para Mostrar",
+                message:
+                    "Crie um novo estudo ou peça para outros professores tornarem os seus públicos.");
 
-            return ListView.builder(
-              padding: EdgeInsets.all(8),
-              itemCount: visibleStudies.length,
-              itemBuilder: (context, index) {
-                final study =
-                    StudyInstructional.fromFirestore(visibleStudies[index]);
-                final bool isOwner = study.createdByUid == user.uid;
+          return ListView.builder(
+            padding: EdgeInsets.fromLTRB(8, 8, 8, 80),
+            itemCount: visibleStudies.length,
+            itemBuilder: (context, index) {
+              final study =
+                  StudyInstructional.fromFirestore(visibleStudies[index]);
+              final bool isOwner = study.createdByUid == user.uid;
 
-                return Card(
-                  child: ListTile(
-                    leading: Icon(study.visibility == 'public'
-                        ? Icons.public_rounded
-                        : Icons.lock_person_rounded),
-                    title: Text(study.title),
-                    subtitle: Text("Criado por: ${study.createdByName}"),
-                    trailing:
-                        isOwner ? Icon(Icons.edit) : Icon(Icons.visibility),
-                    onTap: () {
-                      if (isOwner) {
-                        _navigateToStudyDetails(context, study: study);
-                      } else {
-                        // Navega para a tela de visualização para o professor também
-                        Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => StudyDetailViewPage(study: study)));
-                      }
-                    },
-                  ),
-                );
-              },
-            );
-          },
-        ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _navigateToStudyDetails(context),
-        child: Icon(Icons.add),
-        tooltip: 'Criar Novo Estudo',
+              return Card(
+                child: ListTile(
+                  leading: Icon(study.visibility == 'public'
+                      ? Icons.public_rounded
+                      : Icons.lock_person_rounded),
+                  title: Text(study.title),
+                  subtitle: Text("Criado por: ${study.createdByName}"),
+                  trailing: isOwner
+                      ? Icon(Icons.edit, color: BjjApp.primaryAccent)
+                      : Icon(Icons.visibility),
+                  onTap: () {
+                    if (isOwner) {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => EditStudyPage(user: user, study: study),
+                      ));
+                    } else {
+                      Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => StudyDetailViewPage(study: study)));
+                    }
+                  },
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -2050,7 +3905,12 @@ class _EditStudyPageState extends State<EditStudyPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.study == null ? "Novo Estudo" : "Editar Estudo"),
-        actions: [IconButton(icon: Icon(Icons.save), onPressed: _saveStudy)],
+        actions: [
+          IconButton(
+              icon: Icon(Icons.save),
+              onPressed: _saveStudy,
+              tooltip: "Salvar Estudo")
+        ],
       ),
       body: AppBackground(
         child: Form(
@@ -2096,22 +3956,10 @@ class _EditStudyPageState extends State<EditStudyPage> {
                             ),
                           ),
                         )
-                      : ListView.separated(
+                      : ListView.builder(
                           padding: EdgeInsets.fromLTRB(8, 16, 8, 80),
-                          itemCount: _notes.length + 1,
-                          separatorBuilder: (_, __) => SizedBox(height: 10),
+                          itemCount: _notes.length,
                           itemBuilder: (context, index) {
-                            if (index == _notes.length) {
-                              return Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8.0),
-                                child: OutlinedButton.icon(
-                                  icon: Icon(Icons.add),
-                                  label: Text("Adicionar Anotação"),
-                                  onPressed: () => _showNoteDialog(),
-                                ),
-                              );
-                            }
                             final note = _notes[index];
                             return Card(
                               child: ListTile(
@@ -2129,6 +3977,17 @@ class _EditStudyPageState extends State<EditStudyPage> {
                             );
                           },
                         )),
+              if (_notes.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                  child: OutlinedButton.icon(
+                    icon: Icon(Icons.add),
+                    label: Text("Adicionar Mais Anotações"),
+                    onPressed: () => _showNoteDialog(),
+                    style: OutlinedButton.styleFrom(
+                        minimumSize: Size(double.infinity, 40)),
+                  ),
+                )
             ],
           ),
         ),
@@ -2212,11 +4071,19 @@ class _NoteEditDialogState extends State<NoteEditDialog> {
 
 class SorteioTeacherPage extends StatefulWidget {
   final String academyId;
-  final List<Aluno> todosAlunosDaAcademia;
+  final List<Aluno> todosParticipantesDaAcademia;
+  final bool isSparringMode;
+  final Function(List<List<String>>, String, List<Aluno>) onIniciarSparring;
+  final Function(List<Aluno>) onCheckinAlunos;
 
-  const SorteioTeacherPage(
-      {Key? key, required this.academyId, required this.todosAlunosDaAcademia})
-      : super(key: key);
+  const SorteioTeacherPage({
+    Key? key,
+    required this.academyId,
+    required this.todosParticipantesDaAcademia,
+    required this.isSparringMode,
+    required this.onIniciarSparring,
+    required this.onCheckinAlunos,
+  }) : super(key: key);
 
   @override
   State<SorteioTeacherPage> createState() => _SorteioTeacherPageState();
@@ -2224,19 +4091,21 @@ class SorteioTeacherPage extends StatefulWidget {
 
 class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
   List<Aluno> _alunosParticipantes = [];
-  List<Luta> _lutasGeradas = [];
+  List<List<String>> _rodadasGeradas = [];
+  String _tipoGeracao = 'Aleatório';
+  final List<String> _opcoesGeracao = ['Aleatório', 'Por Faixa', 'Por Peso'];
 
   void _atualizarAlunosParticipantes(List<Aluno> novosParticipantes) {
     setState(() {
       _alunosParticipantes = novosParticipantes;
-      _lutasGeradas = [];
+      _rodadasGeradas = [];
     });
   }
 
   Future<void> _navegarParaSelecaoAlunos() async {
     final List<Aluno>? r = await Navigator.of(context).push(MaterialPageRoute(
       builder: (context) => SelecaoAlunosTeacherPage(
-        todosOsAlunos: widget.todosAlunosDaAcademia,
+        todosOsAlunos: widget.todosParticipantesDaAcademia,
         alunosSelecionadosIniciais: _alunosParticipantes,
       ),
     ));
@@ -2245,101 +4114,422 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
     }
   }
 
-  void _gerarRodadas() {
-    if (_alunosParticipantes.length < 2) return;
-    List<Luta> lutas = [];
-    List<Aluno> listaSorteio = List.from(_alunosParticipantes);
-    listaSorteio.shuffle();
-
-    while (listaSorteio.length >= 2) {
-      lutas.add(Luta(listaSorteio.removeAt(0), listaSorteio.removeAt(0), 0));
+  void _gerarRodadasClicado() {
+    if (widget.isSparringMode) {
+      showBjjSnackBar(context, 'Finalize o treino atual primeiro.',
+          type: 'warning');
+      return;
     }
+    if (_alunosParticipantes.length < 2) {
+      showBjjSnackBar(context, 'Selecione pelo menos 2 participantes.',
+          type: 'error');
+      return;
+    }
+    setState(() => _rodadasGeradas = []);
+    if (_tipoGeracao == 'Aleatório') {
+      _gerarRodadasAleatorias();
+    } else {
+      _gerarRodadasHierarquicas();
+    }
+  }
 
-    setState(() {
-      _lutasGeradas = lutas;
-    });
+  void _gerarRodadasAleatorias() {
+    List<Aluno> tempAlunos = List.from(_alunosParticipantes);
+    tempAlunos.shuffle();
+
+    if (tempAlunos.length % 2 != 0) {
+      tempAlunos.add(Aluno.novo(nome: "DESCANSA", faixa: "", peso: 0));
+    }
+    int numRodadas = tempAlunos.length - 1;
+    if (numRodadas <= 0) numRodadas = 1;
+
+    List<List<String>> rodadas = [];
+    for (int i = 0; i < numRodadas; i++) {
+      List<String> rodadaAtual = [];
+      for (int j = 0; j < tempAlunos.length / 2; j++) {
+        final aluno1 = tempAlunos[j];
+        final aluno2 = tempAlunos[tempAlunos.length - 1 - j];
+        if (aluno1.nome == "DESCANSA") {
+          rodadaAtual.add('${aluno2.nome} (descansa)');
+        } else if (aluno2.nome == "DESCANSA") {
+          rodadaAtual.add('${aluno1.nome} (descansa)');
+        } else {
+          rodadaAtual.add('${aluno1.nome} x ${aluno2.nome}');
+        }
+      }
+      rodadas.add(rodadaAtual);
+      // Rotaciona os alunos, mantendo o primeiro fixo
+      tempAlunos.insert(1, tempAlunos.removeLast());
+    }
+    setState(() => _rodadasGeradas = rodadas);
+  }
+
+  void _gerarRodadasHierarquicas() {
+    List<Aluno> tempAlunos = List.from(_alunosParticipantes);
+    List<Luta> todasLutasPossiveis = [];
+
+    // Gera todas as lutas possíveis e calcula o custo
+    for (int i = 0; i < tempAlunos.length; i++) {
+      for (int j = i + 1; j < tempAlunos.length; j++) {
+        double custo;
+        if (_tipoGeracao == 'Por Peso') {
+          custo = (tempAlunos[i].peso - tempAlunos[j].peso).abs();
+        } else {
+          // Por Faixa
+          int indexFaixa1 = _getBeltIndex(tempAlunos[i].faixa);
+          int indexFaixa2 = _getBeltIndex(tempAlunos[j].faixa);
+          double diffPeso = (tempAlunos[i].peso - tempAlunos[j].peso).abs();
+          custo =
+              (indexFaixa1 - indexFaixa2).abs().toDouble() + (diffPeso * 0.01);
+        }
+        todasLutasPossiveis.add(Luta(tempAlunos[i], tempAlunos[j], custo));
+      }
+    }
+    todasLutasPossiveis.sort((a, b) => a.custo.compareTo(b.custo));
+
+    List<List<String>> rodadasConstruidas = [];
+    Set<String> lutasJaRealizadasGlobal = {};
+    int maxRodadasPossiveis = tempAlunos.length - 1;
+
+    for (int i = 0; i < maxRodadasPossiveis; i++) {
+      List<String> rodadaAtual = [];
+      Set<String> alunosNestaRodada = {};
+
+      for (var luta in todasLutasPossiveis) {
+        String parId1 = '${luta.aluno1.id}-${luta.aluno2.id}';
+        String parId2 = '${luta.aluno2.id}-${luta.aluno1.id}';
+
+        if (!lutasJaRealizadasGlobal.contains(parId1) &&
+            !alunosNestaRodada.contains(luta.aluno1.id) &&
+            !alunosNestaRodada.contains(luta.aluno2.id)) {
+          rodadaAtual.add('${luta.aluno1.nome} x ${luta.aluno2.nome}');
+          alunosNestaRodada.add(luta.aluno1.id);
+          alunosNestaRodada.add(luta.aluno2.id);
+          lutasJaRealizadasGlobal.add(parId1);
+          lutasJaRealizadasGlobal.add(parId2);
+        }
+      }
+
+      // Adiciona descanso se sobrou alguém
+      if (alunosNestaRodada.length < tempAlunos.length) {
+        final alunoDescanso = tempAlunos
+            .firstWhereOrNull((aluno) => !alunosNestaRodada.contains(aluno.id));
+        if (alunoDescanso != null) {
+          rodadaAtual.add('${alunoDescanso.nome} (descansa)');
+        }
+      }
+
+      if (rodadaAtual.isNotEmpty) {
+        rodadasConstruidas.add(rodadaAtual);
+      } else {
+        break; // Nao ha mais lutas ineditas possiveis
+      }
+    }
+    setState(() => _rodadasGeradas = rodadasConstruidas);
+  }
+
+  int _getBeltIndex(String faixa) {
+    // Ordena do mais baixo para o mais alto
+    const List<String> ordemFaixas = [
+      'Branca',
+      'Cinza',
+      'Amarela',
+      'Laranja',
+      'Verde',
+      'Azul',
+      'Roxa',
+      'Marrom',
+      'Preta'
+    ];
+    final faixaPrincipal = faixa.split(" ")[0].trim();
+    final index = ordemFaixas
+        .indexWhere((f) => f.toLowerCase() == faixaPrincipal.toLowerCase());
+    return index == -1 ? 0 : index; // Retorna 0 (branca) se não encontrar
+  }
+
+  void _iniciarSparringClicado() {
+    if (_rodadasGeradas.isEmpty) {
+      showBjjSnackBar(context, 'Gere as rodadas primeiro.', type: 'error');
+      return;
+    }
+    widget.onIniciarSparring(
+        _rodadasGeradas, _tipoGeracao, _alunosParticipantes);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Sorteio de Duplas"),
-        actions: [
-          IconButton(
-              icon: Icon(Icons.logout),
-              onPressed: () => FirebaseAuth.instance.signOut()),
-        ],
-      ),
-      body: AppBackground(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        '1. Alunos para o Treino (${_alunosParticipantes.length})',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context)
-                            .textTheme
-                            .titleSmall
-                            ?.copyWith(color: BjjApp.primaryAccent),
-                      ),
-                      SizedBox(height: 12),
-                      OutlinedButton.icon(
-                        icon: Icon(Icons.group_add_outlined),
-                        label: Text('Selecionar / Alterar Alunos'),
-                        onPressed: _navegarParaSelecaoAlunos,
-                      ),
-                      SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        icon: Icon(Icons.shuffle),
-                        label: Text('Gerar Lutas Aleatórias'),
-                        onPressed: _alunosParticipantes.length < 2
-                            ? null
-                            : _gerarRodadas,
-                      ),
-                    ],
-                  ),
+    return AppBackground(
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    OutlinedButton.icon(
+                      icon: Icon(Icons.group_add_outlined),
+                      label: Text(
+                          'Selecionar Participantes (${_alunosParticipantes.length})'),
+                      onPressed: widget.isSparringMode
+                          ? null
+                          : _navegarParaSelecaoAlunos,
+                    ),
+                    SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _tipoGeracao,
+                      decoration: InputDecoration(labelText: 'Tipo de Sorteio'),
+                      items: _opcoesGeracao
+                          .map((String value) => DropdownMenuItem<String>(
+                              value: value, child: Text(value)))
+                          .toList(),
+                      onChanged: widget.isSparringMode
+                          ? null
+                          : (v) => setState(() {
+                                _tipoGeracao = v!;
+                                _rodadasGeradas = [];
+                              }),
+                    ),
+                    SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      icon: Icon(Icons.shuffle),
+                      label: Text('Gerar Rodadas'),
+                      onPressed: widget.isSparringMode ||
+                              _alunosParticipantes.length < 2
+                          ? null
+                          : _gerarRodadasClicado,
+                    ),
+                  ],
                 ),
               ),
             ),
+          ),
+          if (_rodadasGeradas.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: ElevatedButton.icon(
+                icon: Icon(Icons.play_arrow_rounded),
+                label: Text('Iniciar Treino'),
+                onPressed: _iniciarSparringClicado,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: BjjApp.successColor,
+                  minimumSize: Size(double.infinity, 50),
+                ),
+              ),
+            ),
+          Expanded(
+            child: _rodadasGeradas.isEmpty
+                ? EmptyStateWidget(
+                    icon: Icons.list_alt_rounded,
+                    title: "Nenhuma Rodada Gerada",
+                    message:
+                        "Selecione os participantes e gere as rodadas acima.")
+                : ListView.builder(
+                    padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
+                    itemCount: _rodadasGeradas.length,
+                    itemBuilder: (context, index) {
+                      final rodada = _rodadasGeradas[index];
+                      return Card(
+                        child: ExpansionTile(
+                          leading: CircleAvatar(child: Text('${index + 1}')),
+                          title: Text('Rodada ${index + 1}'),
+                          children: rodada
+                              .map((luta) => ListTile(title: Text(luta)))
+                              .toList(),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class SparringTeacherPage extends StatefulWidget {
+  final String academyId;
+  final List<Aluno> todosAlunos;
+
+  SparringTeacherPage(
+      {Key? key, required this.academyId, required this.todosAlunos})
+      : super(key: key);
+
+  @override
+  _SparringTeacherPageState createState() => _SparringTeacherPageState();
+}
+
+class _SparringTeacherPageState extends State<SparringTeacherPage> {
+  Map<String, dynamic> _sparringState = {};
+  bool _isLoading = true;
+  StreamSubscription? _sparringStateSubscription;
+
+  int get _currentRoundIndex => _sparringState['currentRoundIndex'] ?? 0;
+  List<List<String>> get _allRounds {
+    final dynamic roundsData = _sparringState['allRounds'];
+    if (roundsData is List) {
+      return roundsData.map<List<String>>((item) {
+        if (item is Map &&
+            item.containsKey('fights') &&
+            item['fights'] is List) {
+          return List<String>.from(item['fights']);
+        }
+        return <String>[];
+      }).toList();
+    }
+    return [];
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _loadState();
+  }
+
+  @override
+  void dispose() {
+    _sparringStateSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _loadState() {
+    _sparringStateSubscription = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('state')
+        .doc('sparring')
+        .snapshots()
+        .listen((doc) {
+      if (!mounted) return;
+      if (doc.exists) {
+        setState(() {
+          _sparringState = doc.data()!;
+          _isLoading = false;
+        });
+      } else {
+        // Se o estado for deletado, volta para la tela anterior
+        if (Navigator.canPop(context)) {
+          Navigator.of(context).pop();
+        }
+        setState(() => _isLoading = false);
+      }
+    });
+  }
+
+  Future<void> _updateSparringState(Map<String, dynamic> update) async {
+    await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('state')
+        .doc('sparring')
+        .update(update);
+  }
+
+  Future<void> _finishSparring() async {
+    await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('state')
+        .doc('sparring')
+        .delete();
+  }
+
+  void _nextRound() {
+    final newIndex = _currentRoundIndex + 1;
+    _updateSparringState({'currentRoundIndex': newIndex});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+          body:
+              AppBackground(child: Center(child: CircularProgressIndicator())));
+    }
+
+    bool isSparringMode = _sparringState['isSparringMode'] ?? false;
+    if (!isSparringMode) {
+      return Scaffold(
+        appBar: AppBar(title: Text("Treino")),
+        body: EmptyStateWidget(
+          icon: Icons.pause_circle_outline_rounded,
+          title: 'Nenhum treino em andamento.',
+          message: 'Volte para a tela de sorteio para iniciar um treino.',
+        ),
+      );
+    }
+
+    List<String> currentRoundFights = [];
+    String roundTitle = '';
+    bool isLastRound = _currentRoundIndex > _allRounds.length;
+
+    if (_allRounds.isNotEmpty) {
+      if (isLastRound) {
+        currentRoundFights = _allRounds.last;
+        roundTitle =
+            'FIM - Última Rodada (${_allRounds.length}/${_allRounds.length})';
+      } else {
+        currentRoundFights = _allRounds[_currentRoundIndex - 1];
+        roundTitle = 'Rodada $_currentRoundIndex / ${_allRounds.length}';
+      }
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: Text(roundTitle)),
+      body: AppBackground(
+        child: Column(
+          children: [
             Expanded(
-                child: _lutasGeradas.isEmpty
-                    ? EmptyStateWidget(
-                        icon: Icons.people_outline,
-                        title: "Nenhuma Luta Gerada",
-                        message: "Selecione os alunos e gere as lutas.")
-                    : ListView.builder(
-                        padding: EdgeInsets.symmetric(horizontal: 16),
-                        itemCount: _lutasGeradas.length,
-                        itemBuilder: (context, index) {
-                          final luta = _lutasGeradas[index];
-                          return Card(
-                              child: Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceAround,
-                              children: [
-                                Text(luta.aluno1.nome,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium),
-                                Icon(Icons.close, color: BjjApp.primaryAccent),
-                                Text(luta.aluno2.nome,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium),
-                              ],
-                            ),
-                          ));
-                        },
-                      ))
+              child: ListView.builder(
+                padding: EdgeInsets.all(16),
+                itemCount: currentRoundFights.length,
+                itemBuilder: (context, index) {
+                  final matchText = currentRoundFights[index];
+                  bool isResting = matchText.contains('(descansa)');
+
+                  return Card(
+                    color: isResting
+                        ? BjjApp.darkSurface.withOpacity(0.5)
+                        : BjjApp.darkSurface,
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Center(
+                        child: Text(matchText,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                    color: isResting
+                                        ? BjjApp.textHint
+                                        : BjjApp.textPrimary)),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  ElevatedButton.icon(
+                    icon: Icon(Icons.stop_circle_rounded),
+                    onPressed: _finishSparring,
+                    label: const Text('Finalizar'),
+                    style: ElevatedButton.styleFrom(
+                        backgroundColor: BjjApp.errorColor),
+                  ),
+                  ElevatedButton.icon(
+                    icon: Icon(Icons.skip_next_rounded),
+                    onPressed: isLastRound ? null : _nextRound,
+                    label: const Text('Próxima'),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
@@ -2371,13 +4561,13 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Selecionar Alunos para o Treino'),
+        title: Text('Selecionar Participantes'),
       ),
       body: AppBackground(
         child: widget.todosOsAlunos.isEmpty
             ? EmptyStateWidget(
                 icon: Icons.person_search_rounded,
-                title: 'Nenhum Aluno Cadastrado na Academia')
+                title: 'Nenhum Participante Cadastrado na Academia')
             : ListView.builder(
                 padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
                 itemCount: widget.todosOsAlunos.length,
@@ -2409,112 +4599,177 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
   }
 }
 
-class PlacarSetupPage extends StatefulWidget {
+// --- TELAS DO PLACAR (ATUALIZADAS COM BUSCA) ---
+
+/// Tela para configurar os parâmetros da luta antes de ir para o placar.
+class MatchSetupPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosAlunosDaAcademia;
-  const PlacarSetupPage(
-      {Key? key, required this.academyId, required this.todosAlunosDaAcademia})
-      : super(key: key);
+
+  const MatchSetupPage({
+    Key? key,
+    required this.academyId,
+    required this.todosAlunosDaAcademia,
+  }) : super(key: key);
 
   @override
-  State<PlacarSetupPage> createState() => _PlacarSetupPageState();
+  State<MatchSetupPage> createState() => _MatchSetupPageState();
 }
 
-class _PlacarSetupPageState extends State<PlacarSetupPage> {
-  Aluno? _selectedAluno1;
-  Aluno? _selectedAluno2;
+class _MatchSetupPageState extends State<MatchSetupPage> {
+  final _formKey = GlobalKey<FormState>();
+  Aluno? _athlete1;
+  Aluno? _athlete2;
+  String _kimonoColor1 = 'Branco';
+  String _kimonoColor2 = 'Azul';
+  int _matchTimeInMinutes = 5;
+
+  final List<String> _kimonoColors = ['Branco', 'Azul', 'Preto'];
+  final List<int> _matchTimes = List.generate(10, (index) => index + 1);
 
   void _startMatch() {
-    if (_selectedAluno1 == null || _selectedAluno2 == null) {
-      showBjjSnackBar(context, 'Selecione os dois atletas.', type: 'warning');
-      return;
-    }
-    if (_selectedAluno1!.id == _selectedAluno2!.id) {
-      showBjjSnackBar(context, 'Os atletas devem ser diferentes.',
-          type: 'warning');
+    if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    Navigator.of(context).push(MaterialPageRoute(
-        builder: (context) => ScoreboardPage(
-              aluno1: _selectedAluno1!,
-              aluno2: _selectedAluno2!,
-            )));
+    final settings = MatchSettings(
+      athlete1: _athlete1!,
+      athlete2: _athlete2!,
+      kimonoColor1: _kimonoColor1,
+      kimonoColor2: _kimonoColor2,
+      matchDuration: Duration(minutes: _matchTimeInMinutes),
+    );
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => ScoreboardPage(settings: settings),
+      ),
+    );
+  }
+
+  Future<void> _selectAthlete(int playerNumber) async {
+    final List<Aluno> availableAthletes =
+        List.from(widget.todosAlunosDaAcademia);
+    // Remove o outro atleta da lista de seleção
+    if (playerNumber == 1 && _athlete2 != null) {
+      availableAthletes.removeWhere((a) => a.id == _athlete2!.id);
+    } else if (playerNumber == 2 && _athlete1 != null) {
+      availableAthletes.removeWhere((a) => a.id == _athlete1!.id);
+    }
+
+    final Aluno? selectedAthlete = await showDialog<Aluno>(
+      context: context,
+      builder: (context) => _AthleteSelectionDialog(
+        athletes: availableAthletes,
+        title: "Selecione o Atleta $playerNumber",
+      ),
+    );
+
+    if (selectedAthlete != null) {
+      setState(() {
+        if (playerNumber == 1) {
+          _athlete1 = selectedAthlete;
+        } else {
+          _athlete2 = selectedAthlete;
+        }
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    List<Aluno> availableForPlayer2 = List.from(widget.todosAlunosDaAcademia);
-    if (_selectedAluno1 != null) {
-      availableForPlayer2.remove(_selectedAluno1);
-    }
-    if (_selectedAluno2 != null &&
-        availableForPlayer2.indexWhere((a) => a.id == _selectedAluno2!.id) ==
-            -1) {
-      _selectedAluno2 = null;
-    }
-
     return Scaffold(
-      appBar: AppBar(
-        title: Text("Placar Individual"),
-        actions: [
-          IconButton(
-              icon: Icon(Icons.logout),
-              onPressed: () => FirebaseAuth.instance.signOut()),
-        ],
-      ),
       body: AppBackground(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
             children: [
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      DropdownButtonFormField<Aluno>(
-                        value: _selectedAluno1,
-                        isExpanded: true,
-                        decoration:
-                            InputDecoration(labelText: 'Selecione o Atleta 1'),
-                        items: widget.todosAlunosDaAcademia
-                            .map((aluno) => DropdownMenuItem<Aluno>(
-                                value: aluno, child: Text(aluno.nome)))
-                            .toList(),
-                        onChanged: (aluno) => setState(() {
-                          _selectedAluno1 = aluno;
-                          if (_selectedAluno2 != null &&
-                              _selectedAluno2!.id == aluno!.id) {
-                            _selectedAluno2 = null;
-                          }
-                        }),
+                      Text("Atleta 1",
+                          style: Theme.of(context).textTheme.titleLarge),
+                      SizedBox(height: 16),
+                      _buildAthleteSelector(
+                        athlete: _athlete1,
+                        onTap: () => _selectAthlete(1),
+                        validator: (value) =>
+                            value == null ? 'Selecione o atleta 1' : null,
                       ),
                       SizedBox(height: 16),
-                      DropdownButtonFormField<Aluno>(
-                        value: _selectedAluno2,
-                        isExpanded: true,
-                        decoration:
-                            InputDecoration(labelText: 'Selecione o Atleta 2'),
-                        items: availableForPlayer2
-                            .map((aluno) => DropdownMenuItem<Aluno>(
-                                value: aluno, child: Text(aluno.nome)))
+                      DropdownButtonFormField<String>(
+                        value: _kimonoColor1,
+                        decoration: InputDecoration(labelText: 'Cor do Kimono'),
+                        items: _kimonoColors
+                            .map((color) => DropdownMenuItem<String>(
+                                value: color, child: Text(color)))
                             .toList(),
-                        onChanged: (aluno) =>
-                            setState(() => _selectedAluno2 = aluno),
+                        onChanged: (color) =>
+                            setState(() => _kimonoColor1 = color!),
                       ),
                     ],
+                  ),
+                ),
+              ),
+              SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Atleta 2",
+                          style: Theme.of(context).textTheme.titleLarge),
+                      SizedBox(height: 16),
+                      _buildAthleteSelector(
+                        athlete: _athlete2,
+                        onTap: () => _selectAthlete(2),
+                        validator: (value) =>
+                            value == null ? 'Selecione o atleta 2' : null,
+                      ),
+                      SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        value: _kimonoColor2,
+                        decoration: InputDecoration(labelText: 'Cor do Kimono'),
+                        items: _kimonoColors
+                            .map((color) => DropdownMenuItem<String>(
+                                value: color, child: Text(color)))
+                            .toList(),
+                        onChanged: (color) =>
+                            setState(() => _kimonoColor2 = color!),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: DropdownButtonFormField<int>(
+                    value: _matchTimeInMinutes,
+                    decoration: InputDecoration(labelText: 'Tempo de Luta'),
+                    items: _matchTimes
+                        .map((time) => DropdownMenuItem<int>(
+                            value: time, child: Text('$time minutos')))
+                        .toList(),
+                    onChanged: (time) =>
+                        setState(() => _matchTimeInMinutes = time!),
                   ),
                 ),
               ),
               SizedBox(height: 24),
               ElevatedButton.icon(
                 icon: Icon(Icons.play_arrow_rounded),
-                label: Text('Iniciar Luta'),
+                label: Text('INICIAR LUTA'),
                 onPressed: _startMatch,
                 style: ElevatedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: 16)),
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                ),
               )
             ],
           ),
@@ -2522,236 +4777,623 @@ class _PlacarSetupPageState extends State<PlacarSetupPage> {
       ),
     );
   }
+
+  Widget _buildAthleteSelector({
+    required Aluno? athlete,
+    required VoidCallback onTap,
+    required FormFieldValidator<Aluno?> validator,
+  }) {
+    return FormField<Aluno?>(
+      initialValue: athlete,
+      validator: validator,
+      builder: (field) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            InkWell(
+              onTap: onTap,
+              child: InputDecorator(
+                decoration: InputDecoration(
+                  labelText: athlete == null
+                      ? 'Clique para selecionar'
+                      : 'Atleta Selecionado',
+                  errorText: field.errorText,
+                ),
+                child: athlete == null
+                    ? null
+                    : Text(
+                        athlete.nome,
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
+class _AthleteSelectionDialog extends StatefulWidget {
+  final List<Aluno> athletes;
+  final String title;
+
+  const _AthleteSelectionDialog(
+      {Key? key, required this.athletes, required this.title})
+      : super(key: key);
+
+  @override
+  __AthleteSelectionDialogState createState() =>
+      __AthleteSelectionDialogState();
+}
+
+class __AthleteSelectionDialogState extends State<_AthleteSelectionDialog> {
+  final _searchController = TextEditingController();
+  List<Aluno> _filteredAthletes = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredAthletes = widget.athletes;
+    _searchController.addListener(_filterAthletes);
+  }
+
+  void _filterAthletes() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredAthletes = widget.athletes.where((athlete) {
+        return athlete.nome.toLowerCase().contains(query);
+      }).toList();
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: Container(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Buscar por nome...',
+                prefixIcon: Icon(Icons.search),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: Icon(Icons.clear),
+                        onPressed: () => _searchController.clear(),
+                      )
+                    : null,
+              ),
+            ),
+            SizedBox(height: 16),
+            Expanded(
+              child: _filteredAthletes.isEmpty
+                  ? Center(child: Text("Nenhum atleta encontrado."))
+                  : ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: _filteredAthletes.length,
+                      itemBuilder: (context, index) {
+                        final athlete = _filteredAthletes[index];
+                        return ListTile(
+                          title: Text(athlete.nome),
+                          onTap: () {
+                            Navigator.of(context).pop(athlete);
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text('Cancelar'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Armazena os dados de pontuação de um único atleta.
+class _PlayerScore {
+  int totalScore = 0;
+  int advantages = 0;
+  int penalties = 0;
+  int takedowns = 0; // Queda / Raspagem (+2)
+  int passes = 0; // Passagem (+3)
+  int mountsOrBack = 0; // Montada / Costas (+4)
+
+  void reset() {
+    totalScore = 0;
+    advantages = 0;
+    penalties = 0;
+    takedowns = 0;
+    passes = 0;
+    mountsOrBack = 0;
+  }
+}
+
+/// A tela principal do placar, onde a luta acontece.
 class ScoreboardPage extends StatefulWidget {
-  final Aluno aluno1;
-  final Aluno aluno2;
+  final MatchSettings settings;
+
   const ScoreboardPage({
     Key? key,
-    required this.aluno1,
-    required this.aluno2,
+    required this.settings,
   }) : super(key: key);
+
   @override
   _ScoreboardPageState createState() => _ScoreboardPageState();
 }
 
 class _ScoreboardPageState extends State<ScoreboardPage> {
-  int p1 = 0, p2 = 0, v1 = 0, v2 = 0, m1 = 0, m2 = 0;
+  // Estado da pontuação para cada atleta
+  final _player1Score = _PlayerScore();
+  final _player2Score = _PlayerScore();
+
+  // Estado do cronômetro
   Timer? _timer;
-  int _start = 300; // 5 minutos
+  late Duration _timeRemaining;
   bool _isRunning = false;
+  bool _isMatchOver = false;
 
   @override
   void initState() {
     super.initState();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.landscapeRight,
-      DeviceOrientation.landscapeLeft,
-    ]);
+    _timeRemaining = widget.settings.matchDuration;
   }
 
   @override
   void dispose() {
     _timer?.cancel();
-    SystemChrome.setPreferredOrientations([
-      DeviceOrientation.portraitUp,
-      DeviceOrientation.portraitDown,
-    ]);
     super.dispose();
   }
 
+  /// Formata a duração para o formato MM:SS.
+  String get _timerString {
+    final minutes = _timeRemaining.inMinutes.toString().padLeft(2, '0');
+    final seconds = (_timeRemaining.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  // --- LÓGICA DO CRONÔMETRO ---
+
+  void _toggleTimer() {
+    if (_isMatchOver) return;
+
+    if (_isRunning) {
+      _pauseTimer();
+    } else {
+      _startTimer();
+    }
+  }
+
   void _startTimer() {
-    if (_timer != null && _timer!.isActive) return;
+    if (_timer?.isActive ?? false) return; // Já está rodando
     setState(() => _isRunning = true);
-    _timer = Timer.periodic(Duration(seconds: 1), (timer) {
-      if (_start == 0) {
-        setState(() {
-          timer.cancel();
-          _isRunning = false;
-        });
-      } else {
-        setState(() => _start--);
-      }
+    _timer = Timer.periodic(Duration(seconds: 1), (_) {
+      setState(() {
+        if (_timeRemaining.inSeconds > 0) {
+          _timeRemaining -= Duration(seconds: 1);
+        } else {
+          _pauseTimer();
+          _handleEndOfMatch(reason: "por tempo");
+        }
+      });
     });
   }
 
   void _pauseTimer() {
-    if (_timer != null) {
-      _timer!.cancel();
-      setState(() => _isRunning = false);
-    }
+    _timer?.cancel();
+    setState(() => _isRunning = false);
   }
 
-  void _resetTimer() {
+  void _restartMatch() {
     _pauseTimer();
-    setState(() => _start = 300);
+    setState(() {
+      _timeRemaining = widget.settings.matchDuration;
+      _isMatchOver = false;
+      _player1Score.reset();
+      _player2Score.reset();
+    });
   }
 
-  String get _timerString {
-    final dur = Duration(seconds: _start);
-    return "${dur.inMinutes.toString().padLeft(2, '0')}:${(dur.inSeconds % 60).toString().padLeft(2, '0')}";
+  // --- LÓGICA DE PONTUAÇÃO E PENALIDADES ---
+
+  void _updateScore(
+      int playerIndex, int points, Function(int) updateCounter, int increment) {
+    if (_isMatchOver) return;
+
+    final score = playerIndex == 1 ? _player1Score : _player2Score;
+
+    if (increment < 0) {
+      if ((points == 2 && score.takedowns == 0) ||
+          (points == 3 && score.passes == 0) ||
+          (points == 4 && score.mountsOrBack == 0)) {
+        return;
+      }
+    }
+
+    setState(() {
+      score.totalScore += (points * increment);
+      updateCounter(increment);
+    });
   }
+
+  void _updateAdvantages(int playerIndex, int increment) {
+    if (_isMatchOver) return;
+
+    final score = playerIndex == 1 ? _player1Score : _player2Score;
+    if (increment < 0 && score.advantages == 0) return;
+
+    setState(() {
+      score.advantages += increment;
+    });
+  }
+
+  void _handlePenaltyUpdate(int playerIndex, int increment) {
+    if (_isMatchOver) return;
+
+    final punishedScore = playerIndex == 1 ? _player1Score : _player2Score;
+    final opponentScore = playerIndex == 1 ? _player2Score : _player1Score;
+
+    if (increment < 0 && punishedScore.penalties == 0) return;
+
+    setState(() {
+      final oldPenaltyCount = punishedScore.penalties;
+      punishedScore.penalties += increment;
+      final newPenaltyCount = punishedScore.penalties;
+
+      if (increment > 0) {
+        if (newPenaltyCount == 2) opponentScore.advantages += 1;
+        if (newPenaltyCount == 3) opponentScore.totalScore += 2;
+        if (newPenaltyCount >= 4) {
+          final winner = playerIndex == 1
+              ? widget.settings.athlete2
+              : widget.settings.athlete1;
+          _handleEndOfMatch(reason: "por desclassificação", winner: winner);
+        }
+      } else {
+        if (oldPenaltyCount == 2) opponentScore.advantages -= 1;
+        if (oldPenaltyCount == 3) opponentScore.totalScore -= 2;
+      }
+    });
+  }
+
+  // --- LÓGICA DE FIM DE LUTA ---
+
+  void _handleEndOfMatch({String reason = "", Aluno? winner}) {
+    _pauseTimer();
+    setState(() => _isMatchOver = true);
+
+    String resultMessage;
+    if (winner != null) {
+      resultMessage = "${winner.nome} venceu $reason!";
+    } else {
+      if (_player1Score.totalScore > _player2Score.totalScore) {
+        resultMessage = "${widget.settings.athlete1.nome} venceu por pontos!";
+      } else if (_player2Score.totalScore > _player1Score.totalScore) {
+        resultMessage = "${widget.settings.athlete2.nome} venceu por pontos!";
+      } else {
+        if (_player1Score.advantages > _player2Score.advantages) {
+          resultMessage =
+              "${widget.settings.athlete1.nome} venceu por vantagens!";
+        } else if (_player2Score.advantages > _player1Score.advantages) {
+          resultMessage =
+              "${widget.settings.athlete2.nome} venceu por vantagens!";
+        } else {
+          if (_player1Score.penalties < _player2Score.penalties) {
+            resultMessage =
+                "${widget.settings.athlete1.nome} venceu por menos punições!";
+          } else if (_player2Score.penalties < _player1Score.penalties) {
+            resultMessage =
+                "${widget.settings.athlete2.nome} venceu por menos punições!";
+          } else {
+            resultMessage = "A luta terminou em EMPATE!";
+          }
+        }
+      }
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: Text("Fim de Luta!"),
+        content: Text(resultMessage),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text("Fechar"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- WIDGETS DE CONSTRUÇÃO DA UI ---
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: AppBackground(
-        child: SafeArea(
-            child: Column(
+      appBar: AppBar(
+        title: Text("Placar da Luta"),
+        leading: IconButton(
+          icon: Icon(Icons.close),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+      ),
+      backgroundColor: BjjApp.darkScaffoldBackground,
+      body: SafeArea(
+        child: Column(
           children: [
-            // Placar
-            Expanded(
-              flex: 3,
+            // 1. Cabeçalho dos Atletas
+            Row(
+              children: [
+                _buildPlayerHeader(
+                  athlete: widget.settings.athlete1,
+                  score: _player1Score,
+                  color: widget.settings.colorForAthlete1,
+                  isPlayer2: false,
+                ),
+                _buildPlayerHeader(
+                  athlete: widget.settings.athlete2,
+                  score: _player2Score,
+                  color: widget.settings.colorForAthlete2,
+                  isPlayer2: true,
+                ),
+              ],
+            ),
+
+            // 2. Cronômetro Central
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
               child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  _buildPlayerSide(widget.aluno1, 1, p1, v1, m1),
-                  _buildPlayerSide(widget.aluno2, 2, p2, v2, m2, isRight: true),
+                  // Botão Reiniciar
+                  IconButton(
+                    iconSize: 50,
+                    color: BjjApp.errorColor,
+                    icon: const Icon(Icons.restart_alt_rounded),
+                    onPressed: _restartMatch,
+                  ),
+
+                  // Cronômetro
+                  Text(
+                    _timerString,
+                    style: TextStyle(
+                      fontSize: 64,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                      color:
+                          _isMatchOver ? BjjApp.textHint : BjjApp.textPrimary,
+                    ),
+                  ),
+
+                  // Botão Play/Pause
+                  IconButton(
+                    iconSize: 50,
+                    color:
+                        _isRunning ? BjjApp.warningColor : BjjApp.successColor,
+                    icon: Icon(_isRunning
+                        ? Icons.pause_circle_filled_rounded
+                        : Icons.play_circle_filled_rounded),
+                    onPressed: _isMatchOver ? null : _toggleTimer,
+                  ),
                 ],
               ),
             ),
-            // Controles
+
+            // 3. Controles de Pontuação
             Expanded(
-              flex: 2,
               child: Container(
-                color: BjjApp.darkSurface.withAlpha(200),
+                padding: const EdgeInsets.only(top: 8.0),
+                color: BjjApp.darkSurface.withOpacity(0.7),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildPointControls(1),
-                    Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(_timerString,
-                            style: TextStyle(
-                                fontSize: 42,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white)),
-                        Row(
-                          children: [
-                            IconButton(
-                                onPressed:
-                                    _isRunning ? _pauseTimer : _startTimer,
-                                icon: Icon(
-                                    _isRunning
-                                        ? Icons.pause_circle_filled
-                                        : Icons.play_circle_filled,
-                                    size: 40,
-                                    color: BjjApp.primaryAccent)),
-                            IconButton(
-                                onPressed: _resetTimer,
-                                icon: Icon(Icons.replay_circle_filled,
-                                    size: 40, color: BjjApp.textHint)),
-                            IconButton(
-                                onPressed: _resetScore,
-                                icon: Icon(Icons.refresh,
-                                    size: 40, color: Colors.white)),
-                          ],
-                        )
-                      ],
+                    _buildScoreControl(
+                      playerIndex: 1,
+                      score: _player1Score,
                     ),
-                    _buildPointControls(2),
+                    VerticalDivider(
+                        color: BjjApp.borderNormal, thickness: 1, width: 1),
+                    _buildScoreControl(
+                      playerIndex: 2,
+                      score: _player2Score,
+                    ),
                   ],
                 ),
               ),
             )
           ],
-        )),
+        ),
       ),
     );
   }
 
-  void _resetScore() {
-    setState(() {
-      p1 = 0;
-      p2 = 0;
-      v1 = 0;
-      v2 = 0;
-      m1 = 0;
-      m2 = 0;
-    });
-  }
+  Widget _buildPlayerHeader({
+    required Aluno athlete,
+    required _PlayerScore score,
+    required Color color,
+    required bool isPlayer2,
+  }) {
+    bool useGradient = isPlayer2 &&
+        widget.settings.kimonoColor1 == widget.settings.kimonoColor2;
+    final displayColor = (color == Colors.grey.shade800) ? Colors.white : color;
 
-  Widget _buildPlayerSide(Aluno a, int player, int p, int v, int m,
-      {bool isRight = false}) {
     return Expanded(
       child: Container(
-        padding: EdgeInsets.all(12),
+        padding: const EdgeInsets.all(8.0),
         decoration: BoxDecoration(
-          border: isRight
-              ? Border(left: BorderSide(color: BjjApp.borderNormal, width: 2))
-              : null,
+          border: Border(
+            bottom: BorderSide(color: BjjApp.borderNormal, width: 2),
+          ),
         ),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(a.nome,
-                style: TextStyle(fontSize: 22, color: Colors.white),
-                textAlign: TextAlign.center),
-            Text('$p',
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: useGradient ? BjjApp.primaryAccent : color,
+                    width: 2),
+                gradient: useGradient
+                    ? LinearGradient(
+                        colors: [BjjApp.primaryAccent, Colors.yellow.shade800])
+                    : null,
+              ),
+              child: Text(
+                athlete.nome.toUpperCase(),
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                    fontSize: 100,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    height: 1),
-                textAlign: TextAlign.center),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: useGradient
+                      ? BjjApp.primaryAccentForeground
+                      : displayColor,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              '${score.totalScore}',
+              style: TextStyle(
+                fontSize: 50,
+                fontWeight: FontWeight.bold,
+                color: displayColor,
+                height: 1,
+              ),
+            ),
+            SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                Text("V: $v",
-                    style: TextStyle(fontSize: 20, color: BjjApp.successColor)),
-                Text("P: $m",
-                    style: TextStyle(fontSize: 20, color: BjjApp.errorColor)),
+                Text("V: ${score.advantages}",
+                    style:
+                        TextStyle(fontSize: 16, color: BjjApp.textSecondary)),
+                Text("P: ${score.penalties}",
+                    style:
+                        TextStyle(fontSize: 16, color: BjjApp.textSecondary)),
               ],
-            )
+            ),
           ],
         ),
       ),
     );
   }
 
-  void _updateScore(int p, int v, int m, int player) {
-    setState(() {
-      if (player == 1) {
-        p1 += p;
-        v1 += v;
-        m1 += m;
-      } else {
-        p2 += p;
-        v2 += v;
-        m2 += m;
-      }
-    });
+  Widget _buildScoreControl(
+      {required int playerIndex, required _PlayerScore score}) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildScoreButton(
+              label: 'Montada / Costas (+4)',
+              count: score.mountsOrBack,
+              onAdd: () => _updateScore(
+                  playerIndex, 4, (inc) => score.mountsOrBack += inc, 1),
+              onRemove: () => _updateScore(
+                  playerIndex, 4, (inc) => score.mountsOrBack += inc, -1),
+            ),
+            _buildScoreButton(
+              label: 'Passagem (+3)',
+              count: score.passes,
+              onAdd: () =>
+                  _updateScore(playerIndex, 3, (inc) => score.passes += inc, 1),
+              onRemove: () => _updateScore(
+                  playerIndex, 3, (inc) => score.passes += inc, -1),
+            ),
+            _buildScoreButton(
+              label: 'Queda / Raspagem (+2)',
+              count: score.takedowns,
+              onAdd: () => _updateScore(
+                  playerIndex, 2, (inc) => score.takedowns += inc, 1),
+              onRemove: () => _updateScore(
+                  playerIndex, 2, (inc) => score.takedowns += inc, -1),
+            ),
+            _buildScoreButton(
+              label: 'Vantagens (+1)',
+              count: score.advantages,
+              onAdd: () => _updateAdvantages(playerIndex, 1),
+              onRemove: () => _updateAdvantages(playerIndex, -1),
+            ),
+            _buildScoreButton(
+              label: 'Punições (+1)',
+              count: score.penalties,
+              onAdd: () => _handlePenaltyUpdate(playerIndex, 1),
+              onRemove: () => _handlePenaltyUpdate(playerIndex, -1),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
-  Widget _buildPointControls(int player) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        ElevatedButton(
-            child: Text("+2"), onPressed: () => _updateScore(2, 0, 0, player)),
-        SizedBox(height: 8),
-        ElevatedButton(
-            child: Text("+3"), onPressed: () => _updateScore(3, 0, 0, player)),
-        SizedBox(height: 8),
-        ElevatedButton(
-            child: Text("+4"), onPressed: () => _updateScore(4, 0, 0, player)),
-        SizedBox(height: 8),
-        Row(children: [
-          ElevatedButton(
-              child: Text("+V"),
-              onPressed: () => _updateScore(0, 1, 0, player),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: BjjApp.successColor)),
-          SizedBox(width: 8),
-          ElevatedButton(
-              child: Text("+P"),
-              onPressed: () => _updateScore(0, 0, 1, player),
-              style:
-                  ElevatedButton.styleFrom(backgroundColor: BjjApp.errorColor)),
-        ]),
-      ],
+  Widget _buildScoreButton({
+    required String label,
+    required int count,
+    required VoidCallback onAdd,
+    required VoidCallback onRemove,
+  }) {
+    return FittedBox(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: Icon(Icons.remove_circle_outline),
+            onPressed: _isMatchOver ? null : onRemove,
+            color: BjjApp.textHint,
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints(),
+          ),
+          SizedBox(
+            width: 150,
+            child: Column(
+              children: [
+                Text(label,
+                    style:
+                        TextStyle(color: BjjApp.textSecondary, fontSize: 12)),
+                Text('$count',
+                    style: TextStyle(
+                        color: BjjApp.textPrimary,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: Icon(Icons.add_circle_outline),
+            onPressed: _isMatchOver ? null : onAdd,
+            color: BjjApp.textHint,
+            padding: EdgeInsets.zero,
+            constraints: BoxConstraints(),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2767,9 +5409,16 @@ class StudentHomePage extends StatefulWidget {
 
 class _StudentHomePageState extends State<StudentHomePage> {
   int _paginaAtual = 0;
-  late final List<Widget> _telas;
+  late List<Widget> _telas;
   List<Aluno> _todosOsAlunosDaAcademia = [];
   bool _isLoading = true;
+
+  final List<String> _titulos = const [
+    'Meu Perfil',
+    'Histórico',
+    'Estudos da Academia',
+    'Placar Individual'
+  ];
 
   @override
   void initState() {
@@ -2781,18 +5430,38 @@ class _StudentHomePageState extends State<StudentHomePage> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final snapshot = await FirebaseFirestore.instance
+      final firestore = FirebaseFirestore.instance;
+      final academyId = widget.user.academyId;
+
+      // 1. Fetch students
+      final studentsSnapshot = await firestore
           .collection('academies')
-          .doc(widget.user.academyId)
+          .doc(academyId)
           .collection('students')
+          .orderBy('nome')
           .get();
-      final alunos = snapshot.docs
+      final studentParticipants = studentsSnapshot.docs
           .map((doc) => Aluno.fromJson(doc.id, doc.data()))
           .toList();
 
+      // 2. Fetch teachers
+      final teachersSnapshot = await firestore
+          .collection('users')
+          .where('academyId', isEqualTo: academyId)
+          .where('role', isEqualTo: 'teacher')
+          .get();
+      final teacherParticipants = teachersSnapshot.docs
+          .map((doc) => Aluno.fromUserModel(UserModel.fromFirestore(doc)))
+          .toList();
+
+      // 3. Combine and sort
+      final allParticipants = [...studentParticipants, ...teacherParticipants];
+      allParticipants.sort((a, b) => a.nome.compareTo(b.nome));
+
       if (mounted) {
         setState(() {
-          _todosOsAlunosDaAcademia = alunos;
+          _todosOsAlunosDaAcademia = allParticipants;
+          _buildScreens();
           _isLoading = false;
         });
       }
@@ -2801,16 +5470,18 @@ class _StudentHomePageState extends State<StudentHomePage> {
         setState(() => _isLoading = false);
         showBjjSnackBar(context, 'Erro ao carregar dados da academia.',
             type: 'error');
+        // Mesmo com erro, construímos as telas para que o usuário possa navegar
+        _buildScreens();
       }
     }
   }
 
   void _buildScreens() {
     _telas = [
-      StudentDashboardPage(user: widget.user),
+      StudentProfilePage(user: widget.user),
       MyCheckinsPage(user: widget.user),
       StudiesStudentPage(user: widget.user),
-      PlacarSetupPage(
+      MatchSetupPage(
           academyId: widget.user.academyId,
           todosAlunosDaAcademia: _todosOsAlunosDaAcademia),
     ];
@@ -2823,18 +5494,31 @@ class _StudentHomePageState extends State<StudentHomePage> {
           body:
               AppBackground(child: Center(child: CircularProgressIndicator())));
     }
-    _buildScreens();
+
     return Scaffold(
+      appBar: AppBar(
+        title: Text(_titulos[_paginaAtual]),
+        actions: [
+          IconButton(
+              icon: Icon(Icons.settings),
+              tooltip: 'Configurações',
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => SettingsPage(user: widget.user)))),
+          IconButton(
+              icon: Icon(Icons.logout),
+              tooltip: 'Sair',
+              onPressed: () => FirebaseAuth.instance.signOut()),
+        ],
+      ),
       body: IndexedStack(index: _paginaAtual, children: _telas),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _paginaAtual,
         onTap: (index) => setState(() => _paginaAtual = index),
         items: const [
           BottomNavigationBarItem(
-              icon: Icon(Icons.home_rounded), label: 'Início'),
+              icon: Icon(Icons.person_rounded), label: 'Meu Perfil'),
           BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_today_rounded),
-              label: 'Meus Check-ins'),
+              icon: Icon(Icons.calendar_today_rounded), label: 'Histórico'),
           BottomNavigationBarItem(
               icon: Icon(Icons.book_rounded), label: 'Estudos'),
           BottomNavigationBarItem(
@@ -2845,37 +5529,435 @@ class _StudentHomePageState extends State<StudentHomePage> {
   }
 }
 
-class StudentDashboardPage extends StatelessWidget {
+class StudentProfilePage extends StatefulWidget {
   final UserModel user;
-  const StudentDashboardPage({Key? key, required this.user}) : super(key: key);
+  const StudentProfilePage({Key? key, required this.user}) : super(key: key);
+
+  @override
+  State<StudentProfilePage> createState() => _StudentProfilePageState();
+}
+
+class _StudentProfilePageState extends State<StudentProfilePage> {
+  Aluno? _aluno;
+  MonthlyFee? _currentMonthFee; // Novo: para guardar o pagamento do mês
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStudentData();
+  }
+
+  Future<void> _loadStudentData() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+
+    if (widget.user.studentRecordId == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final academyId = widget.user.academyId;
+      final studentId = widget.user.studentRecordId!;
+      final now = DateTime.now();
+
+      // Fetch student data
+      final doc = await firestore
+          .collection('academies')
+          .doc(academyId)
+          .collection('students')
+          .doc(studentId)
+          .get();
+
+      MonthlyFee? fee;
+      // Fetch payment for the current month
+      final paymentSnapshot = await firestore
+          .collection('academies')
+          .doc(academyId)
+          .collection('monthly_fees')
+          .where('studentId', isEqualTo: studentId)
+          .where('paymentYear', isEqualTo: now.year)
+          .where('paymentMonth', isEqualTo: now.month)
+          .limit(1)
+          .get();
+
+      if (paymentSnapshot.docs.isNotEmpty) {
+        fee = MonthlyFee.fromFirestore(paymentSnapshot.docs.first);
+      }
+
+      if (mounted) {
+        if (doc.exists) {
+          setState(() {
+            _aluno = Aluno.fromJson(doc.id, doc.data()!);
+            _currentMonthFee = fee;
+          });
+        }
+        setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, "Erro ao carregar dados do perfil.",
+            type: 'error');
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  String _formatGraduation(Aluno aluno) {
+    String grad = aluno.faixa;
+    if (aluno.graus != null && aluno.graus! > 0) {
+      grad += ' - ${aluno.graus}º Grau';
+    }
+    return grad;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    if (_aluno == null) {
+      return AppBackground(
+        child: EmptyStateWidget(
+          icon: Icons.person_add_alt_1_rounded,
+          title: "Complete seu Perfil",
+          message:
+              "Vá para as Configurações para preencher seus dados de aluno e ter acesso a todas as funcionalidades.",
+        ),
+      );
+    }
+
+    final bool isPaid = _currentMonthFee != null;
+
+    return AppBackground(
+      child: RefreshIndicator(
+        onRefresh: _loadStudentData,
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            Center(
+              child: Icon(Icons.account_circle,
+                  size: 100, color: BjjApp.primaryAccent),
+            ),
+            SizedBox(height: 16),
+            Center(
+              child: Text(
+                'Bem-vindo, ${_aluno!.nome}!',
+                style: Theme.of(context).textTheme.headlineSmall,
+                textAlign: TextAlign.center,
+              ),
+            ),
+            SizedBox(height: 24),
+            Card(
+              child: ListTile(
+                leading: Icon(Icons.shield_outlined,
+                    color: BjjApp.primaryAccent, size: 30),
+                title:
+                    Text("Graduação", style: TextStyle(color: BjjApp.textHint)),
+                subtitle: Text(
+                  _formatGraduation(_aluno!),
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(color: BjjApp.textPrimary),
+                ),
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: Icon(Icons.fitness_center_rounded,
+                    color: BjjApp.primaryAccent, size: 30),
+                title: Text("Peso", style: TextStyle(color: BjjApp.textHint)),
+                subtitle: Text(
+                  '${_aluno!.peso.toStringAsFixed(1)} kg',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(color: BjjApp.textPrimary),
+                ),
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: Icon(Icons.email_outlined,
+                    color: BjjApp.primaryAccent, size: 30),
+                title: Text("E-mail", style: TextStyle(color: BjjApp.textHint)),
+                subtitle: Text(
+                  widget.user.email,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(color: BjjApp.textPrimary),
+                ),
+              ),
+            ),
+
+            // --- CARD DE STATUS DA MENSALIDADE (MOVIDO E SUAVIZADO) ---
+            Card(
+              child: ListTile(
+                leading: Icon(
+                  isPaid
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.error_outline_rounded,
+                  color: isPaid ? BjjApp.successColor : BjjApp.warningColor,
+                  size: 30,
+                ),
+                title: Text("Status da Mensalidade",
+                    style: TextStyle(color: BjjApp.textHint)),
+                subtitle: Text(
+                  isPaid
+                      ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate)}'
+                      : 'Pendente para este mês',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(color: BjjApp.textPrimary),
+                ),
+              ),
+            ),
+            // --- FIM DO CARD ---
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class EditStudentProfilePage extends StatefulWidget {
+  final UserModel user;
+  const EditStudentProfilePage({Key? key, required this.user})
+      : super(key: key);
+
+  @override
+  State<EditStudentProfilePage> createState() => _EditStudentProfilePageState();
+}
+
+class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _weightController = TextEditingController();
+  String? _faixa;
+  int? _graus;
+  bool _isLoading = true;
+  bool _isSaving = false;
+
+  final List<String> _faixasList = [
+    'Branca',
+    'Cinza com Ponta Branca',
+    'Cinza',
+    'Cinza com Ponta Preta',
+    'Amarela com Ponta Branca',
+    'Amarela',
+    'Amarela com Ponta Preta',
+    'Laranja com Ponta Branca',
+    'Laranja',
+    'Laranja com Ponta Preta',
+    'Verde com Ponta Branca',
+    'Verde',
+    'Verde com Ponta Preta',
+    'Azul',
+    'Roxa',
+    'Marrom',
+    'Preta'
+  ];
+  List<int> _grausList = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadStudentData();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _weightController.dispose();
+    super.dispose();
+  }
+
+  List<int> _getGrausForFaixa(String? faixa) {
+    if (faixa == 'Preta') {
+      return List.generate(10, (i) => i + 1);
+    }
+    if (faixa != null) {
+      // Inclui a faixa branca e as faixas infantis
+      return [1, 2, 3, 4];
+    }
+    return [];
+  }
+
+  Future<void> _loadStudentData() async {
+    if (widget.user.studentRecordId == null) {
+      // Se não há registro, preenche com o nome do UserModel para começar
+      _nameController.text = widget.user.name;
+      setState(() => _isLoading = false);
+      return;
+    }
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .collection('students')
+          .doc(widget.user.studentRecordId)
+          .get();
+
+      if (mounted && doc.exists) {
+        final aluno = Aluno.fromJson(doc.id, doc.data()!);
+        _nameController.text = aluno.nome;
+        _weightController.text = aluno.peso.toString();
+        _faixa = aluno.faixa;
+        _graus = aluno.graus;
+        _grausList = _getGrausForFaixa(_faixa);
+      } else if (mounted) {
+        _nameController.text = widget.user.name;
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, "Erro ao carregar dados do perfil.",
+            type: 'error');
+        _nameController.text = widget.user.name;
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _updateProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (widget.user.studentRecordId == null) {
+      showBjjSnackBar(context,
+          "Seu perfil de aluno ainda não foi criado pelo gerente. Contate sua academia.",
+          type: 'error');
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      final firestore = FirebaseFirestore.instance;
+      final batch = firestore.batch();
+
+      final studentRef = firestore
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .collection('students')
+          .doc(widget.user.studentRecordId!);
+
+      batch.update(studentRef, {
+        'nome': _nameController.text.trim(),
+        'peso': double.parse(_weightController.text.replaceAll(',', '.')),
+        'faixa': _faixa,
+        'graus': _graus,
+      });
+
+      if (_nameController.text.trim() != widget.user.name) {
+        final userRef = firestore.collection('users').doc(widget.user.uid);
+        batch.update(userRef, {'name': _nameController.text.trim()});
+      }
+
+      await batch.commit();
+
+      if (mounted) {
+        showBjjSnackBar(context, "Perfil atualizado com sucesso!",
+            type: 'success');
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted)
+        showBjjSnackBar(context, "Erro ao atualizar perfil: $e", type: 'error');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Minha Área"), actions: [
-        IconButton(
-            icon: Icon(Icons.settings),
-            onPressed: () => Navigator.of(context)
-                .push(MaterialPageRoute(builder: (_) => ChangePasswordPage()))),
-        IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: () => FirebaseAuth.instance.signOut()),
-      ]),
+      appBar: AppBar(title: Text("Editar Perfil")),
       body: AppBackground(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.person, size: 80, color: BjjApp.infoColor),
-              SizedBox(height: 20),
-              Text('Bem-vindo, ${user.name}!',
-                  style: Theme.of(context).textTheme.headlineSmall),
-              SizedBox(height: 10),
-              Text('Aqui você pode acompanhar seu progresso.',
-                  style: TextStyle(color: BjjApp.textHint)),
-            ],
-          ),
-        ),
+        child: _isLoading
+            ? Center(child: CircularProgressIndicator())
+            : ListView(
+                padding: const EdgeInsets.all(16.0),
+                children: [
+                  Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextFormField(
+                          controller: _nameController,
+                          decoration:
+                              InputDecoration(labelText: 'Nome Completo'),
+                          validator: (v) => v == null || v.trim().isEmpty
+                              ? 'Nome não pode ser vazio'
+                              : null,
+                        ),
+                        SizedBox(height: 16),
+                        TextFormField(
+                          controller: _weightController,
+                          decoration: InputDecoration(labelText: 'Peso (kg)'),
+                          keyboardType:
+                              TextInputType.numberWithOptions(decimal: true),
+                          validator: (v) {
+                            if (v == null || v.isEmpty) return 'Peso inválido';
+                            final x = double.tryParse(v.replaceAll(',', '.'));
+                            return (x == null || x <= 0)
+                                ? 'Peso inválido (deve ser > 0)'
+                                : null;
+                          },
+                        ),
+                        SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          value: _faixa,
+                          decoration: InputDecoration(labelText: 'Faixa'),
+                          items: _faixasList
+                              .map((faixa) => DropdownMenuItem(
+                                  value: faixa, child: Text(faixa)))
+                              .toList(),
+                          onChanged: (value) => setState(() {
+                            _faixa = value;
+                            _grausList = _getGrausForFaixa(_faixa);
+                            _graus = null; // Reseta o grau ao trocar de faixa
+                          }),
+                          validator: (value) =>
+                              value == null ? 'Selecione sua faixa' : null,
+                        ),
+                        if (_faixa != null) ...[
+                          SizedBox(height: 16),
+                          DropdownButtonFormField<int>(
+                            value: _graus,
+                            decoration:
+                                InputDecoration(labelText: 'Graus (opcional)'),
+                            items: [
+                              DropdownMenuItem<int>(
+                                  value: null, child: Text("Nenhum")),
+                              ..._grausList.map((g) => DropdownMenuItem(
+                                  value: g, child: Text("$gº Grau"))),
+                            ],
+                            onChanged: (value) =>
+                                setState(() => _graus = value),
+                          ),
+                        ],
+                        SizedBox(height: 24),
+                        _isSaving
+                            ? Center(child: CircularProgressIndicator())
+                            : ElevatedButton.icon(
+                                onPressed: _updateProfile,
+                                icon: Icon(Icons.save),
+                                label: Text("Salvar Alterações"),
+                                style: ElevatedButton.styleFrom(
+                                    padding:
+                                        EdgeInsets.symmetric(vertical: 16)),
+                              ),
+                      ],
+                    ),
+                  )
+                ],
+              ),
       ),
     );
   }
@@ -2890,78 +5972,130 @@ class MyCheckinsPage extends StatefulWidget {
 }
 
 class _MyCheckinsPageState extends State<MyCheckinsPage> {
-  Map<DateTime, List<CheckinEntry>> _eventosAgrupados = {};
   DateTime _focusedDay = DateTime.now();
 
   @override
   Widget build(BuildContext context) {
     final studentId = widget.user.studentRecordId;
     if (studentId == null) {
-      return Scaffold(
-          appBar: AppBar(title: Text("Meus Check-ins")),
-          body: EmptyStateWidget(
-              icon: Icons.link_off,
-              title: "Perfil não vinculado",
-              message:
-                  "Seu login não está vinculado a um registro de aluno. Peça ao seu professor ou gerente para criar seu acesso."));
+      return AppBackground(
+        child: EmptyStateWidget(
+            icon: Icons.link_off,
+            title: "Perfil não vinculado",
+            message:
+                "Seu login não está vinculado a um registro de aluno. Complete seu perfil na primeira aba."),
+      );
     }
 
-    return Scaffold(
-      appBar: AppBar(title: Text("Meus Check-ins"), actions: [
-        IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: () => FirebaseAuth.instance.signOut())
-      ]),
-      body: AppBackground(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('academies')
-              .doc(widget.user.academyId)
-              .collection('checkins')
-              .where('studentId', isEqualTo: studentId)
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
-            }
+    return AppBackground(
+      child: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('academies')
+            .doc(widget.user.academyId)
+            .collection('checkins')
+            .where('studentId', isEqualTo: studentId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return Center(child: CircularProgressIndicator());
+          }
 
-            final checkins = snapshot.data?.docs
-                    .map((doc) => CheckinEntry.fromJson(doc.id, doc.data()))
-                    .toList() ??
-                [];
-            _eventosAgrupados = {};
-            for (var checkin in checkins) {
-              final dataNormalizada = DateTime.utc(
-                  checkin.date.year, checkin.date.month, checkin.date.day);
-              if (_eventosAgrupados[dataNormalizada] == null)
-                _eventosAgrupados[dataNormalizada] = [];
-              _eventosAgrupados[dataNormalizada]!.add(checkin);
-            }
+          final allCheckins = snapshot.data?.docs
+                  .map((doc) => CheckinEntry.fromJson(
+                      doc.id, doc.data() as Map<String, dynamic>))
+                  .toList() ??
+              [];
 
-            return TableCalendar<CheckinEntry>(
-              locale: 'pt_BR',
-              firstDay: DateTime.utc(DateTime.now().year - 2, 1, 1),
-              lastDay: DateTime.utc(DateTime.now().year + 2, 12, 31),
-              focusedDay: _focusedDay,
-              calendarFormat: CalendarFormat.month,
-              eventLoader: (day) =>
-                  _eventosAgrupados[
-                      DateTime.utc(day.year, day.month, day.day)] ??
-                  [],
-              onPageChanged: (focusedDay) =>
-                  setState(() => _focusedDay = focusedDay),
-              calendarStyle: CalendarStyle(
-                todayDecoration: BoxDecoration(
-                    color: BjjApp.primaryAccent.withOpacity(0.3),
-                    shape: BoxShape.circle),
-                selectedDecoration: BoxDecoration(
-                    color: BjjApp.primaryAccent, shape: BoxShape.circle),
-                markerDecoration: BoxDecoration(
-                    color: BjjApp.successColor, shape: BoxShape.circle),
+          final eventosAgrupados = <DateTime, List<CheckinEntry>>{};
+          for (var checkin in allCheckins) {
+            final dataNormalizada = DateTime.utc(
+                checkin.date.year, checkin.date.month, checkin.date.day);
+            eventosAgrupados
+                .putIfAbsent(dataNormalizada, () => [])
+                .add(checkin);
+          }
+
+          final checkinsForFocusedMonth = allCheckins.where((checkin) {
+            return checkin.date.month == _focusedDay.month &&
+                checkin.date.year == _focusedDay.year;
+          }).toList();
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Card(
+                  elevation: 4,
+                  child: Padding(
+                    padding: const EdgeInsets.all(12.0),
+                    child: Text(
+                      'Treinos em ${DateFormat.yMMMM('pt_BR').format(_focusedDay)}: ${checkinsForFocusedMonth.length}',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleLarge
+                          ?.copyWith(color: BjjApp.primaryAccent),
+                    ),
+                  ),
+                ),
               ),
-            );
-          },
-        ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                  child: Card(
+                    child: TableCalendar<CheckinEntry>(
+                      locale: 'pt_BR',
+                      firstDay: DateTime.utc(DateTime.now().year - 5, 1, 1),
+                      lastDay: DateTime.utc(DateTime.now().year + 5, 12, 31),
+                      focusedDay: _focusedDay,
+                      calendarFormat: CalendarFormat.month,
+                      headerStyle: HeaderStyle(
+                        formatButtonVisible: false,
+                        titleCentered: true,
+                      ),
+                      eventLoader: (day) =>
+                          eventosAgrupados[
+                              DateTime.utc(day.year, day.month, day.day)] ??
+                          [],
+                      onPageChanged: (focusedDay) {
+                        setState(() {
+                          _focusedDay = focusedDay;
+                        });
+                      },
+                      calendarBuilders: CalendarBuilders(
+                        markerBuilder: (context, date, events) {
+                          if (events.isNotEmpty) {
+                            return Positioned(
+                              right: 1,
+                              bottom: 1,
+                              child: Container(
+                                width: 7,
+                                height: 7,
+                                decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: BjjApp.successColor),
+                              ),
+                            );
+                          }
+                          return null;
+                        },
+                      ),
+                      calendarStyle: CalendarStyle(
+                        outsideDaysVisible: false,
+                        todayDecoration: BoxDecoration(
+                            color: BjjApp.primaryAccent.withOpacity(0.3),
+                            shape: BoxShape.circle),
+                        selectedDecoration: BoxDecoration(
+                            color: BjjApp.primaryAccent,
+                            shape: BoxShape.circle),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: 16),
+            ],
+          );
+        },
       ),
     );
   }
@@ -2973,60 +6107,49 @@ class StudiesStudentPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text("Estudos da Academia"),
-        actions: [
-          IconButton(
-              onPressed: () => FirebaseAuth.instance.signOut(),
-              icon: Icon(Icons.logout))
-        ],
-      ),
-      body: AppBackground(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('academies')
-              .doc(user.academyId)
-              .collection('instructionals')
-              .where('visibility', isEqualTo: 'public')
-              .orderBy('updatedAt', descending: true)
-              .snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting)
-              return Center(child: CircularProgressIndicator());
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
-              return EmptyStateWidget(
-                  icon: Icons.book_outlined,
-                  title: "Nenhum Estudo Público",
-                  message:
-                      "Peça aos seus professores para publicarem seus cadernos de estudo.");
+    return AppBackground(
+      child: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('academies')
+            .doc(user.academyId)
+            .collection('instructionals')
+            .where('visibility', isEqualTo: 'public')
+            .orderBy('updatedAt', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting)
+            return Center(child: CircularProgressIndicator());
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
+            return EmptyStateWidget(
+                icon: Icons.book_outlined,
+                title: "Nenhum Estudo Público",
+                message:
+                    "Peça aos seus professores para publicarem seus cadernos de estudo.");
 
-            final studies = snapshot.data!.docs
-                .map((doc) => StudyInstructional.fromFirestore(doc))
-                .toList();
+          final studies = snapshot.data!.docs
+              .map((doc) => StudyInstructional.fromFirestore(doc))
+              .toList();
 
-            return ListView.builder(
-              padding: EdgeInsets.all(8),
-              itemCount: studies.length,
-              itemBuilder: (context, index) {
-                final study = studies[index];
-                return Card(
-                  child: ListTile(
-                    leading:
-                        Icon(Icons.public_rounded, color: BjjApp.infoColor),
-                    title: Text(study.title),
-                    subtitle: Text("Criado por: ${study.createdByName}"),
-                    trailing: Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                    onTap: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => StudyDetailViewPage(study: study)));
-                    },
-                  ),
-                );
-              },
-            );
-          },
-        ),
+          return ListView.builder(
+            padding: EdgeInsets.all(8),
+            itemCount: studies.length,
+            itemBuilder: (context, index) {
+              final study = studies[index];
+              return Card(
+                child: ListTile(
+                  leading: Icon(Icons.public_rounded, color: BjjApp.infoColor),
+                  title: Text(study.title),
+                  subtitle: Text("Criado por: ${study.createdByName}"),
+                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => StudyDetailViewPage(study: study)));
+                  },
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
@@ -3077,7 +6200,9 @@ class StudyDetailViewPage extends StatelessWidget {
 
 // --- TELA DE TROCA DE SENHA ---
 class ChangePasswordPage extends StatefulWidget {
-  const ChangePasswordPage({Key? key}) : super(key: key);
+  final bool isFirstLogin;
+  const ChangePasswordPage({Key? key, this.isFirstLogin = false})
+      : super(key: key);
 
   @override
   State<ChangePasswordPage> createState() => _ChangePasswordPageState();
@@ -3095,7 +6220,8 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.email == null) {
-      showBjjSnackBar(context, "Usuário não encontrado.", type: "error");
+      if (mounted)
+        showBjjSnackBar(context, "Usuário não encontrado.", type: "error");
       setState(() => _isLoading = false);
       return;
     }
@@ -3108,10 +6234,26 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
     try {
       await user.reauthenticateWithCredential(cred);
       await user.updatePassword(_newPasswordController.text);
+
+      if (widget.isFirstLogin) {
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({'mustChangePassword': false});
+      }
+
       if (mounted) {
         showBjjSnackBar(context, "Senha alterada com sucesso!",
             type: "success");
-        Navigator.of(context).pop();
+
+        if (widget.isFirstLogin) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => AuthGate()),
+            (Route<dynamic> route) => false,
+          );
+        } else {
+          Navigator.of(context).pop();
+        }
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
@@ -3124,7 +6266,8 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         showBjjSnackBar(context, message, type: "error");
       }
     } catch (e) {
-      if (mounted) showBjjSnackBar(context, "Erro inesperado.", type: "error");
+      if (mounted)
+        showBjjSnackBar(context, "Erro inesperado: $e", type: "error");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -3132,52 +6275,78 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text("Alterar Senha")),
-      body: AppBackground(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24.0),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  TextFormField(
-                    controller: _currentPasswordController,
-                    decoration: InputDecoration(labelText: 'Senha Atual'),
-                    obscureText: true,
-                    validator: (v) =>
-                        (v == null || v.isEmpty) ? "Campo obrigatório" : null,
-                  ),
-                  SizedBox(height: 16),
-                  TextFormField(
-                    controller: _newPasswordController,
-                    decoration: InputDecoration(labelText: 'Nova Senha'),
-                    obscureText: true,
-                    validator: (v) => (v == null || v.length < 6)
-                        ? "Mínimo 6 caracteres"
-                        : null,
-                  ),
-                  SizedBox(height: 16),
-                  TextFormField(
-                    decoration:
-                        InputDecoration(labelText: 'Confirme a Nova Senha'),
-                    obscureText: true,
-                    validator: (v) => v != _newPasswordController.text
-                        ? "As senhas não coincidem"
-                        : null,
-                  ),
-                  SizedBox(height: 24),
-                  if (_isLoading)
-                    CircularProgressIndicator()
-                  else
-                    ElevatedButton(
-                      onPressed: _changePassword,
-                      child: Text("Salvar Nova Senha"),
-                      style: ElevatedButton.styleFrom(
-                          minimumSize: Size(double.infinity, 50)),
-                    )
-                ],
+    return WillPopScope(
+      onWillPop: () async => !widget.isFirstLogin,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(
+              widget.isFirstLogin ? "Crie sua Nova Senha" : "Alterar Senha"),
+          automaticallyImplyLeading: !widget.isFirstLogin,
+          actions: widget.isFirstLogin
+              ? [
+                  IconButton(
+                    icon: Icon(Icons.logout),
+                    tooltip: 'Fazer Logout',
+                    onPressed: () => FirebaseAuth.instance.signOut(),
+                  )
+                ]
+              : null,
+        ),
+        body: AppBackground(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    if (widget.isFirstLogin)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 16.0),
+                        child: Text(
+                          "Por segurança, você precisa definir uma nova senha para continuar.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: BjjApp.textHint),
+                        ),
+                      ),
+                    TextFormField(
+                      controller: _currentPasswordController,
+                      decoration: InputDecoration(
+                          labelText: 'Senha Atual (ou Temporária)'),
+                      obscureText: true,
+                      validator: (v) =>
+                          (v == null || v.isEmpty) ? "Campo obrigatório" : null,
+                    ),
+                    SizedBox(height: 16),
+                    TextFormField(
+                      controller: _newPasswordController,
+                      decoration: InputDecoration(labelText: 'Nova Senha'),
+                      obscureText: true,
+                      validator: (v) => (v == null || v.length < 6)
+                          ? "Mínimo 6 caracteres"
+                          : null,
+                    ),
+                    SizedBox(height: 16),
+                    TextFormField(
+                      decoration:
+                          InputDecoration(labelText: 'Confirme a Nova Senha'),
+                      obscureText: true,
+                      validator: (v) => v != _newPasswordController.text
+                          ? "As senhas não coincidem"
+                          : null,
+                    ),
+                    SizedBox(height: 24),
+                    if (_isLoading)
+                      CircularProgressIndicator()
+                    else
+                      ElevatedButton(
+                        onPressed: _changePassword,
+                        child: Text("Salvar Nova Senha"),
+                        style: ElevatedButton.styleFrom(
+                            minimumSize: Size(double.infinity, 50)),
+                      )
+                  ],
+                ),
               ),
             ),
           ),
