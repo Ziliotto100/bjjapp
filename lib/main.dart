@@ -16,11 +16,16 @@ import 'package:share_plus/share_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'models.dart';
 // Certifique-se que esses arquivos existem ou comente-os se não estiver usando flavors
 import 'firebase_options_dev.dart' as dev;
 import 'firebase_options_prod.dart' as prod;
+
+// --- NOVOS IMPORTS PARA O CADERNO DE ESTUDOS ---
+import 'study_note_service.dart';
+import 'study_notebook_page.dart';
 
 // Nova constante para definir o Flavor
 const flavor = String.fromEnvironment('FLAVOR');
@@ -1603,7 +1608,7 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
 
       if (newUser == null) {
         await tempApp.delete();
-        throw Exception("Falha ao criar a conta de autenticação.");
+        throw Exception("Falha ao criar la cuenta de autenticação.");
       }
 
       final batch = FirebaseFirestore.instance.batch();
@@ -2564,10 +2569,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
 
   final List<String> _titulos = const [
     'Painel do Professor',
-    'Gerenciar Alunos', // Novo
+    'Gerenciar Alunos',
     'Check-in',
-    'Estudos',
     'Sorteio',
+    'Caderno de Estudos', // NOVO
     'Placar'
   ];
 
@@ -2643,17 +2648,18 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                   todosAlunos: _todosParticipantesDaAcademia)));
         },
       ),
-      AlunosTeacherPage(academyId: widget.user.academyId), // Novo
+      AlunosTeacherPage(academyId: widget.user.academyId),
       CheckinTeacherPage(
           academyId: widget.user.academyId,
           todosParticipantesDaAcademia: _todosParticipantesDaAcademia),
-      StudiesTeacherPage(user: widget.user),
       SorteioTeacherPage(
           academyId: widget.user.academyId,
           todosParticipantesDaAcademia: _todosParticipantesDaAcademia,
           isSparringMode: _isSparringMode,
           onIniciarSparring: _startSparring,
           onCheckinAlunos: _checkinStudents),
+      // MODIFICADO: Passa o userId para a tela de estudos
+      StudyNotebookPage(userId: widget.user.uid),
       MatchSetupPage(
           academyId: widget.user.academyId,
           todosAlunosDaAcademia: _todosParticipantesDaAcademia),
@@ -2791,12 +2797,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             label: 'Check-in',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.book_rounded),
-            label: 'Estudos',
-          ),
-          BottomNavigationBarItem(
             icon: Icon(Icons.shuffle_rounded),
             label: 'Sorteio',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.book_rounded), // NOVO
+            label: 'Estudos',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.scoreboard_rounded),
@@ -2810,18 +2816,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
               child: Icon(Icons.add),
               tooltip: 'Adicionar Aluno',
             )
-          : _paginaAtual == 3 // Aba Estudos
-              ? FloatingActionButton(
-                  onPressed: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) =>
-                          EditStudyPage(user: widget.user, study: null),
-                    ));
-                  },
-                  child: Icon(Icons.add),
-                  tooltip: 'Criar Novo Estudo',
-                )
-              : null,
+          : null,
     );
   }
 }
@@ -3738,333 +3733,6 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
           ],
         ),
       ),
-    );
-  }
-}
-
-class StudiesTeacherPage extends StatelessWidget {
-  final UserModel user;
-  const StudiesTeacherPage({Key? key, required this.user}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return AppBackground(
-      child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('academies')
-            .doc(user.academyId)
-            .collection('instructionals')
-            .orderBy('updatedAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
-            return Center(child: CircularProgressIndicator());
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
-            return EmptyStateWidget(
-                icon: Icons.book_outlined,
-                title: "Nenhum Estudo Criado",
-                message:
-                    "Clique no '+' para criar o primeiro caderno de estudos.");
-
-          final studiesDocs = snapshot.data!.docs;
-
-          final visibleStudies = studiesDocs.where((doc) {
-            final study = StudyInstructional.fromFirestore(doc);
-            return study.visibility == 'public' ||
-                study.createdByUid == user.uid;
-          }).toList();
-
-          if (visibleStudies.isEmpty)
-            return EmptyStateWidget(
-                icon: Icons.book_outlined,
-                title: "Nenhum Estudo Para Mostrar",
-                message:
-                    "Crie um novo estudo ou peça para outros professores tornarem os seus públicos.");
-
-          return ListView.builder(
-            padding: EdgeInsets.fromLTRB(8, 8, 8, 80),
-            itemCount: visibleStudies.length,
-            itemBuilder: (context, index) {
-              final study =
-                  StudyInstructional.fromFirestore(visibleStudies[index]);
-              final bool isOwner = study.createdByUid == user.uid;
-
-              return Card(
-                child: ListTile(
-                  leading: Icon(study.visibility == 'public'
-                      ? Icons.public_rounded
-                      : Icons.lock_person_rounded),
-                  title: Text(study.title),
-                  subtitle: Text("Criado por: ${study.createdByName}"),
-                  trailing: isOwner
-                      ? Icon(Icons.edit, color: BjjApp.primaryAccent)
-                      : Icon(Icons.visibility),
-                  onTap: () {
-                    if (isOwner) {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => EditStudyPage(user: user, study: study),
-                      ));
-                    } else {
-                      Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => StudyDetailViewPage(study: study)));
-                    }
-                  },
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-class EditStudyPage extends StatefulWidget {
-  final UserModel user;
-  final StudyInstructional? study;
-  const EditStudyPage({Key? key, required this.user, this.study})
-      : super(key: key);
-
-  @override
-  State<EditStudyPage> createState() => _EditStudyPageState();
-}
-
-class _EditStudyPageState extends State<EditStudyPage> {
-  final _titleController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-  bool _isPublic = false;
-  List<StudyNote> _notes = [];
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.study != null) {
-      _titleController.text = widget.study!.title;
-      _isPublic = widget.study!.visibility == 'public';
-      _notes = List<StudyNote>.from(widget.study!.notes);
-    }
-  }
-
-  Future<void> _saveStudy() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    final studyData = {
-      'title': _titleController.text.trim(),
-      'createdByUid': widget.user.uid,
-      'createdByName': widget.user.name,
-      'visibility': _isPublic ? 'public' : 'private',
-      'notes': _notes.map((note) => note.toJson()).toList(),
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-
-    final collection = FirebaseFirestore.instance
-        .collection('academies')
-        .doc(widget.user.academyId)
-        .collection('instructionals');
-
-    try {
-      if (widget.study == null) {
-        await collection.add(studyData);
-        showBjjSnackBar(context, 'Estudo criado com sucesso!', type: 'success');
-      } else {
-        await collection.doc(widget.study!.id).update(studyData);
-        showBjjSnackBar(context, 'Estudo atualizado!', type: 'success');
-      }
-      if (mounted) Navigator.of(context).pop();
-    } catch (e) {
-      if (mounted)
-        showBjjSnackBar(context, 'Erro ao salvar estudo: $e', type: 'error');
-    }
-  }
-
-  void _showNoteDialog({StudyNote? note, int? index}) async {
-    final result = await showDialog<StudyNote>(
-      context: context,
-      builder: (_) => NoteEditDialog(note: note),
-    );
-
-    if (result != null) {
-      setState(() {
-        if (index != null) {
-          _notes[index] = result;
-        } else {
-          _notes.add(result);
-        }
-      });
-    }
-  }
-
-  void _deleteNote(int index) {
-    setState(() {
-      _notes.removeAt(index);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.study == null ? "Novo Estudo" : "Editar Estudo"),
-        actions: [
-          IconButton(
-              icon: Icon(Icons.save),
-              onPressed: _saveStudy,
-              tooltip: "Salvar Estudo")
-        ],
-      ),
-      body: AppBackground(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  children: [
-                    TextFormField(
-                      controller: _titleController,
-                      decoration:
-                          InputDecoration(labelText: 'Título do Caderno'),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Título não pode ser vazio'
-                          : null,
-                    ),
-                    SwitchListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text("Público para a Academia"),
-                      subtitle: Text(
-                          "Se ativo, alunos e outros professores poderão ver."),
-                      value: _isPublic,
-                      onChanged: (val) => setState(() => _isPublic = val),
-                      secondary: Icon(_isPublic
-                          ? Icons.public_rounded
-                          : Icons.lock_person_rounded),
-                    ),
-                  ],
-                ),
-              ),
-              Divider(height: 1),
-              Expanded(
-                  child: _notes.isEmpty
-                      ? Center(
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: OutlinedButton.icon(
-                              icon: Icon(Icons.add),
-                              label: Text("Adicionar Primeira Anotação"),
-                              onPressed: () => _showNoteDialog(),
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          padding: EdgeInsets.fromLTRB(8, 16, 8, 80),
-                          itemCount: _notes.length,
-                          itemBuilder: (context, index) {
-                            final note = _notes[index];
-                            return Card(
-                              child: ListTile(
-                                title: Text(note.title),
-                                subtitle: Text(note.description,
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis),
-                                trailing: IconButton(
-                                    icon: Icon(Icons.delete_outline,
-                                        color: BjjApp.errorColor),
-                                    onPressed: () => _deleteNote(index)),
-                                onTap: () =>
-                                    _showNoteDialog(note: note, index: index),
-                              ),
-                            );
-                          },
-                        )),
-              if (_notes.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                  child: OutlinedButton.icon(
-                    icon: Icon(Icons.add),
-                    label: Text("Adicionar Mais Anotações"),
-                    onPressed: () => _showNoteDialog(),
-                    style: OutlinedButton.styleFrom(
-                        minimumSize: Size(double.infinity, 40)),
-                  ),
-                )
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class NoteEditDialog extends StatefulWidget {
-  final StudyNote? note;
-  const NoteEditDialog({Key? key, this.note}) : super(key: key);
-
-  @override
-  State<NoteEditDialog> createState() => _NoteEditDialogState();
-}
-
-class _NoteEditDialogState extends State<NoteEditDialog> {
-  final _titleController = TextEditingController();
-  final _descController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.note != null) {
-      _titleController.text = widget.note!.title;
-      _descController.text = widget.note!.description;
-    }
-  }
-
-  void _save() {
-    if (_formKey.currentState!.validate()) {
-      final newNote = StudyNote(
-        title: _titleController.text.trim(),
-        description: _descController.text.trim(),
-      );
-      Navigator.of(context).pop(newNote);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.note == null ? "Nova Anotação" : "Editar Anotação"),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: _titleController,
-                decoration:
-                    InputDecoration(labelText: "Título (Ex: Kimura da Guarda)"),
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? "Título é obrigatório"
-                    : null,
-              ),
-              SizedBox(height: 16),
-              TextFormField(
-                controller: _descController,
-                decoration: InputDecoration(labelText: "Descrição / Detalhes"),
-                maxLines: 4,
-                validator: (v) => (v == null || v.trim().isEmpty)
-                    ? "Descrição é obrigatória"
-                    : null,
-              )
-            ],
-          ),
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text("Cancelar")),
-        ElevatedButton(onPressed: _save, child: Text("Salvar")),
-      ],
     );
   }
 }
@@ -5416,7 +5084,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
   final List<String> _titulos = const [
     'Meu Perfil',
     'Histórico',
-    'Estudos da Academia',
+    'Caderno de Estudos',
     'Placar Individual'
   ];
 
@@ -5480,7 +5148,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
     _telas = [
       StudentProfilePage(user: widget.user),
       MyCheckinsPage(user: widget.user),
-      StudiesStudentPage(user: widget.user),
+      // MODIFICADO: Passa o userId para a tela de estudos
+      StudyNotebookPage(userId: widget.user.uid),
       MatchSetupPage(
           academyId: widget.user.academyId,
           todosAlunosDaAcademia: _todosOsAlunosDaAcademia),
@@ -6101,103 +5770,6 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
   }
 }
 
-class StudiesStudentPage extends StatelessWidget {
-  final UserModel user;
-  const StudiesStudentPage({Key? key, required this.user}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return AppBackground(
-      child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('academies')
-            .doc(user.academyId)
-            .collection('instructionals')
-            .where('visibility', isEqualTo: 'public')
-            .orderBy('updatedAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting)
-            return Center(child: CircularProgressIndicator());
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty)
-            return EmptyStateWidget(
-                icon: Icons.book_outlined,
-                title: "Nenhum Estudo Público",
-                message:
-                    "Peça aos seus professores para publicarem seus cadernos de estudo.");
-
-          final studies = snapshot.data!.docs
-              .map((doc) => StudyInstructional.fromFirestore(doc))
-              .toList();
-
-          return ListView.builder(
-            padding: EdgeInsets.all(8),
-            itemCount: studies.length,
-            itemBuilder: (context, index) {
-              final study = studies[index];
-              return Card(
-                child: ListTile(
-                  leading: Icon(Icons.public_rounded, color: BjjApp.infoColor),
-                  title: Text(study.title),
-                  subtitle: Text("Criado por: ${study.createdByName}"),
-                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => StudyDetailViewPage(study: study)));
-                  },
-                ),
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-}
-
-class StudyDetailViewPage extends StatelessWidget {
-  final StudyInstructional study;
-  const StudyDetailViewPage({Key? key, required this.study}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(study.title),
-      ),
-      body: AppBackground(
-        child: study.notes.isEmpty
-            ? EmptyStateWidget(
-                icon: Icons.notes,
-                title: "Nenhuma Anotação",
-                message: "Este caderno de estudos ainda não possui anotações.")
-            : ListView.builder(
-                padding: EdgeInsets.all(16),
-                itemCount: study.notes.length,
-                itemBuilder: (context, index) {
-                  final note = study.notes[index];
-                  return Card(
-                    margin: EdgeInsets.only(bottom: 12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(note.title,
-                              style: Theme.of(context).textTheme.titleMedium),
-                          Divider(height: 16),
-                          Text(note.description,
-                              style: Theme.of(context).textTheme.bodyLarge),
-                        ],
-                      ),
-                    ),
-                  );
-                }),
-      ),
-    );
-  }
-}
-
 // --- TELA DE TROCA DE SENHA ---
 class ChangePasswordPage extends StatefulWidget {
   final bool isFirstLogin;
@@ -6351,6 +5923,307 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+// --- NOVAS TELAS DO CADERNO DE ESTUDOS (PARA COMPLETUDE DO ARQUIVO) ---
+
+class NoteDetailPage extends StatelessWidget {
+  final StudyNote note;
+
+  const NoteDetailPage({Key? key, required this.note}) : super(key: key);
+
+  Future<void> _launchUrl(BuildContext context) async {
+    if (note.videoUrl != null && note.videoUrl!.isNotEmpty) {
+      final uri = Uri.parse(note.videoUrl!);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      } else {
+        showBjjSnackBar(
+            context, 'Não foi possível abrir o link: ${note.videoUrl}',
+            type: 'error');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(note.title),
+      ),
+      body: AppBackground(
+        child: ListView(
+          padding: const EdgeInsets.all(16.0),
+          children: [
+            Text(
+              note.title,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 16),
+            if (note.tags.isNotEmpty)
+              Wrap(
+                spacing: 8.0,
+                runSpacing: 4.0,
+                children:
+                    note.tags.map((tag) => Chip(label: Text(tag))).toList(),
+              ),
+            const SizedBox(height: 16),
+            if (note.imagePath != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16.0),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12.0),
+                  child: Image.file(File(note.imagePath!)),
+                ),
+              ),
+            if (note.videoUrl != null && note.videoUrl!.isNotEmpty)
+              Card(
+                child: ListTile(
+                  leading: Icon(Icons.video_library_rounded,
+                      color: BjjApp.primaryAccent),
+                  title: Text("Assistir Vídeo de Referência"),
+                  trailing: Icon(Icons.open_in_new),
+                  onTap: () => _launchUrl(context),
+                ),
+              ),
+            const SizedBox(height: 16),
+            Text(
+              "Anotações",
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            Divider(height: 20),
+            SelectableText(
+              note.content,
+              style:
+                  Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class EditStudyNotePage extends StatefulWidget {
+  final StudyNote? note; // Se a nota for nula, é uma nova anotação
+  final String userId; // MODIFICADO: Precisa saber quem é o usuário
+
+  const EditStudyNotePage({Key? key, this.note, required this.userId})
+      : super(key: key);
+
+  @override
+  _EditStudyNotePageState createState() => _EditStudyNotePageState();
+}
+
+class _EditStudyNotePageState extends State<EditStudyNotePage> {
+  final _formKey = GlobalKey<FormState>();
+  final _noteService = StudyNoteService();
+  final _titleController = TextEditingController();
+  final _contentController = TextEditingController();
+  final _tagsController = TextEditingController();
+  final _urlController = TextEditingController();
+
+  String? _imagePath;
+  bool _isSaving = false;
+
+  bool get _isEditing => widget.note != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEditing) {
+      _titleController.text = widget.note!.title;
+      _contentController.text = widget.note!.content;
+      _tagsController.text = widget.note!.tags.join(', ');
+      _urlController.text = widget.note!.videoUrl ?? '';
+      _imagePath = widget.note!.imagePath;
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    final XFile? image =
+        await picker.pickImage(source: ImageSource.gallery, imageQuality: 80);
+
+    if (image != null) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (BuildContext context) {
+          return Dialog(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                CircularProgressIndicator(),
+                SizedBox(width: 20),
+                Text("Salvando imagem..."),
+              ]),
+            ),
+          );
+        },
+      );
+
+      // MODIFICADO: Passa o userId para salvar a imagem
+      final savedPath = await _noteService.saveImage(widget.userId, image);
+
+      Navigator.of(context).pop();
+
+      if (savedPath != null) {
+        setState(() {
+          _imagePath = savedPath;
+        });
+      } else {
+        showBjjSnackBar(context, "Não foi possível salvar a imagem.",
+            type: 'error');
+      }
+    }
+  }
+
+  Future<void> _saveNote() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    // MODIFICADO: Carrega as notas do usuário específico
+    final allNotes = await _noteService.loadNotes(widget.userId);
+    final tags = _tagsController.text
+        .split(',')
+        .map((t) => t.trim())
+        .where((t) => t.isNotEmpty)
+        .toList();
+
+    if (_isEditing) {
+      final index = allNotes.indexWhere((n) => n.id == widget.note!.id);
+      if (index != -1) {
+        allNotes[index].title = _titleController.text;
+        allNotes[index].content = _contentController.text;
+        allNotes[index].tags = tags;
+        allNotes[index].videoUrl = _urlController.text.trim().isEmpty
+            ? null
+            : _urlController.text.trim();
+        allNotes[index].imagePath = _imagePath;
+        allNotes[index].updatedAt = DateTime.now();
+      }
+    } else {
+      final newNote = StudyNote.create(
+        title: _titleController.text,
+        content: _contentController.text,
+        tags: tags,
+        videoUrl: _urlController.text.trim().isEmpty
+            ? null
+            : _urlController.text.trim(),
+        imagePath: _imagePath,
+      );
+      allNotes.add(newNote);
+    }
+
+    // MODIFICADO: Salva as notas para o usuário específico
+    await _noteService.saveNotes(widget.userId, allNotes);
+
+    if (mounted) {
+      showBjjSnackBar(context, "Anotação salva com sucesso!", type: 'success');
+      Navigator.of(context).pop();
+    }
+  }
+
+  void _removeImage() {
+    setState(() {
+      _imagePath = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_isEditing ? 'Editar Anotação' : 'Nova Anotação'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.save),
+            onPressed: _isSaving ? null : _saveNote,
+            tooltip: 'Salvar Anotação',
+          )
+        ],
+      ),
+      body: AppBackground(
+        child: _isSaving
+            ? Center(child: CircularProgressIndicator())
+            : Form(
+                key: _formKey,
+                child: ListView(
+                  padding: const EdgeInsets.all(16.0),
+                  children: [
+                    TextFormField(
+                      controller: _titleController,
+                      decoration: InputDecoration(labelText: 'Título'),
+                      validator: (v) =>
+                          v!.trim().isEmpty ? 'O título é obrigatório.' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _contentController,
+                      decoration: InputDecoration(
+                        labelText: 'Anotações',
+                        alignLabelWithHint: true,
+                      ),
+                      maxLines: 10,
+                      validator: (v) => v!.trim().isEmpty
+                          ? 'O conteúdo é obrigatório.'
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _tagsController,
+                      decoration: InputDecoration(
+                          labelText: 'Tags (separadas por vírgula)'),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _urlController,
+                      decoration: InputDecoration(
+                          labelText: 'Link do Vídeo (Opcional)'),
+                    ),
+                    const SizedBox(height: 24),
+                    if (_imagePath != null)
+                      Column(
+                        children: [
+                          Text("Imagem Anexada:",
+                              style: Theme.of(context).textTheme.titleSmall),
+                          const SizedBox(height: 8),
+                          Stack(
+                            alignment: Alignment.topRight,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.file(File(_imagePath!)),
+                              ),
+                              IconButton(
+                                icon: CircleAvatar(
+                                    backgroundColor: Colors.black54,
+                                    child:
+                                        Icon(Icons.close, color: Colors.white)),
+                                onPressed: _removeImage,
+                              )
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    OutlinedButton.icon(
+                      icon: Icon(Icons.attach_file),
+                      label: Text(_imagePath == null
+                          ? 'Anexar Imagem'
+                          : 'Trocar Imagem'),
+                      onPressed: _pickImage,
+                    ),
+                  ],
+                ),
+              ),
       ),
     );
   }
