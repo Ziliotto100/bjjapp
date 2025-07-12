@@ -50,6 +50,26 @@ android {
         versionName = flutter.versionName
     }
 
+    // --- BLOCO ADICIONADO PARA CORRIGIR O ERRO ---
+    // NOVO: Define uma categoria para seus flavors.
+    flavorDimensions.add("app")
+
+    // NOVO: Define os flavors 'prod' e 'dev' que seu app possui.
+    productFlavors {
+        // Flavor de produção (o que você tentou compilar)
+        create("prod") {
+            dimension = "app"
+            // Você pode diferenciar o ID do aplicativo para cada flavor, se quiser.
+            // Ex: applicationIdSuffix = ".prod"
+        }
+        // Flavor de desenvolvimento (para corresponder ao seu main.dart)
+        create("dev") {
+            dimension = "app"
+            // Ex: applicationIdSuffix = ".dev"
+        }
+    }
+    // --- FIM DO BLOCO ADICIONADO ---
+
     buildTypes {
         release {
             // Associa a configuração de assinatura ao tipo de build 'release'.
