@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
-import 'dart:math';
-import 'dart:convert';
 import 'package:collection/collection.dart';
 import 'dart:async';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
 import 'package:image_picker/image_picker.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -33,7 +26,7 @@ const flavor = String.fromEnvironment('FLAVOR');
 // AppBackground, BjjApp (Tema) e showBjjSnackBar (sem alterações)
 class AppBackground extends StatelessWidget {
   final Widget child;
-  const AppBackground({Key? key, required this.child}) : super(key: key);
+  const AppBackground({super.key, required this.child});
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -41,7 +34,7 @@ class AppBackground extends StatelessWidget {
       height: double.infinity,
       decoration: BoxDecoration(
         image: DecorationImage(
-          image: AssetImage("assets/images/planofundo.png"),
+          image: const AssetImage("assets/images/planofundo.png"),
           fit: BoxFit.cover,
           colorFilter: ColorFilter.mode(
             Colors.black.withOpacity(0.65),
@@ -69,40 +62,39 @@ class BjjApp extends StatelessWidget {
   static const Color errorColor = Color(0xFFE74C3C);
   static const Color infoColor = Color(0xFF54A0FF);
 
+  const BjjApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Match BJJ',
-      localizationsDelegates: [
+      localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
-      supportedLocales: [
-        const Locale('pt', 'BR'),
+      supportedLocales: const [
+        Locale('pt', 'BR'),
       ],
       theme: ThemeData(
           brightness: Brightness.dark,
           primaryColor: darkSurface,
           scaffoldBackgroundColor: Colors.transparent,
-          dialogBackgroundColor: darkSurface,
           cardColor: darkSurface.withOpacity(0.85),
           canvasColor: darkScaffoldBackground,
-          colorScheme: ColorScheme.dark(
+          colorScheme: const ColorScheme.dark(
             primary: primaryAccent,
             secondary: primaryAccent,
             surface: darkSurface,
-            background: darkScaffoldBackground,
             error: errorColor,
             onPrimary: primaryAccentForeground,
             onSecondary: primaryAccentForeground,
             onSurface: textPrimary,
-            onBackground: textPrimary,
             onError: Colors.white,
           ),
           hintColor: textHint,
-          textTheme: TextTheme(
+          textTheme: const TextTheme(
             bodyMedium: TextStyle(color: textSecondary, fontSize: 14),
             bodyLarge: TextStyle(color: textSecondary, fontSize: 16),
             bodySmall: TextStyle(color: textSecondary, fontSize: 12),
@@ -118,7 +110,7 @@ class BjjApp extends StatelessWidget {
                 fontWeight: FontWeight.bold,
                 fontSize: 16),
           ).apply(fontFamily: 'Roboto'),
-          appBarTheme: AppBarTheme(
+          appBarTheme: const AppBarTheme(
             backgroundColor: darkSurface,
             elevation: 2.0,
             titleTextStyle: TextStyle(
@@ -128,7 +120,7 @@ class BjjApp extends StatelessWidget {
                 fontFamily: 'Roboto'),
             iconTheme: IconThemeData(color: textPrimary),
           ),
-          bottomNavigationBarTheme: BottomNavigationBarThemeData(
+          bottomNavigationBarTheme: const BottomNavigationBarThemeData(
             backgroundColor: darkSurface,
             selectedItemColor: primaryAccent,
             unselectedItemColor: textHint,
@@ -141,8 +133,8 @@ class BjjApp extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: primaryAccent,
               foregroundColor: primaryAccentForeground,
-              padding: EdgeInsets.symmetric(vertical: 14, horizontal: 24),
-              textStyle: TextStyle(
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+              textStyle: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
                   fontFamily: 'Roboto'),
@@ -151,7 +143,7 @@ class BjjApp extends StatelessWidget {
               elevation: 2,
             ),
           ),
-          floatingActionButtonTheme: FloatingActionButtonThemeData(
+          floatingActionButtonTheme: const FloatingActionButtonThemeData(
             backgroundColor: primaryAccent,
             foregroundColor: primaryAccentForeground,
             elevation: 4.0,
@@ -160,78 +152,78 @@ class BjjApp extends StatelessWidget {
             backgroundColor: darkSurface,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12.0)),
-            titleTextStyle: TextStyle(
+            titleTextStyle: const TextStyle(
                 color: textPrimary,
                 fontSize: 19.0,
                 fontWeight: FontWeight.bold,
                 fontFamily: 'Roboto'),
-            contentTextStyle: TextStyle(
+            contentTextStyle: const TextStyle(
                 color: textSecondary, fontSize: 15, fontFamily: 'Roboto'),
           ),
           inputDecorationTheme: InputDecorationTheme(
-            labelStyle: TextStyle(color: textHint),
+            labelStyle: const TextStyle(color: textHint),
             hintStyle: TextStyle(color: textHint.withOpacity(0.7)),
             filled: true,
             fillColor: darkScaffoldBackground.withOpacity(0.5),
             contentPadding:
-                EdgeInsets.symmetric(vertical: 14.0, horizontal: 12.0),
+                const EdgeInsets.symmetric(vertical: 14.0, horizontal: 12.0),
             border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.0),
-                borderSide: BorderSide(color: borderNormal)),
+                borderSide: const BorderSide(color: borderNormal)),
             enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.0),
-                borderSide: BorderSide(color: borderNormal)),
+                borderSide: const BorderSide(color: borderNormal)),
             focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.0),
-                borderSide: BorderSide(color: borderFocused, width: 2.0)),
+                borderSide: const BorderSide(color: borderFocused, width: 2.0)),
             errorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.0),
-                borderSide: BorderSide(color: errorColor, width: 1.5)),
+                borderSide: const BorderSide(color: errorColor, width: 1.5)),
             focusedErrorBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8.0),
-                borderSide: BorderSide(color: errorColor, width: 2.0)),
+                borderSide: const BorderSide(color: errorColor, width: 2.0)),
             errorStyle:
-                TextStyle(color: errorColor, fontWeight: FontWeight.w500),
+                const TextStyle(color: errorColor, fontWeight: FontWeight.w500),
           ),
           dropdownMenuTheme: DropdownMenuThemeData(
             inputDecorationTheme: InputDecorationTheme(
-              labelStyle: TextStyle(color: textHint),
+              labelStyle: const TextStyle(color: textHint),
               hintStyle: TextStyle(color: textHint.withOpacity(0.7)),
               filled: true,
               fillColor: darkScaffoldBackground.withOpacity(0.5),
               contentPadding:
-                  EdgeInsets.symmetric(vertical: 14.0, horizontal: 12.0),
+                  const EdgeInsets.symmetric(vertical: 14.0, horizontal: 12.0),
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.0),
-                  borderSide: BorderSide(color: borderNormal)),
+                  borderSide: const BorderSide(color: borderNormal)),
               enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.0),
-                  borderSide: BorderSide(color: borderNormal)),
+                  borderSide: const BorderSide(color: borderNormal)),
               focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8.0),
-                  borderSide: BorderSide(color: borderFocused, width: 2.0)),
+                  borderSide: const BorderSide(color: borderFocused, width: 2.0)),
             ),
             menuStyle: MenuStyle(
-              backgroundColor: MaterialStatePropertyAll(darkSurface),
-              shape: MaterialStatePropertyAll(RoundedRectangleBorder(
+              backgroundColor: const WidgetStatePropertyAll(darkSurface),
+              shape: WidgetStatePropertyAll(RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8.0))),
-              elevation: MaterialStatePropertyAll(3.0),
+              elevation: const WidgetStatePropertyAll(3.0),
             ),
-            textStyle: TextStyle(color: textSecondary, fontFamily: 'Roboto'),
+            textStyle: const TextStyle(color: textSecondary, fontFamily: 'Roboto'),
           ),
           popupMenuTheme: PopupMenuThemeData(
             color: darkSurface,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8.0)),
-            textStyle: TextStyle(color: textSecondary, fontFamily: 'Roboto'),
+            textStyle: const TextStyle(color: textSecondary, fontFamily: 'Roboto'),
             elevation: 4.0,
           ),
           checkboxTheme: CheckboxThemeData(
-            fillColor: MaterialStateProperty.resolveWith((states) =>
-                states.contains(MaterialState.selected)
+            fillColor: WidgetStateProperty.resolveWith((states) =>
+                states.contains(WidgetState.selected)
                     ? primaryAccent
                     : textHint.withOpacity(0.2)),
-            checkColor: MaterialStateProperty.all(primaryAccentForeground),
+            checkColor: WidgetStateProperty.all(primaryAccentForeground),
             side: BorderSide(color: textHint.withOpacity(0.5)),
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(4.0)),
@@ -239,7 +231,7 @@ class BjjApp extends StatelessWidget {
           textButtonTheme: TextButtonThemeData(
             style: TextButton.styleFrom(
                 foregroundColor: primaryAccent,
-                textStyle: TextStyle(
+                textStyle: const TextStyle(
                     fontWeight: FontWeight.bold, fontFamily: 'Roboto')),
           ),
           cardTheme: CardThemeData(
@@ -247,7 +239,7 @@ class BjjApp extends StatelessWidget {
             elevation: 2.0,
             shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12.0)),
-            margin: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           ),
           pageTransitionsTheme: const PageTransitionsTheme(
             builders: {
@@ -263,7 +255,7 @@ class BjjApp extends StatelessWidget {
               selectedBackgroundColor: primaryAccent,
             ),
           )),
-      home: AuthGate(),
+      home: const AuthGate(),
     );
   }
 }
@@ -293,24 +285,24 @@ void showBjjSnackBar(BuildContext context, String message,
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(
     content: Row(children: [
       Icon(icon, color: Colors.white, size: 20),
-      SizedBox(width: 10),
+      const SizedBox(width: 10),
       Expanded(
           child: Text(message,
               style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.w500))),
+                  const TextStyle(color: Colors.white, fontWeight: FontWeight.w500))),
     ]),
     backgroundColor: backgroundColor,
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
     behavior: SnackBarBehavior.floating,
-    margin: EdgeInsets.fromLTRB(16, 10, 16, 10),
+    margin: const EdgeInsets.fromLTRB(16, 10, 16, 10),
     elevation: 4.0,
-    duration: Duration(seconds: 4),
+    duration: const Duration(seconds: 4),
   ));
 }
 
 // --- TELAS DE AUTENTICAÇÃO ---
 class LoginPage extends StatefulWidget {
-  const LoginPage({Key? key}) : super(key: key);
+  const LoginPage({super.key});
   @override
   _LoginPageState createState() => _LoginPageState();
 }
@@ -387,13 +379,13 @@ class _LoginPageState extends State<LoginPage> {
                               fontWeight: FontWeight.bold,
                               fontSize: 38)),
                   const SizedBox(height: 8),
-                  Text('Faça o login para continuar',
+                  const Text('Faça o login para continuar',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: BjjApp.textHint, fontSize: 16)),
                   const SizedBox(height: 40),
                   TextFormField(
                     controller: _emailController,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                         labelText: 'E-mail',
                         prefixIcon: Icon(Icons.email_outlined)),
                     keyboardType: TextInputType.emailAddress,
@@ -405,7 +397,7 @@ class _LoginPageState extends State<LoginPage> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _passwordController,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                         labelText: 'Senha',
                         prefixIcon: Icon(Icons.lock_outline_rounded)),
                     obscureText: true,
@@ -415,21 +407,21 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 24),
                   if (_isLoading)
-                    Center(child: CircularProgressIndicator())
+                    const Center(child: CircularProgressIndicator())
                   else
                     ElevatedButton(
                       onPressed: _submit,
-                      child: Text('ENTRAR'),
                       style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(vertical: 16)),
+                          padding: const EdgeInsets.symmetric(vertical: 16)),
+                      child: const Text('ENTRAR'),
                     ),
                   TextButton(
                     onPressed: () {
                       Navigator.of(context).push(MaterialPageRoute(
-                        builder: (context) => RegisterAcademyPage(),
+                        builder: (context) => const RegisterAcademyPage(),
                       ));
                     },
-                    child: Text('Não tem uma conta? Cadastre sua academia',
+                    child: const Text('Não tem uma conta? Cadastre sua academia',
                         style: TextStyle(color: BjjApp.textHint)),
                   ),
                 ],
@@ -443,7 +435,7 @@ class _LoginPageState extends State<LoginPage> {
 }
 
 class RegisterAcademyPage extends StatefulWidget {
-  const RegisterAcademyPage({Key? key}) : super(key: key);
+  const RegisterAcademyPage({super.key});
   @override
   _RegisterAcademyPageState createState() => _RegisterAcademyPageState();
 }
@@ -561,7 +553,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Registrar Academia"),
+        title: const Text("Registrar Academia"),
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
@@ -581,7 +573,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                   const SizedBox(height: 24),
                   TextFormField(
                     controller: _academyNameController,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                         labelText: 'Nome da Academia',
                         prefixIcon: Icon(Icons.business_rounded)),
                     validator: (value) =>
@@ -596,7 +588,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                   const SizedBox(height: 24),
                   TextFormField(
                     controller: _managerNameController,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                         labelText: 'Seu Nome Completo',
                         prefixIcon: Icon(Icons.person_rounded)),
                     validator: (value) =>
@@ -607,10 +599,10 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: _faixa,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                         labelText: 'Sua Faixa',
                         prefixIcon: Icon(Icons.shield_outlined)),
-                    hint: Text("Selecione sua Faixa"),
+                    hint: const Text("Selecione sua Faixa"),
                     items: _faixasList
                         .map((faixa) =>
                             DropdownMenuItem(value: faixa, child: Text(faixa)))
@@ -627,12 +619,12 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                   if (_faixa != null)
                     DropdownButtonFormField<int>(
                       value: _graus,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                           labelText: 'Seus Graus (opcional)',
                           prefixIcon: Icon(Icons.star_outline_rounded)),
-                      hint: Text("Selecione seus Graus"),
+                      hint: const Text("Selecione seus Graus"),
                       items: [
-                        DropdownMenuItem<int>(
+                        const DropdownMenuItem<int>(
                             value: null, child: Text("Nenhum")),
                         ..._grausList.map((g) => DropdownMenuItem(
                             value: g, child: Text("$gº Grau"))),
@@ -642,7 +634,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _emailController,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                         labelText: 'Seu E-mail',
                         prefixIcon: Icon(Icons.email_outlined)),
                     keyboardType: TextInputType.emailAddress,
@@ -654,7 +646,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                   const SizedBox(height: 16),
                   TextFormField(
                     controller: _passwordController,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                         labelText: 'Sua Senha',
                         prefixIcon: Icon(Icons.lock_outline_rounded)),
                     obscureText: true,
@@ -664,13 +656,13 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                   ),
                   const SizedBox(height: 24),
                   if (_isLoading)
-                    Center(child: CircularProgressIndicator())
+                    const Center(child: CircularProgressIndicator())
                   else
                     ElevatedButton(
                       onPressed: _submit,
-                      child: Text('CADASTRAR E CRIAR ACADEMIA'),
                       style: ElevatedButton.styleFrom(
-                          padding: EdgeInsets.symmetric(vertical: 16)),
+                          padding: const EdgeInsets.symmetric(vertical: 16)),
+                      child: const Text('CADASTRAR E CRIAR ACADEMIA'),
                     ),
                 ],
               ),
@@ -683,7 +675,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
 }
 
 class AuthGate extends StatelessWidget {
-  const AuthGate({Key? key}) : super(key: key);
+  const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -697,7 +689,7 @@ class AuthGate extends StatelessWidget {
         }
 
         if (!authSnapshot.hasData || authSnapshot.data == null) {
-          return LoginPage();
+          return const LoginPage();
         }
 
         return FutureBuilder<DocumentSnapshot>(
@@ -716,13 +708,13 @@ class AuthGate extends StatelessWidget {
                 !userDocSnapshot.hasData ||
                 !userDocSnapshot.data!.exists) {
               FirebaseAuth.instance.signOut();
-              return LoginPage();
+              return const LoginPage();
             }
 
             final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
 
             if (userModel.mustChangePassword) {
-              return ChangePasswordPage(isFirstLogin: true);
+              return const ChangePasswordPage(isFirstLogin: true);
             }
 
             if (userModel.role == UserRole.student &&
@@ -740,7 +732,7 @@ class AuthGate extends StatelessWidget {
                 return StudentHomePage(user: userModel);
               default:
                 FirebaseAuth.instance.signOut();
-                return LoginPage();
+                return const LoginPage();
             }
           },
         );
@@ -755,11 +747,11 @@ class EmptyStateWidget extends StatelessWidget {
   final String title;
   final String? message;
   const EmptyStateWidget({
-    Key? key,
+    super.key,
     required this.icon,
     required this.title,
     this.message,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -801,13 +793,13 @@ class EmptyStateWidget extends StatelessWidget {
 
 class SettingsPage extends StatelessWidget {
   final UserModel user;
-  const SettingsPage({Key? key, required this.user}) : super(key: key);
+  const SettingsPage({super.key, required this.user});
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Configurações"),
+        title: const Text("Configurações"),
       ),
       body: AppBackground(
         child: ListView(
@@ -818,9 +810,9 @@ class SettingsPage extends StatelessWidget {
                 user.role == UserRole.manager)
               Card(
                 child: ListTile(
-                  leading: Icon(Icons.person_outline_rounded),
-                  title: Text("Editar Meu Perfil"),
-                  trailing: Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  leading: const Icon(Icons.person_outline_rounded),
+                  title: const Text("Editar Meu Perfil"),
+                  trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: () {
                     if (user.role == UserRole.student) {
                       Navigator.of(context).push(MaterialPageRoute(
@@ -837,12 +829,12 @@ class SettingsPage extends StatelessWidget {
               ),
             Card(
               child: ListTile(
-                leading: Icon(Icons.lock_reset_rounded),
-                title: Text("Alterar Senha"),
-                trailing: Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                leading: const Icon(Icons.lock_reset_rounded),
+                title: const Text("Alterar Senha"),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                 onTap: () {
                   Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ChangePasswordPage(),
+                    builder: (_) => const ChangePasswordPage(),
                   ));
                 },
               ),
@@ -857,7 +849,7 @@ class SettingsPage extends StatelessWidget {
 // --- TELA DE EDIÇÃO DE PERFIL PARA GERENTE E PROFESSOR ---
 class EditUserProfilePage extends StatefulWidget {
   final UserModel user;
-  const EditUserProfilePage({Key? key, required this.user}) : super(key: key);
+  const EditUserProfilePage({super.key, required this.user});
 
   @override
   State<EditUserProfilePage> createState() => _EditUserProfilePageState();
@@ -923,8 +915,9 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         showBjjSnackBar(context, "Erro ao atualizar perfil: $e", type: 'error');
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -933,7 +926,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Editar Perfil")),
+      appBar: AppBar(title: const Text("Editar Perfil")),
       body: AppBackground(
         child: ListView(
           padding: const EdgeInsets.all(16.0),
@@ -945,17 +938,17 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                 children: [
                   TextFormField(
                     controller: _nameController,
-                    decoration: InputDecoration(labelText: 'Nome Completo'),
+                    decoration: const InputDecoration(labelText: 'Nome Completo'),
                     validator: (v) => v == null || v.trim().isEmpty
                         ? 'Nome não pode ser vazio'
                         : null,
                   ),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _weightController,
-                    decoration: InputDecoration(labelText: 'Peso (kg)'),
+                    decoration: const InputDecoration(labelText: 'Peso (kg)'),
                     keyboardType:
-                        TextInputType.numberWithOptions(decimal: true),
+                        const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Peso inválido';
                       final x = double.tryParse(v.replaceAll(',', '.'));
@@ -964,10 +957,10 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                           : null;
                     },
                   ),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: _faixa,
-                    decoration: InputDecoration(labelText: 'Faixa'),
+                    decoration: const InputDecoration(labelText: 'Faixa'),
                     items: _faixasList
                         .map((faixa) =>
                             DropdownMenuItem(value: faixa, child: Text(faixa)))
@@ -981,13 +974,13 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                         value == null ? 'Selecione sua faixa' : null,
                   ),
                   if (_faixa != null) ...[
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     DropdownButtonFormField<int>(
                       value: _graus,
                       decoration:
-                          InputDecoration(labelText: 'Graus (opcional)'),
+                          const InputDecoration(labelText: 'Graus (opcional)'),
                       items: [
-                        DropdownMenuItem<int>(
+                        const DropdownMenuItem<int>(
                             value: null, child: Text("Nenhum")),
                         ..._grausList.map((g) => DropdownMenuItem(
                             value: g, child: Text("$gº Grau"))),
@@ -995,15 +988,15 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                       onChanged: (value) => setState(() => _graus = value),
                     ),
                   ],
-                  SizedBox(height: 24),
+                  const SizedBox(height: 24),
                   _isSaving
-                      ? Center(child: CircularProgressIndicator())
+                      ? const Center(child: CircularProgressIndicator())
                       : ElevatedButton.icon(
                           onPressed: _updateProfile,
-                          icon: Icon(Icons.save),
-                          label: Text("Salvar Alterações"),
+                          icon: const Icon(Icons.save),
+                          label: const Text("Salvar Alterações"),
                           style: ElevatedButton.styleFrom(
-                              padding: EdgeInsets.symmetric(vertical: 16)),
+                              padding: const EdgeInsets.symmetric(vertical: 16)),
                         ),
                 ],
               ),
@@ -1018,7 +1011,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
 // --- TELAS DO GERENTE ---
 class ManagerHomePage extends StatefulWidget {
   final UserModel user;
-  const ManagerHomePage({Key? key, required this.user}) : super(key: key);
+  const ManagerHomePage({super.key, required this.user});
 
   @override
   State<ManagerHomePage> createState() => _ManagerHomePageState();
@@ -1093,12 +1086,12 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          title: Text("Professor Criado!"),
+          title: const Text("Professor Criado!"),
           content: SelectableText(
               "A conta para $name foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
           actions: [
             TextButton(
-                onPressed: () => Navigator.of(context).pop(), child: Text("OK"))
+                onPressed: () => Navigator.of(context).pop(), child: const Text("OK"))
           ],
         ),
       );
@@ -1112,12 +1105,12 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
         title: Text(_titulos[_paginaAtual]),
         actions: [
           IconButton(
-              icon: Icon(Icons.settings),
+              icon: const Icon(Icons.settings),
               tooltip: 'Configurações',
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => SettingsPage(user: widget.user)))),
           IconButton(
-              icon: Icon(Icons.logout),
+              icon: const Icon(Icons.logout),
               tooltip: 'Sair',
               onPressed: () => FirebaseAuth.instance.signOut()),
         ],
@@ -1148,14 +1141,14 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       floatingActionButton: _paginaAtual == 1
           ? FloatingActionButton(
               onPressed: _onAdicionarAluno,
-              child: Icon(Icons.add_rounded),
               tooltip: 'Adicionar Aluno',
+              child: const Icon(Icons.add_rounded),
             )
           : _paginaAtual == 2
               ? FloatingActionButton(
                   onPressed: _onAdicionarProfessor,
-                  child: Icon(Icons.add_rounded),
                   tooltip: 'Adicionar Professor',
+                  child: const Icon(Icons.add_rounded),
                 )
               : null,
     );
@@ -1164,7 +1157,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
 
 class ManagerDashboardPage extends StatelessWidget {
   final UserModel user;
-  const ManagerDashboardPage({Key? key, required this.user}) : super(key: key);
+  const ManagerDashboardPage({super.key, required this.user});
 
   @override
   Widget build(BuildContext context) {
@@ -1173,13 +1166,13 @@ class ManagerDashboardPage extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.manage_accounts, size: 80, color: BjjApp.primaryAccent),
-            SizedBox(height: 20),
+            const Icon(Icons.manage_accounts, size: 80, color: BjjApp.primaryAccent),
+            const SizedBox(height: 20),
             Text('Bem-vindo, ${user.name}!',
                 style: Theme.of(context).textTheme.headlineSmall),
-            SizedBox(height: 10),
+            const SizedBox(height: 10),
             Text('ID da sua Academia: ${user.academyId}',
-                style: TextStyle(color: BjjApp.textHint)),
+                style: const TextStyle(color: BjjApp.textHint)),
           ],
         ),
       ),
@@ -1189,8 +1182,7 @@ class ManagerDashboardPage extends StatelessWidget {
 
 class AlunosManagerPage extends StatefulWidget {
   final String academyId;
-  const AlunosManagerPage({Key? key, required this.academyId})
-      : super(key: key);
+  const AlunosManagerPage({super.key, required this.academyId});
 
   @override
   State<AlunosManagerPage> createState() => _AlunosManagerPageState();
@@ -1249,19 +1241,19 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Confirmar Exclusão"),
+        title: const Text("Confirmar Exclusão"),
         content: Text(
             "Tem certeza que deseja excluir permanentemente o aluno ${aluno.nome}? Esta ação removerá o aluno da lista e também seu acesso de login, caso exista. Esta ação não pode ser desfeita."),
         actions: [
           TextButton(
-            child: Text("Cancelar"),
+            child: const Text("Cancelar"),
             onPressed: () => Navigator.of(context).pop(),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
                 backgroundColor: BjjApp.errorColor,
                 foregroundColor: Colors.white),
-            child: Text("Excluir"),
+            child: const Text("Excluir"),
             onPressed: () {
               Navigator.of(context).pop();
               _deleteAluno(aluno);
@@ -1287,12 +1279,12 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
       showDialog(
         context: context,
         builder: (_) => AlertDialog(
-          title: Text("Acesso Criado!"),
+          title: const Text("Acesso Criado!"),
           content: SelectableText(
               "A conta para ${aluno.nome} foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
           actions: [
             TextButton(
-                onPressed: () => Navigator.of(context).pop(), child: Text("OK"))
+                onPressed: () => Navigator.of(context).pop(), child: const Text("OK"))
           ],
         ),
       );
@@ -1310,10 +1302,10 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
               controller: _searchController,
               decoration: InputDecoration(
                 labelText: 'Buscar aluno por nome...',
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear),
+                        icon: const Icon(Icons.clear),
                         onPressed: () => _searchController.clear(),
                       )
                     : null,
@@ -1330,13 +1322,13 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator());
+                  return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
                   return Center(child: Text("Erro: ${snapshot.error}"));
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return EmptyStateWidget(
+                  return const EmptyStateWidget(
                     icon: Icons.no_accounts_rounded,
                     title: 'Nenhum Aluno Cadastrado',
                     message:
@@ -1379,18 +1371,18 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
                           children: [
                             if (aluno.userId == null)
                               TextButton(
-                                child: Text("Criar Acesso"),
+                                child: const Text("Criar Acesso"),
                                 onPressed: () => _showCreateAccessDialog(aluno),
                               )
                             else
-                              Tooltip(
+                              const Tooltip(
                                 message: "Acesso de aluno já criado",
                                 child: Icon(Icons.check_circle,
                                     color: BjjApp.successColor),
                               ),
-                            SizedBox(width: 8),
+                            const SizedBox(width: 8),
                             IconButton(
-                              icon: Icon(Icons.delete_outline_rounded,
+                              icon: const Icon(Icons.delete_outline_rounded,
                                   color: BjjApp.errorColor),
                               onPressed: () => _confirmDeleteAluno(aluno),
                               tooltip: 'Excluir Aluno',
@@ -1413,7 +1405,7 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
 class AdicionarAlunoDialog extends StatefulWidget {
   final Function(Aluno) onAlunoAdicionado;
   final Aluno? alunoParaEditar; // Parâmetro opcional para edição
-  AdicionarAlunoDialog({required this.onAlunoAdicionado, this.alunoParaEditar});
+  const AdicionarAlunoDialog({super.key, required this.onAlunoAdicionado, this.alunoParaEditar});
   @override
   _AdicionarAlunoDialogState createState() => _AdicionarAlunoDialogState();
 }
@@ -1480,20 +1472,20 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 TextFormField(
                     controller: nC,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                         labelText: 'Nome',
                         prefixIcon: Icon(Icons.person_add_alt_1_rounded)),
                     validator: (v) => (v == null || v.trim().isEmpty)
                         ? 'Nome inválido'
                         : null),
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
                     value: fS,
                     isExpanded: true,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                         labelText: 'Faixa',
                         prefixIcon: Icon(Icons.shield_outlined)),
-                    hint: Text("Selecione a Faixa"),
+                    hint: const Text("Selecione a Faixa"),
                     onChanged: (v) => setState(() {
                           fS = v;
                           grausList = _getGrausForFaixa(fS);
@@ -1505,29 +1497,29 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                         .toList(),
                     validator: (v) => v == null ? 'Selecione uma faixa' : null),
                 if (mostrarGrausDropdown) ...[
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   DropdownButtonFormField<int>(
                       value: gS,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                           labelText: 'Graus (opcional)',
                           prefixIcon: Icon(Icons.star_outline_rounded)),
-                      hint: Text("Graus (opcional)"),
+                      hint: const Text("Graus (opcional)"),
                       onChanged: (v) => setState(() => gS = v),
                       items: [
-                        DropdownMenuItem<int>(
+                        const DropdownMenuItem<int>(
                             value: null, child: Text("Nenhum")),
                         ...grausList.map((v) => DropdownMenuItem<int>(
                             value: v, child: Text('$vº Grau')))
                       ].toList())
                 ],
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 TextFormField(
                     controller: pC,
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                         labelText: 'Peso (kg)',
                         prefixIcon: Icon(Icons.fitness_center_rounded)),
                     keyboardType:
-                        TextInputType.numberWithOptions(decimal: true),
+                        const TextInputType.numberWithOptions(decimal: true),
                     validator: (v) {
                       if (v == null || v.isEmpty) return 'Peso inválido';
                       final x = double.tryParse(v.replaceAll(',', '.'));
@@ -1538,7 +1530,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
               ]))),
       actions: [
         TextButton(
-            child: Text('Cancelar'),
+            child: const Text('Cancelar'),
             onPressed: () => Navigator.of(context).pop()),
         ElevatedButton.icon(
             icon: Icon(
@@ -1573,8 +1565,7 @@ class CreateStudentAccessDialog extends StatefulWidget {
   final String academyId;
   final Aluno aluno;
   const CreateStudentAccessDialog(
-      {Key? key, required this.academyId, required this.aluno})
-      : super(key: key);
+      {super.key, required this.academyId, required this.aluno});
 
   @override
   State<CreateStudentAccessDialog> createState() =>
@@ -1646,9 +1637,10 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
       }
       if (mounted) showBjjSnackBar(context, message, type: 'error');
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         showBjjSnackBar(context, 'Ocorreu um erro inesperado: $e',
             type: 'error');
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -1662,7 +1654,7 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
         key: _formKey,
         child: TextFormField(
           controller: _emailController,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             labelText: 'E-mail do Aluno (para login)',
             prefixIcon: Icon(Icons.email_outlined),
           ),
@@ -1674,15 +1666,15 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text("Cancelar")),
+            child: const Text("Cancelar")),
         ElevatedButton(
           onPressed: _isLoading ? null : _createAccess,
           child: _isLoading
-              ? SizedBox(
+              ? const SizedBox(
                   height: 20,
                   width: 20,
                   child: CircularProgressIndicator(strokeWidth: 2))
-              : Text("Criar"),
+              : const Text("Criar"),
         )
       ],
     );
@@ -1691,8 +1683,7 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
 
 class ProfessoresManagerPage extends StatefulWidget {
   final String academyId;
-  const ProfessoresManagerPage({Key? key, required this.academyId})
-      : super(key: key);
+  const ProfessoresManagerPage({super.key, required this.academyId});
 
   @override
   State<ProfessoresManagerPage> createState() => _ProfessoresManagerPageState();
@@ -1742,19 +1733,19 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Confirmar Exclusão"),
+        title: const Text("Confirmar Exclusão"),
         content: Text(
             "Tem certeza que deseja excluir permanentemente o professor ${professor.name}? Esta ação removerá seu acesso de login. Esta ação não pode ser desfeita."),
         actions: [
           TextButton(
-            child: Text("Cancelar"),
+            child: const Text("Cancelar"),
             onPressed: () => Navigator.of(context).pop(),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
                 backgroundColor: BjjApp.errorColor,
                 foregroundColor: Colors.white),
-            child: Text("Excluir"),
+            child: const Text("Excluir"),
             onPressed: () {
               Navigator.of(context).pop();
               _deleteProfessor(professor);
@@ -1776,10 +1767,10 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
               controller: _searchController,
               decoration: InputDecoration(
                 labelText: 'Buscar professor por nome...',
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear),
+                        icon: const Icon(Icons.clear),
                         onPressed: () => _searchController.clear(),
                       )
                     : null,
@@ -1795,13 +1786,13 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator());
+                  return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
                   return Center(child: Text("Erro: ${snapshot.error}"));
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return EmptyStateWidget(
+                  return const EmptyStateWidget(
                     icon: Icons.school_outlined,
                     title: 'Nenhum Professor Cadastrado',
                     message:
@@ -1836,12 +1827,12 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
                     return Card(
                       child: ListTile(
                         leading:
-                            CircleAvatar(child: Icon(Icons.school_rounded)),
+                            const CircleAvatar(child: Icon(Icons.school_rounded)),
                         title: Text(professor.name,
                             style: Theme.of(context).textTheme.titleMedium),
                         subtitle: Text(professor.email),
                         trailing: IconButton(
-                          icon: Icon(Icons.delete_outline_rounded,
+                          icon: const Icon(Icons.delete_outline_rounded,
                               color: BjjApp.errorColor),
                           onPressed: () => _confirmDeleteProfessor(professor),
                           tooltip: 'Excluir Professor',
@@ -1861,8 +1852,7 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
 
 class AdicionarProfessorDialog extends StatefulWidget {
   final String academyId;
-  const AdicionarProfessorDialog({Key? key, required this.academyId})
-      : super(key: key);
+  const AdicionarProfessorDialog({super.key, required this.academyId});
 
   @override
   State<AdicionarProfessorDialog> createState() =>
@@ -1965,7 +1955,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Adicionar Novo Professor'),
+      title: const Text('Adicionar Novo Professor'),
       content: Form(
         key: _formKey,
         child: SingleChildScrollView(
@@ -1974,17 +1964,17 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
             children: [
               TextFormField(
                 controller: _nameController,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Nome do Professor',
                   prefixIcon: Icon(Icons.person_add_alt_1_rounded),
                 ),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Nome inválido' : null,
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _emailController,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'E-mail (para login)',
                   prefixIcon: Icon(Icons.email_outlined),
                 ),
@@ -1992,13 +1982,13 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                 validator: (v) =>
                     (v == null || !v.contains('@')) ? 'E-mail inválido' : null,
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _faixa,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                     labelText: 'Faixa',
                     prefixIcon: Icon(Icons.shield_outlined)),
-                hint: Text("Selecione a Faixa"),
+                hint: const Text("Selecione a Faixa"),
                 items: _faixasList
                     .map((faixa) =>
                         DropdownMenuItem(value: faixa, child: Text(faixa)))
@@ -2012,15 +2002,15 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                     value == null ? 'Selecione a faixa' : null,
               ),
               if (_faixa != null) ...[
-                SizedBox(height: 16),
+                const SizedBox(height: 16),
                 DropdownButtonFormField<int>(
                   value: _graus,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                       labelText: 'Graus (opcional)',
                       prefixIcon: Icon(Icons.star_outline_rounded)),
-                  hint: Text("Selecione os Graus"),
+                  hint: const Text("Selecione os Graus"),
                   items: [
-                    DropdownMenuItem<int>(value: null, child: Text("Nenhum")),
+                    const DropdownMenuItem<int>(value: null, child: Text("Nenhum")),
                     ..._grausList.map((g) =>
                         DropdownMenuItem(value: g, child: Text("$gº Grau"))),
                   ],
@@ -2034,16 +2024,16 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text('Cancelar'),
+          child: const Text('Cancelar'),
         ),
         ElevatedButton(
           onPressed: _isLoading ? null : _submit,
           child: _isLoading
-              ? SizedBox(
+              ? const SizedBox(
                   height: 20,
                   width: 20,
                   child: CircularProgressIndicator(strokeWidth: 2))
-              : Text('Adicionar'),
+              : const Text('Adicionar'),
         ),
       ],
     );
@@ -2053,8 +2043,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
 // --- TELA DE MENSALIDADES (ATUALIZADA) ---
 class MonthlyFeeManagerPage extends StatefulWidget {
   final String academyId;
-  const MonthlyFeeManagerPage({Key? key, required this.academyId})
-      : super(key: key);
+  const MonthlyFeeManagerPage({super.key, required this.academyId});
 
   @override
   _MonthlyFeeManagerPageState createState() => _MonthlyFeeManagerPageState();
@@ -2095,7 +2084,7 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
         .orderBy('nome')
         .get();
     final students = studentsSnapshot.docs
-        .map((doc) => Aluno.fromJson(doc.id, doc.data()!))
+        .map((doc) => Aluno.fromJson(doc.id, doc.data()))
         .toList();
 
     final paymentsSnapshot = await firestore
@@ -2174,9 +2163,9 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
     return Chip(
       avatar: Icon(icon, color: Colors.white, size: 16),
       label: Text(label,
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
       backgroundColor: color,
-      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     );
   }
 
@@ -2195,10 +2184,10 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
               controller: _searchController,
               decoration: InputDecoration(
                 labelText: 'Buscar aluno por nome...',
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear),
+                        icon: const Icon(Icons.clear),
                         onPressed: () => _searchController.clear(),
                       )
                     : null,
@@ -2207,9 +2196,9 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
           ),
           Expanded(
             child: _isLoading
-                ? Center(child: CircularProgressIndicator())
+                ? const Center(child: CircularProgressIndicator())
                 : _allStudentsWithStatus.isEmpty
-                    ? EmptyStateWidget(
+                    ? const EmptyStateWidget(
                         icon: Icons.no_accounts_rounded,
                         title: 'Nenhum Aluno Cadastrado',
                         message: 'Adicione alunos na aba "Gerenciar Alunos".',
@@ -2243,7 +2232,7 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
                                               style: Theme.of(context)
                                                   .textTheme
                                                   .titleMedium),
-                                          Divider(
+                                          const Divider(
                                               height: 16,
                                               color: BjjApp.borderNormal),
                                           Row(
@@ -2256,18 +2245,18 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
                                                 children: [
                                                   if (!isPaid)
                                                     TextButton.icon(
-                                                      icon: Icon(Icons.payment,
+                                                      icon: const Icon(Icons.payment,
                                                           size: 20),
-                                                      label: Text("Registrar"),
+                                                      label: const Text("Registrar"),
                                                       onPressed: () =>
                                                           _showAddPaymentDialog(
                                                               student),
                                                     ),
                                                   TextButton.icon(
-                                                    icon: Icon(Icons.history,
+                                                    icon: const Icon(Icons.history,
                                                         size: 20,
                                                         color: BjjApp.textHint),
-                                                    label: Text("Histórico",
+                                                    label: const Text("Histórico",
                                                         style: TextStyle(
                                                             color: BjjApp
                                                                 .textHint)),
@@ -2298,8 +2287,7 @@ class StudentPaymentHistoryPage extends StatefulWidget {
   final String academyId;
   final Aluno student;
   const StudentPaymentHistoryPage(
-      {Key? key, required this.academyId, required this.student})
-      : super(key: key);
+      {super.key, required this.academyId, required this.student});
 
   @override
   _StudentPaymentHistoryPageState createState() =>
@@ -2352,13 +2340,13 @@ class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
           future: _historyFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(child: CircularProgressIndicator());
+              return const Center(child: CircularProgressIndicator());
             }
             if (snapshot.hasError) {
               return Center(child: Text("Erro: ${snapshot.error}"));
             }
             if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return EmptyStateWidget(
+              return const EmptyStateWidget(
                 icon: Icons.receipt_long_rounded,
                 title: 'Nenhum Pagamento Registrado',
                 message:
@@ -2377,21 +2365,21 @@ class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
                 final paymentsForYear = history[year]!;
 
                 return Card(
-                  margin: EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                  margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                   child: ExpansionTile(
                     initiallyExpanded: year == DateTime.now().year,
                     title: Text(year.toString(),
                         style: Theme.of(context).textTheme.titleLarge),
                     children: paymentsForYear.map((payment) {
                       return ListTile(
-                        leading: Icon(Icons.check_circle,
+                        leading: const Icon(Icons.check_circle,
                             color: BjjApp.successColor),
                         title: Text(_getMonthName(payment.paymentMonth)),
                         subtitle: Text(
                             'Pago em: ${DateFormat.yMd('pt_BR').format(payment.paymentDate)} - ${payment.paymentMethod}'),
                         trailing: Text(
                           'R\$ ${payment.amount.toStringAsFixed(2)}',
-                          style: TextStyle(
+                          style: const TextStyle(
                               color: BjjApp.textPrimary,
                               fontWeight: FontWeight.bold),
                         ),
@@ -2411,7 +2399,7 @@ class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
 // Extensão para capitalizar a primeira letra
 extension StringExtension on String {
   String capitalize() {
-    return "${this[0].toUpperCase()}${this.substring(1)}";
+    return "${this[0].toUpperCase()}${substring(1)}";
   }
 }
 
@@ -2421,8 +2409,7 @@ class AddPaymentDialog extends StatefulWidget {
   final Aluno student;
 
   const AddPaymentDialog(
-      {Key? key, required this.academyId, required this.student})
-      : super(key: key);
+      {super.key, required this.academyId, required this.student});
 
   @override
   _AddPaymentDialogState createState() => _AddPaymentDialogState();
@@ -2499,11 +2486,11 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
             children: [
               TextFormField(
                 controller: _amountController,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Valor (R\$)',
                   prefixIcon: Icon(Icons.attach_money_rounded),
                 ),
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Valor inválido';
                   final x = double.tryParse(v.replaceAll(',', '.'));
@@ -2512,14 +2499,14 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
                       : null;
                 },
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 value: _paymentMethod,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Método de Pagamento',
                   prefixIcon: Icon(Icons.payment_rounded),
                 ),
-                hint: Text("Selecione o método"),
+                hint: const Text("Selecione o método"),
                 items: _paymentMethods
                     .map((method) =>
                         DropdownMenuItem(value: method, child: Text(method)))
@@ -2534,15 +2521,15 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: Text("Cancelar")),
+            child: const Text("Cancelar")),
         ElevatedButton(
           onPressed: _isLoading ? null : _submitPayment,
           child: _isLoading
-              ? SizedBox(
+              ? const SizedBox(
                   height: 20,
                   width: 20,
                   child: CircularProgressIndicator(strokeWidth: 2))
-              : Text("Confirmar"),
+              : const Text("Confirmar"),
         ),
       ],
     );
@@ -2552,7 +2539,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
 // --- TELAS DO PROFESSOR ---
 class TeacherHomePage extends StatefulWidget {
   final UserModel user;
-  const TeacherHomePage({Key? key, required this.user}) : super(key: key);
+  const TeacherHomePage({super.key, required this.user});
 
   @override
   State<TeacherHomePage> createState() => _TeacherHomePageState();
@@ -2769,12 +2756,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         title: Text(_titulos[_paginaAtual]),
         actions: [
           IconButton(
-              icon: Icon(Icons.settings),
+              icon: const Icon(Icons.settings),
               tooltip: 'Configurações',
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => SettingsPage(user: widget.user)))),
           IconButton(
-              icon: Icon(Icons.logout),
+              icon: const Icon(Icons.logout),
               tooltip: 'Sair',
               onPressed: () => FirebaseAuth.instance.signOut()),
         ],
@@ -2813,8 +2800,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       floatingActionButton: _paginaAtual == 1 // Aba Alunos
           ? FloatingActionButton(
               onPressed: _onAdicionarAluno,
-              child: Icon(Icons.add),
               tooltip: 'Adicionar Aluno',
+              child: const Icon(Icons.add),
             )
           : null,
     );
@@ -2823,8 +2810,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
 
 class AlunosTeacherPage extends StatefulWidget {
   final String academyId;
-  const AlunosTeacherPage({Key? key, required this.academyId})
-      : super(key: key);
+  const AlunosTeacherPage({super.key, required this.academyId});
 
   @override
   State<AlunosTeacherPage> createState() => _AlunosTeacherPageState();
@@ -2890,10 +2876,10 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
               controller: _searchController,
               decoration: InputDecoration(
                 labelText: 'Buscar aluno por nome...',
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchQuery.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear),
+                        icon: const Icon(Icons.clear),
                         onPressed: () => _searchController.clear(),
                       )
                     : null,
@@ -2910,13 +2896,13 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return Center(child: CircularProgressIndicator());
+                  return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
                   return Center(child: Text("Erro: ${snapshot.error}"));
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return EmptyStateWidget(
+                  return const EmptyStateWidget(
                     icon: Icons.no_accounts_rounded,
                     title: 'Nenhum Aluno Cadastrado',
                     message:
@@ -2956,7 +2942,7 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
                         subtitle: Text(
                             '${aluno.faixa}${aluno.graus != null ? ' - ${aluno.graus}º' : ''} - ${aluno.peso}kg'),
                         trailing: IconButton(
-                          icon: Icon(Icons.edit_outlined,
+                          icon: const Icon(Icons.edit_outlined,
                               color: BjjApp.primaryAccent),
                           onPressed: () => _editAluno(aluno),
                           tooltip: 'Editar Aluno',
@@ -2980,11 +2966,10 @@ class TeacherDashboardPage extends StatelessWidget {
   final VoidCallback onNavigateToSparring;
 
   const TeacherDashboardPage(
-      {Key? key,
+      {super.key,
       required this.user,
       required this.isSparringMode,
-      required this.onNavigateToSparring})
-      : super(key: key);
+      required this.onNavigateToSparring});
 
   @override
   Widget build(BuildContext context) {
@@ -2999,13 +2984,13 @@ class TeacherDashboardPage extends StatelessWidget {
               Text('Bem-vindo, Prof. ${user.name}!',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall),
-              SizedBox(height: 32),
+              const SizedBox(height: 32),
               if (isSparringMode)
                 Card(
                   elevation: 5,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: BjjApp.primaryAccent, width: 2),
+                    side: const BorderSide(color: BjjApp.primaryAccent, width: 2),
                   ),
                   child: InkWell(
                     onTap: onNavigateToSparring,
@@ -3014,9 +2999,9 @@ class TeacherDashboardPage extends StatelessWidget {
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.sports_kabaddi_rounded,
+                          const Icon(Icons.sports_kabaddi_rounded,
                               color: BjjApp.primaryAccent, size: 30),
-                          SizedBox(width: 16),
+                          const SizedBox(width: 16),
                           Text("Ver Treino em Andamento",
                               style: Theme.of(context)
                                   .textTheme
@@ -3028,7 +3013,7 @@ class TeacherDashboardPage extends StatelessWidget {
                   ),
                 )
               else
-                Text(
+                const Text(
                   'Use a barra de navegação para gerenciar suas aulas.',
                   style: TextStyle(color: BjjApp.textHint, fontSize: 16),
                   textAlign: TextAlign.center,
@@ -3045,10 +3030,9 @@ class CheckinTeacherPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
   const CheckinTeacherPage(
-      {Key? key,
+      {super.key,
       required this.academyId,
-      required this.todosParticipantesDaAcademia})
-      : super(key: key);
+      required this.todosParticipantesDaAcademia});
 
   @override
   State<CheckinTeacherPage> createState() => _CheckinTeacherPageState();
@@ -3102,44 +3086,44 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
           Card(
             child: ListTile(
               contentPadding:
-                  EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              leading: Icon(Icons.checklist_rtl_rounded,
+                  const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              leading: const Icon(Icons.checklist_rtl_rounded,
                   color: BjjApp.primaryAccent, size: 40),
               title: Text("Fazer Chamada da Turma",
                   style: Theme.of(context).textTheme.titleMedium),
-              subtitle: Text("Registre a presença de hoje."),
+              subtitle: const Text("Registre a presença de hoje."),
               trailing:
-                  Icon(Icons.arrow_forward_ios_rounded, color: BjjApp.textHint),
+                  const Icon(Icons.arrow_forward_ios_rounded, color: BjjApp.textHint),
               onTap: _navigateToBulkCheckin,
             ),
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           Card(
             child: ListTile(
               contentPadding:
-                  EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              leading: Icon(Icons.edit_calendar_rounded,
+                  const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              leading: const Icon(Icons.edit_calendar_rounded,
                   color: BjjApp.warningColor, size: 40),
               title: Text("Lançar Check-in Retroativo",
                   style: Theme.of(context).textTheme.titleMedium),
-              subtitle: Text("Registre uma presença de um dia anterior."),
+              subtitle: const Text("Registre uma presença de um dia anterior."),
               trailing:
-                  Icon(Icons.arrow_forward_ios_rounded, color: BjjApp.textHint),
+                  const Icon(Icons.arrow_forward_ios_rounded, color: BjjApp.textHint),
               onTap: _navigateToRetroactiveCheckin,
             ),
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           Card(
             child: ListTile(
               contentPadding:
-                  EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              leading: Icon(Icons.leaderboard_rounded,
+                  const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+              leading: const Icon(Icons.leaderboard_rounded,
                   color: BjjApp.infoColor, size: 40),
               title: Text("Ver Ranking de Presença",
                   style: Theme.of(context).textTheme.titleMedium),
-              subtitle: Text("Acompanhe a frequência dos participantes."),
+              subtitle: const Text("Acompanhe a frequência dos participantes."),
               trailing:
-                  Icon(Icons.arrow_forward_ios_rounded, color: BjjApp.textHint),
+                  const Icon(Icons.arrow_forward_ios_rounded, color: BjjApp.textHint),
               onTap: () {
                 if (widget.todosParticipantesDaAcademia.isEmpty) {
                   showBjjSnackBar(context, 'Cadastre participantes primeiro.',
@@ -3166,10 +3150,10 @@ class BulkCheckinPage extends StatefulWidget {
   final List<Aluno> todosParticipantesDaAcademia;
 
   const BulkCheckinPage({
-    Key? key,
+    super.key,
     required this.academyId,
     required this.todosParticipantesDaAcademia,
-  }) : super(key: key);
+  });
 
   @override
   _BulkCheckinPageState createState() => _BulkCheckinPageState();
@@ -3261,7 +3245,7 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Chamada da Turma"),
+        title: const Text("Chamada da Turma"),
       ),
       body: AppBackground(
         child: Column(
@@ -3272,10 +3256,10 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
                 controller: _searchController,
                 decoration: InputDecoration(
                   labelText: 'Buscar por nome...',
-                  prefixIcon: Icon(Icons.search),
+                  prefixIcon: const Icon(Icons.search),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                          icon: Icon(Icons.clear),
+                          icon: const Icon(Icons.clear),
                           onPressed: () {
                             _searchController.clear();
                           },
@@ -3314,7 +3298,7 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
                                 }
                               });
                             },
-                            secondary: Icon(Icons.person_outline),
+                            secondary: const Icon(Icons.person_outline),
                           ),
                         );
                       },
@@ -3324,7 +3308,7 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
         ),
       ),
       floatingActionButton: _isLoading
-          ? FloatingActionButton(
+          ? const FloatingActionButton(
               onPressed: null,
               child: CircularProgressIndicator(
                   color: BjjApp.primaryAccentForeground),
@@ -3332,7 +3316,7 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
           : FloatingActionButton.extended(
               onPressed: _saveBulkCheckin,
               label: Text("Confirmar (${_selectedStudentIds.length})"),
-              icon: Icon(Icons.check_circle_outline),
+              icon: const Icon(Icons.check_circle_outline),
             ),
     );
   }
@@ -3343,10 +3327,10 @@ class RetroactiveCheckinPage extends StatefulWidget {
   final List<Aluno> todosParticipantesDaAcademia;
 
   const RetroactiveCheckinPage({
-    Key? key,
+    super.key,
     required this.academyId,
     required this.todosParticipantesDaAcademia,
-  }) : super(key: key);
+  });
 
   @override
   _RetroactiveCheckinPageState createState() => _RetroactiveCheckinPageState();
@@ -3460,7 +3444,7 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Check-in Retroativo"),
+        title: const Text("Check-in Retroativo"),
       ),
       body: AppBackground(
         child: Column(
@@ -3469,8 +3453,8 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
               margin: const EdgeInsets.all(16),
               child: ListTile(
                 leading:
-                    Icon(Icons.calendar_month, color: BjjApp.primaryAccent),
-                title: Text("Data do Check-in"),
+                    const Icon(Icons.calendar_month, color: BjjApp.primaryAccent),
+                title: const Text("Data do Check-in"),
                 subtitle:
                     Text(DateFormat.yMMMMd('pt_BR').format(_selectedDate)),
                 onTap: _pickDate,
@@ -3482,10 +3466,10 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
                 controller: _searchController,
                 decoration: InputDecoration(
                   labelText: 'Buscar por nome...',
-                  prefixIcon: Icon(Icons.search),
+                  prefixIcon: const Icon(Icons.search),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                          icon: Icon(Icons.clear),
+                          icon: const Icon(Icons.clear),
                           onPressed: () {
                             _searchController.clear();
                           },
@@ -3496,7 +3480,7 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
             ),
             Expanded(
               child: _filteredParticipants.isEmpty
-                  ? EmptyStateWidget(
+                  ? const EmptyStateWidget(
                       icon: Icons.person_search,
                       title: "Nenhum Participante Encontrado")
                   : ListView.builder(
@@ -3520,7 +3504,7 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
                                 }
                               });
                             },
-                            secondary: Icon(Icons.person_outline),
+                            secondary: const Icon(Icons.person_outline),
                           ),
                         );
                       },
@@ -3530,7 +3514,7 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
         ),
       ),
       floatingActionButton: _isLoading
-          ? FloatingActionButton(
+          ? const FloatingActionButton(
               onPressed: null,
               child: CircularProgressIndicator(
                   color: BjjApp.primaryAccentForeground),
@@ -3538,7 +3522,7 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
           : FloatingActionButton.extended(
               onPressed: _saveRetroactiveCheckin,
               label: Text("Confirmar (${_selectedStudentIds.length})"),
-              icon: Icon(Icons.check_circle_outline),
+              icon: const Icon(Icons.check_circle_outline),
             ),
     );
   }
@@ -3546,8 +3530,7 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
 
 class RankingTeacherPage extends StatefulWidget {
   final String academyId;
-  const RankingTeacherPage({Key? key, required this.academyId})
-      : super(key: key);
+  const RankingTeacherPage({super.key, required this.academyId});
 
   @override
   State<RankingTeacherPage> createState() => _RankingTeacherPageState();
@@ -3602,7 +3585,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
           .get();
       final allCheckins = checkinsSnapshot.docs
           .map((doc) =>
-              CheckinEntry.fromJson(doc.id, doc.data() as Map<String, dynamic>))
+              CheckinEntry.fromJson(doc.id, doc.data()))
           .toList();
 
       final now = DateTime.now();
@@ -3661,7 +3644,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
     });
 
     return Scaffold(
-      appBar: AppBar(title: Text('Ranking de Presença')),
+      appBar: AppBar(title: const Text('Ranking de Presença')),
       body: AppBackground(
         child: Column(
           children: [
@@ -3682,9 +3665,9 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
             ),
             Expanded(
               child: _isLoading
-                  ? Center(child: CircularProgressIndicator())
+                  ? const Center(child: CircularProgressIndicator())
                   : rankedParticipantes.isEmpty
-                      ? EmptyStateWidget(
+                      ? const EmptyStateWidget(
                           icon: Icons.group_off_rounded,
                           title: "Nenhum participante encontrado.")
                       : ListView.builder(
@@ -3695,21 +3678,21 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                             final count = _checkinCounts[aluno.id] ?? 0;
                             final rank = index + 1;
                             Widget leadingIcon;
-                            if (rank == 1)
-                              leadingIcon = Icon(Icons.emoji_events,
+                            if (rank == 1) {
+                              leadingIcon = const Icon(Icons.emoji_events,
                                   color: BjjApp.primaryAccent, size: 30);
-                            else if (rank == 2)
-                              leadingIcon = Icon(Icons.emoji_events,
+                            } else if (rank == 2)
+                              leadingIcon = const Icon(Icons.emoji_events,
                                   color: Color(0xFFC0C0C0), size: 28);
                             else if (rank == 3)
-                              leadingIcon = Icon(Icons.emoji_events,
+                              leadingIcon = const Icon(Icons.emoji_events,
                                   color: Color(0xFFCD7F32), size: 26);
                             else
                               leadingIcon = CircleAvatar(
                                   radius: 14,
                                   backgroundColor: BjjApp.darkSurface,
                                   child: Text('$rank',
-                                      style: TextStyle(
+                                      style: const TextStyle(
                                           color: BjjApp.textHint,
                                           fontWeight: FontWeight.bold)));
 
@@ -3721,7 +3704,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                                         .textTheme
                                         .titleMedium),
                                 trailing: Text('$count treinos',
-                                    style: TextStyle(
+                                    style: const TextStyle(
                                         color: BjjApp.primaryAccent,
                                         fontWeight: FontWeight.bold,
                                         fontSize: 16)),
@@ -3745,13 +3728,13 @@ class SorteioTeacherPage extends StatefulWidget {
   final Function(List<Aluno>) onCheckinAlunos;
 
   const SorteioTeacherPage({
-    Key? key,
+    super.key,
     required this.academyId,
     required this.todosParticipantesDaAcademia,
     required this.isSparringMode,
     required this.onIniciarSparring,
     required this.onCheckinAlunos,
-  }) : super(key: key);
+  });
 
   @override
   State<SorteioTeacherPage> createState() => _SorteioTeacherPageState();
@@ -3938,17 +3921,17 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     OutlinedButton.icon(
-                      icon: Icon(Icons.group_add_outlined),
+                      icon: const Icon(Icons.group_add_outlined),
                       label: Text(
                           'Selecionar Participantes (${_alunosParticipantes.length})'),
                       onPressed: widget.isSparringMode
                           ? null
                           : _navegarParaSelecaoAlunos,
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     DropdownButtonFormField<String>(
                       value: _tipoGeracao,
-                      decoration: InputDecoration(labelText: 'Tipo de Sorteio'),
+                      decoration: const InputDecoration(labelText: 'Tipo de Sorteio'),
                       items: _opcoesGeracao
                           .map((String value) => DropdownMenuItem<String>(
                               value: value, child: Text(value)))
@@ -3960,10 +3943,10 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
                                 _rodadasGeradas = [];
                               }),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     ElevatedButton.icon(
-                      icon: Icon(Icons.shuffle),
-                      label: Text('Gerar Rodadas'),
+                      icon: const Icon(Icons.shuffle),
+                      label: const Text('Gerar Rodadas'),
                       onPressed: widget.isSparringMode ||
                               _alunosParticipantes.length < 2
                           ? null
@@ -3978,24 +3961,24 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16.0),
               child: ElevatedButton.icon(
-                icon: Icon(Icons.play_arrow_rounded),
-                label: Text('Iniciar Treino'),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('Iniciar Treino'),
                 onPressed: _iniciarSparringClicado,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: BjjApp.successColor,
-                  minimumSize: Size(double.infinity, 50),
+                  minimumSize: const Size(double.infinity, 50),
                 ),
               ),
             ),
           Expanded(
             child: _rodadasGeradas.isEmpty
-                ? EmptyStateWidget(
+                ? const EmptyStateWidget(
                     icon: Icons.list_alt_rounded,
                     title: "Nenhuma Rodada Gerada",
                     message:
                         "Selecione os participantes e gere as rodadas acima.")
                 : ListView.builder(
-                    padding: EdgeInsets.fromLTRB(16, 16, 16, 16),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                     itemCount: _rodadasGeradas.length,
                     itemBuilder: (context, index) {
                       final rodada = _rodadasGeradas[index];
@@ -4021,9 +4004,8 @@ class SparringTeacherPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosAlunos;
 
-  SparringTeacherPage(
-      {Key? key, required this.academyId, required this.todosAlunos})
-      : super(key: key);
+  const SparringTeacherPage(
+      {super.key, required this.academyId, required this.todosAlunos});
 
   @override
   _SparringTeacherPageState createState() => _SparringTeacherPageState();
@@ -4112,7 +4094,7 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Scaffold(
+      return const Scaffold(
           body:
               AppBackground(child: Center(child: CircularProgressIndicator())));
     }
@@ -4120,8 +4102,8 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
     bool isSparringMode = _sparringState['isSparringMode'] ?? false;
     if (!isSparringMode) {
       return Scaffold(
-        appBar: AppBar(title: Text("Treino")),
-        body: EmptyStateWidget(
+        appBar: AppBar(title: const Text("Treino")),
+        body: const EmptyStateWidget(
           icon: Icons.pause_circle_outline_rounded,
           title: 'Nenhum treino em andamento.',
           message: 'Volte para a tela de sorteio para iniciar um treino.',
@@ -4151,7 +4133,7 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
           children: [
             Expanded(
               child: ListView.builder(
-                padding: EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 itemCount: currentRoundFights.length,
                 itemBuilder: (context, index) {
                   final matchText = currentRoundFights[index];
@@ -4184,14 +4166,14 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   ElevatedButton.icon(
-                    icon: Icon(Icons.stop_circle_rounded),
+                    icon: const Icon(Icons.stop_circle_rounded),
                     onPressed: _finishSparring,
                     label: const Text('Finalizar'),
                     style: ElevatedButton.styleFrom(
                         backgroundColor: BjjApp.errorColor),
                   ),
                   ElevatedButton.icon(
-                    icon: Icon(Icons.skip_next_rounded),
+                    icon: const Icon(Icons.skip_next_rounded),
                     onPressed: isLastRound ? null : _nextRound,
                     label: const Text('Próxima'),
                   ),
@@ -4208,8 +4190,8 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
 class SelecaoAlunosTeacherPage extends StatefulWidget {
   final List<Aluno> todosOsAlunos;
   final List<Aluno> alunosSelecionadosIniciais;
-  SelecaoAlunosTeacherPage(
-      {required this.todosOsAlunos, required this.alunosSelecionadosIniciais});
+  const SelecaoAlunosTeacherPage(
+      {super.key, required this.todosOsAlunos, required this.alunosSelecionadosIniciais});
   @override
   _SelecaoAlunosTeacherPageState createState() =>
       _SelecaoAlunosTeacherPageState();
@@ -4229,11 +4211,11 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Selecionar Participantes'),
+        title: const Text('Selecionar Participantes'),
       ),
       body: AppBackground(
         child: widget.todosOsAlunos.isEmpty
-            ? EmptyStateWidget(
+            ? const EmptyStateWidget(
                 icon: Icons.person_search_rounded,
                 title: 'Nenhum Participante Cadastrado na Academia')
             : ListView.builder(
@@ -4248,12 +4230,13 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
                       subtitle: Text('${a.faixa} - ${a.peso}kg'),
                       value: s,
                       onChanged: (v) => setState(() {
-                        if (v == true)
+                        if (v == true) {
                           _alunosAtuaisSelecionados.add(a);
-                        else
+                        } else {
                           _alunosAtuaisSelecionados.remove(a);
+                        }
                       }),
-                      secondary: Icon(Icons.person),
+                      secondary: const Icon(Icons.person),
                     ),
                   );
                 }),
@@ -4275,10 +4258,10 @@ class MatchSetupPage extends StatefulWidget {
   final List<Aluno> todosAlunosDaAcademia;
 
   const MatchSetupPage({
-    Key? key,
+    super.key,
     required this.academyId,
     required this.todosAlunosDaAcademia,
-  }) : super(key: key);
+  });
 
   @override
   State<MatchSetupPage> createState() => _MatchSetupPageState();
@@ -4361,17 +4344,17 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
                     children: [
                       Text("Atleta 1",
                           style: Theme.of(context).textTheme.titleLarge),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildAthleteSelector(
                         athlete: _athlete1,
                         onTap: () => _selectAthlete(1),
                         validator: (value) =>
                             value == null ? 'Selecione o atleta 1' : null,
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         value: _kimonoColor1,
-                        decoration: InputDecoration(labelText: 'Cor do Kimono'),
+                        decoration: const InputDecoration(labelText: 'Cor do Kimono'),
                         items: _kimonoColors
                             .map((color) => DropdownMenuItem<String>(
                                 value: color, child: Text(color)))
@@ -4383,7 +4366,7 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
                   ),
                 ),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -4392,17 +4375,17 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
                     children: [
                       Text("Atleta 2",
                           style: Theme.of(context).textTheme.titleLarge),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       _buildAthleteSelector(
                         athlete: _athlete2,
                         onTap: () => _selectAthlete(2),
                         validator: (value) =>
                             value == null ? 'Selecione o atleta 2' : null,
                       ),
-                      SizedBox(height: 16),
+                      const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         value: _kimonoColor2,
-                        decoration: InputDecoration(labelText: 'Cor do Kimono'),
+                        decoration: const InputDecoration(labelText: 'Cor do Kimono'),
                         items: _kimonoColors
                             .map((color) => DropdownMenuItem<String>(
                                 value: color, child: Text(color)))
@@ -4414,13 +4397,13 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
                   ),
                 ),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: DropdownButtonFormField<int>(
                     value: _matchTimeInMinutes,
-                    decoration: InputDecoration(labelText: 'Tempo de Luta'),
+                    decoration: const InputDecoration(labelText: 'Tempo de Luta'),
                     items: _matchTimes
                         .map((time) => DropdownMenuItem<int>(
                             value: time, child: Text('$time minutos')))
@@ -4430,13 +4413,13 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
                   ),
                 ),
               ),
-              SizedBox(height: 24),
+              const SizedBox(height: 24),
               ElevatedButton.icon(
-                icon: Icon(Icons.play_arrow_rounded),
-                label: Text('INICIAR LUTA'),
+                icon: const Icon(Icons.play_arrow_rounded),
+                label: const Text('INICIAR LUTA'),
                 onPressed: _startMatch,
                 style: ElevatedButton.styleFrom(
-                  padding: EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                 ),
               )
             ],
@@ -4487,8 +4470,7 @@ class _AthleteSelectionDialog extends StatefulWidget {
   final String title;
 
   const _AthleteSelectionDialog(
-      {Key? key, required this.athletes, required this.title})
-      : super(key: key);
+      {required this.athletes, required this.title});
 
   @override
   __AthleteSelectionDialogState createState() =>
@@ -4525,7 +4507,7 @@ class __AthleteSelectionDialogState extends State<_AthleteSelectionDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(widget.title),
-      content: Container(
+      content: SizedBox(
         width: double.maxFinite,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -4535,19 +4517,19 @@ class __AthleteSelectionDialogState extends State<_AthleteSelectionDialog> {
               autofocus: true,
               decoration: InputDecoration(
                 labelText: 'Buscar por nome...',
-                prefixIcon: Icon(Icons.search),
+                prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
-                        icon: Icon(Icons.clear),
+                        icon: const Icon(Icons.clear),
                         onPressed: () => _searchController.clear(),
                       )
                     : null,
               ),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Expanded(
               child: _filteredAthletes.isEmpty
-                  ? Center(child: Text("Nenhum atleta encontrado."))
+                  ? const Center(child: Text("Nenhum atleta encontrado."))
                   : ListView.builder(
                       shrinkWrap: true,
                       itemCount: _filteredAthletes.length,
@@ -4568,7 +4550,7 @@ class __AthleteSelectionDialogState extends State<_AthleteSelectionDialog> {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: Text('Cancelar'),
+          child: const Text('Cancelar'),
         ),
       ],
     );
@@ -4599,9 +4581,9 @@ class ScoreboardPage extends StatefulWidget {
   final MatchSettings settings;
 
   const ScoreboardPage({
-    Key? key,
+    super.key,
     required this.settings,
-  }) : super(key: key);
+  });
 
   @override
   _ScoreboardPageState createState() => _ScoreboardPageState();
@@ -4652,10 +4634,10 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
   void _startTimer() {
     if (_timer?.isActive ?? false) return; // Já está rodando
     setState(() => _isRunning = true);
-    _timer = Timer.periodic(Duration(seconds: 1), (_) {
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() {
         if (_timeRemaining.inSeconds > 0) {
-          _timeRemaining -= Duration(seconds: 1);
+          _timeRemaining -= const Duration(seconds: 1);
         } else {
           _pauseTimer();
           _handleEndOfMatch(reason: "por tempo");
@@ -4780,12 +4762,12 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: Text("Fim de Luta!"),
+        title: const Text("Fim de Luta!"),
         content: Text(resultMessage),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
-            child: Text("Fechar"),
+            child: const Text("Fechar"),
           ),
         ],
       ),
@@ -4798,9 +4780,9 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text("Placar da Luta"),
+        title: const Text("Placar da Luta"),
         leading: IconButton(
-          icon: Icon(Icons.close),
+          icon: const Icon(Icons.close),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
@@ -4880,7 +4862,7 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
                       playerIndex: 1,
                       score: _player1Score,
                     ),
-                    VerticalDivider(
+                    const VerticalDivider(
                         color: BjjApp.borderNormal, thickness: 1, width: 1),
                     _buildScoreControl(
                       playerIndex: 2,
@@ -4909,7 +4891,7 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(8.0),
-        decoration: BoxDecoration(
+        decoration: const BoxDecoration(
           border: Border(
             bottom: BorderSide(color: BjjApp.borderNormal, width: 2),
           ),
@@ -4943,7 +4925,7 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               '${score.totalScore}',
               style: TextStyle(
@@ -4953,16 +4935,16 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
                 height: 1,
               ),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 Text("V: ${score.advantages}",
                     style:
-                        TextStyle(fontSize: 16, color: BjjApp.textSecondary)),
+                        const TextStyle(fontSize: 16, color: BjjApp.textSecondary)),
                 Text("P: ${score.penalties}",
                     style:
-                        TextStyle(fontSize: 16, color: BjjApp.textSecondary)),
+                        const TextStyle(fontSize: 16, color: BjjApp.textSecondary)),
               ],
             ),
           ],
@@ -5032,11 +5014,11 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           IconButton(
-            icon: Icon(Icons.remove_circle_outline),
+            icon: const Icon(Icons.remove_circle_outline),
             onPressed: _isMatchOver ? null : onRemove,
             color: BjjApp.textHint,
             padding: EdgeInsets.zero,
-            constraints: BoxConstraints(),
+            constraints: const BoxConstraints(),
           ),
           SizedBox(
             width: 150,
@@ -5044,9 +5026,9 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
               children: [
                 Text(label,
                     style:
-                        TextStyle(color: BjjApp.textSecondary, fontSize: 12)),
+                        const TextStyle(color: BjjApp.textSecondary, fontSize: 12)),
                 Text('$count',
-                    style: TextStyle(
+                    style: const TextStyle(
                         color: BjjApp.textPrimary,
                         fontSize: 16,
                         fontWeight: FontWeight.bold)),
@@ -5054,11 +5036,11 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
             ),
           ),
           IconButton(
-            icon: Icon(Icons.add_circle_outline),
+            icon: const Icon(Icons.add_circle_outline),
             onPressed: _isMatchOver ? null : onAdd,
             color: BjjApp.textHint,
             padding: EdgeInsets.zero,
-            constraints: BoxConstraints(),
+            constraints: const BoxConstraints(),
           ),
         ],
       ),
@@ -5069,7 +5051,7 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
 // --- TELAS DO ALUNO ---
 class StudentHomePage extends StatefulWidget {
   final UserModel user;
-  const StudentHomePage({Key? key, required this.user}) : super(key: key);
+  const StudentHomePage({super.key, required this.user});
 
   @override
   State<StudentHomePage> createState() => _StudentHomePageState();
@@ -5169,12 +5151,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
         title: Text(_titulos[_paginaAtual]),
         actions: [
           IconButton(
-              icon: Icon(Icons.settings),
+              icon: const Icon(Icons.settings),
               tooltip: 'Configurações',
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => SettingsPage(user: widget.user)))),
           IconButton(
-              icon: Icon(Icons.logout),
+              icon: const Icon(Icons.logout),
               tooltip: 'Sair',
               onPressed: () => FirebaseAuth.instance.signOut()),
         ],
@@ -5200,7 +5182,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
 class StudentProfilePage extends StatefulWidget {
   final UserModel user;
-  const StudentProfilePage({Key? key, required this.user}) : super(key: key);
+  const StudentProfilePage({super.key, required this.user});
 
   @override
   State<StudentProfilePage> createState() => _StudentProfilePageState();
@@ -5285,11 +5267,11 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return Center(child: CircularProgressIndicator());
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_aluno == null) {
-      return AppBackground(
+      return const AppBackground(
         child: EmptyStateWidget(
           icon: Icons.person_add_alt_1_rounded,
           title: "Complete seu Perfil",
@@ -5307,11 +5289,11 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            Center(
+            const Center(
               child: Icon(Icons.account_circle,
                   size: 100, color: BjjApp.primaryAccent),
             ),
-            SizedBox(height: 16),
+            const SizedBox(height: 16),
             Center(
               child: Text(
                 'Bem-vindo, ${_aluno!.nome}!',
@@ -5319,13 +5301,13 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                 textAlign: TextAlign.center,
               ),
             ),
-            SizedBox(height: 24),
+            const SizedBox(height: 24),
             Card(
               child: ListTile(
-                leading: Icon(Icons.shield_outlined,
+                leading: const Icon(Icons.shield_outlined,
                     color: BjjApp.primaryAccent, size: 30),
                 title:
-                    Text("Graduação", style: TextStyle(color: BjjApp.textHint)),
+                    const Text("Graduação", style: TextStyle(color: BjjApp.textHint)),
                 subtitle: Text(
                   _formatGraduation(_aluno!),
                   style: Theme.of(context)
@@ -5337,9 +5319,9 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
             ),
             Card(
               child: ListTile(
-                leading: Icon(Icons.fitness_center_rounded,
+                leading: const Icon(Icons.fitness_center_rounded,
                     color: BjjApp.primaryAccent, size: 30),
-                title: Text("Peso", style: TextStyle(color: BjjApp.textHint)),
+                title: const Text("Peso", style: TextStyle(color: BjjApp.textHint)),
                 subtitle: Text(
                   '${_aluno!.peso.toStringAsFixed(1)} kg',
                   style: Theme.of(context)
@@ -5351,9 +5333,9 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
             ),
             Card(
               child: ListTile(
-                leading: Icon(Icons.email_outlined,
+                leading: const Icon(Icons.email_outlined,
                     color: BjjApp.primaryAccent, size: 30),
-                title: Text("E-mail", style: TextStyle(color: BjjApp.textHint)),
+                title: const Text("E-mail", style: TextStyle(color: BjjApp.textHint)),
                 subtitle: Text(
                   widget.user.email,
                   style: Theme.of(context)
@@ -5374,7 +5356,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
                   color: isPaid ? BjjApp.successColor : BjjApp.warningColor,
                   size: 30,
                 ),
-                title: Text("Status da Mensalidade",
+                title: const Text("Status da Mensalidade",
                     style: TextStyle(color: BjjApp.textHint)),
                 subtitle: Text(
                   isPaid
@@ -5397,8 +5379,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
 
 class EditStudentProfilePage extends StatefulWidget {
   final UserModel user;
-  const EditStudentProfilePage({Key? key, required this.user})
-      : super(key: key);
+  const EditStudentProfilePage({super.key, required this.user});
 
   @override
   State<EditStudentProfilePage> createState() => _EditStudentProfilePageState();
@@ -5535,8 +5516,9 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
         Navigator.of(context).pop();
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         showBjjSnackBar(context, "Erro ao atualizar perfil: $e", type: 'error');
+      }
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -5545,10 +5527,10 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text("Editar Perfil")),
+      appBar: AppBar(title: const Text("Editar Perfil")),
       body: AppBackground(
         child: _isLoading
-            ? Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator())
             : ListView(
                 padding: const EdgeInsets.all(16.0),
                 children: [
@@ -5560,17 +5542,17 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                         TextFormField(
                           controller: _nameController,
                           decoration:
-                              InputDecoration(labelText: 'Nome Completo'),
+                              const InputDecoration(labelText: 'Nome Completo'),
                           validator: (v) => v == null || v.trim().isEmpty
                               ? 'Nome não pode ser vazio'
                               : null,
                         ),
-                        SizedBox(height: 16),
+                        const SizedBox(height: 16),
                         TextFormField(
                           controller: _weightController,
-                          decoration: InputDecoration(labelText: 'Peso (kg)'),
+                          decoration: const InputDecoration(labelText: 'Peso (kg)'),
                           keyboardType:
-                              TextInputType.numberWithOptions(decimal: true),
+                              const TextInputType.numberWithOptions(decimal: true),
                           validator: (v) {
                             if (v == null || v.isEmpty) return 'Peso inválido';
                             final x = double.tryParse(v.replaceAll(',', '.'));
@@ -5579,10 +5561,10 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                 : null;
                           },
                         ),
-                        SizedBox(height: 16),
+                        const SizedBox(height: 16),
                         DropdownButtonFormField<String>(
                           value: _faixa,
-                          decoration: InputDecoration(labelText: 'Faixa'),
+                          decoration: const InputDecoration(labelText: 'Faixa'),
                           items: _faixasList
                               .map((faixa) => DropdownMenuItem(
                                   value: faixa, child: Text(faixa)))
@@ -5596,13 +5578,13 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                               value == null ? 'Selecione sua faixa' : null,
                         ),
                         if (_faixa != null) ...[
-                          SizedBox(height: 16),
+                          const SizedBox(height: 16),
                           DropdownButtonFormField<int>(
                             value: _graus,
                             decoration:
-                                InputDecoration(labelText: 'Graus (opcional)'),
+                                const InputDecoration(labelText: 'Graus (opcional)'),
                             items: [
-                              DropdownMenuItem<int>(
+                              const DropdownMenuItem<int>(
                                   value: null, child: Text("Nenhum")),
                               ..._grausList.map((g) => DropdownMenuItem(
                                   value: g, child: Text("$gº Grau"))),
@@ -5611,16 +5593,16 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                 setState(() => _graus = value),
                           ),
                         ],
-                        SizedBox(height: 24),
+                        const SizedBox(height: 24),
                         _isSaving
-                            ? Center(child: CircularProgressIndicator())
+                            ? const Center(child: CircularProgressIndicator())
                             : ElevatedButton.icon(
                                 onPressed: _updateProfile,
-                                icon: Icon(Icons.save),
-                                label: Text("Salvar Alterações"),
+                                icon: const Icon(Icons.save),
+                                label: const Text("Salvar Alterações"),
                                 style: ElevatedButton.styleFrom(
                                     padding:
-                                        EdgeInsets.symmetric(vertical: 16)),
+                                        const EdgeInsets.symmetric(vertical: 16)),
                               ),
                       ],
                     ),
@@ -5634,7 +5616,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
 
 class MyCheckinsPage extends StatefulWidget {
   final UserModel user;
-  const MyCheckinsPage({Key? key, required this.user}) : super(key: key);
+  const MyCheckinsPage({super.key, required this.user});
 
   @override
   State<MyCheckinsPage> createState() => _MyCheckinsPageState();
@@ -5647,7 +5629,7 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
   Widget build(BuildContext context) {
     final studentId = widget.user.studentRecordId;
     if (studentId == null) {
-      return AppBackground(
+      return const AppBackground(
         child: EmptyStateWidget(
             icon: Icons.link_off,
             title: "Perfil não vinculado",
@@ -5666,7 +5648,7 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
+            return const Center(child: CircularProgressIndicator());
           }
 
           final allCheckins = snapshot.data?.docs
@@ -5717,7 +5699,7 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
                       lastDay: DateTime.utc(DateTime.now().year + 5, 12, 31),
                       focusedDay: _focusedDay,
                       calendarFormat: CalendarFormat.month,
-                      headerStyle: HeaderStyle(
+                      headerStyle: const HeaderStyle(
                         formatButtonVisible: false,
                         titleCentered: true,
                       ),
@@ -5739,7 +5721,7 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
                               child: Container(
                                 width: 7,
                                 height: 7,
-                                decoration: BoxDecoration(
+                                decoration: const BoxDecoration(
                                     shape: BoxShape.circle,
                                     color: BjjApp.successColor),
                               ),
@@ -5753,7 +5735,7 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
                         todayDecoration: BoxDecoration(
                             color: BjjApp.primaryAccent.withOpacity(0.3),
                             shape: BoxShape.circle),
-                        selectedDecoration: BoxDecoration(
+                        selectedDecoration: const BoxDecoration(
                             color: BjjApp.primaryAccent,
                             shape: BoxShape.circle),
                       ),
@@ -5761,7 +5743,7 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
                   ),
                 ),
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
             ],
           );
         },
@@ -5773,8 +5755,7 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
 // --- TELA DE TROCA DE SENHA ---
 class ChangePasswordPage extends StatefulWidget {
   final bool isFirstLogin;
-  const ChangePasswordPage({Key? key, this.isFirstLogin = false})
-      : super(key: key);
+  const ChangePasswordPage({super.key, this.isFirstLogin = false});
 
   @override
   State<ChangePasswordPage> createState() => _ChangePasswordPageState();
@@ -5792,8 +5773,9 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
 
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.email == null) {
-      if (mounted)
+      if (mounted) {
         showBjjSnackBar(context, "Usuário não encontrado.", type: "error");
+      }
       setState(() => _isLoading = false);
       return;
     }
@@ -5820,7 +5802,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
 
         if (widget.isFirstLogin) {
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => AuthGate()),
+            MaterialPageRoute(builder: (context) => const AuthGate()),
             (Route<dynamic> route) => false,
           );
         } else {
@@ -5838,8 +5820,9 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         showBjjSnackBar(context, message, type: "error");
       }
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         showBjjSnackBar(context, "Erro inesperado: $e", type: "error");
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -5857,7 +5840,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
           actions: widget.isFirstLogin
               ? [
                   IconButton(
-                    icon: Icon(Icons.logout),
+                    icon: const Icon(Icons.logout),
                     tooltip: 'Fazer Logout',
                     onPressed: () => FirebaseAuth.instance.signOut(),
                   )
@@ -5873,8 +5856,8 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                 child: Column(
                   children: [
                     if (widget.isFirstLogin)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 16.0),
                         child: Text(
                           "Por segurança, você precisa definir uma nova senha para continuar.",
                           textAlign: TextAlign.center,
@@ -5883,39 +5866,39 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
                       ),
                     TextFormField(
                       controller: _currentPasswordController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                           labelText: 'Senha Atual (ou Temporária)'),
                       obscureText: true,
                       validator: (v) =>
                           (v == null || v.isEmpty) ? "Campo obrigatório" : null,
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _newPasswordController,
-                      decoration: InputDecoration(labelText: 'Nova Senha'),
+                      decoration: const InputDecoration(labelText: 'Nova Senha'),
                       obscureText: true,
                       validator: (v) => (v == null || v.length < 6)
                           ? "Mínimo 6 caracteres"
                           : null,
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     TextFormField(
                       decoration:
-                          InputDecoration(labelText: 'Confirme a Nova Senha'),
+                          const InputDecoration(labelText: 'Confirme a Nova Senha'),
                       obscureText: true,
                       validator: (v) => v != _newPasswordController.text
                           ? "As senhas não coincidem"
                           : null,
                     ),
-                    SizedBox(height: 24),
+                    const SizedBox(height: 24),
                     if (_isLoading)
-                      CircularProgressIndicator()
+                      const CircularProgressIndicator()
                     else
                       ElevatedButton(
                         onPressed: _changePassword,
-                        child: Text("Salvar Nova Senha"),
                         style: ElevatedButton.styleFrom(
-                            minimumSize: Size(double.infinity, 50)),
+                            minimumSize: const Size(double.infinity, 50)),
+                        child: const Text("Salvar Nova Senha"),
                       )
                   ],
                 ),
@@ -5933,7 +5916,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
 class NoteDetailPage extends StatelessWidget {
   final StudyNote note;
 
-  const NoteDetailPage({Key? key, required this.note}) : super(key: key);
+  const NoteDetailPage({super.key, required this.note});
 
   Future<void> _launchUrl(BuildContext context) async {
     if (note.videoUrl != null && note.videoUrl!.isNotEmpty) {
@@ -5982,10 +5965,10 @@ class NoteDetailPage extends StatelessWidget {
             if (note.videoUrl != null && note.videoUrl!.isNotEmpty)
               Card(
                 child: ListTile(
-                  leading: Icon(Icons.video_library_rounded,
+                  leading: const Icon(Icons.video_library_rounded,
                       color: BjjApp.primaryAccent),
-                  title: Text("Assistir Vídeo de Referência"),
-                  trailing: Icon(Icons.open_in_new),
+                  title: const Text("Assistir Vídeo de Referência"),
+                  trailing: const Icon(Icons.open_in_new),
                   onTap: () => _launchUrl(context),
                 ),
               ),
@@ -5994,7 +5977,7 @@ class NoteDetailPage extends StatelessWidget {
               "Anotações",
               style: Theme.of(context).textTheme.titleLarge,
             ),
-            Divider(height: 20),
+            const Divider(height: 20),
             SelectableText(
               note.content,
               style:
@@ -6011,8 +5994,7 @@ class EditStudyNotePage extends StatefulWidget {
   final StudyNote? note; // Se a nota for nula, é uma nova anotação
   final String userId; // MODIFICADO: Precisa saber quem é o usuário
 
-  const EditStudyNotePage({Key? key, this.note, required this.userId})
-      : super(key: key);
+  const EditStudyNotePage({super.key, this.note, required this.userId});
 
   @override
   _EditStudyNotePageState createState() => _EditStudyNotePageState();
@@ -6053,9 +6035,9 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
         context: context,
         barrierDismissible: false,
         builder: (BuildContext context) {
-          return Dialog(
+          return const Dialog(
             child: Padding(
-              padding: const EdgeInsets.all(20.0),
+              padding: EdgeInsets.all(20.0),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 CircularProgressIndicator(),
                 SizedBox(width: 20),
@@ -6144,7 +6126,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
         title: Text(_isEditing ? 'Editar Anotação' : 'Nova Anotação'),
         actions: [
           IconButton(
-            icon: Icon(Icons.save),
+            icon: const Icon(Icons.save),
             onPressed: _isSaving ? null : _saveNote,
             tooltip: 'Salvar Anotação',
           )
@@ -6152,7 +6134,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
       ),
       body: AppBackground(
         child: _isSaving
-            ? Center(child: CircularProgressIndicator())
+            ? const Center(child: CircularProgressIndicator())
             : Form(
                 key: _formKey,
                 child: ListView(
@@ -6160,14 +6142,14 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
                   children: [
                     TextFormField(
                       controller: _titleController,
-                      decoration: InputDecoration(labelText: 'Título'),
+                      decoration: const InputDecoration(labelText: 'Título'),
                       validator: (v) =>
                           v!.trim().isEmpty ? 'O título é obrigatório.' : null,
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _contentController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                         labelText: 'Anotações',
                         alignLabelWithHint: true,
                       ),
@@ -6179,13 +6161,13 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _tagsController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                           labelText: 'Tags (separadas por vírgula)'),
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
                       controller: _urlController,
-                      decoration: InputDecoration(
+                      decoration: const InputDecoration(
                           labelText: 'Link do Vídeo (Opcional)'),
                     ),
                     const SizedBox(height: 24),
@@ -6203,7 +6185,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
                                 child: Image.file(File(_imagePath!)),
                               ),
                               IconButton(
-                                icon: CircleAvatar(
+                                icon: const CircleAvatar(
                                     backgroundColor: Colors.black54,
                                     child:
                                         Icon(Icons.close, color: Colors.white)),
@@ -6215,7 +6197,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
                         ],
                       ),
                     OutlinedButton.icon(
-                      icon: Icon(Icons.attach_file),
+                      icon: const Icon(Icons.attach_file),
                       label: Text(_imagePath == null
                           ? 'Anexar Imagem'
                           : 'Trocar Imagem'),
@@ -6247,6 +6229,6 @@ void main() async {
   );
 
   runApp(
-    BjjApp(),
+    const BjjApp(),
   );
 }

@@ -1,3 +1,5 @@
+// ignore_for_file: library_private_types_in_public_api
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -10,7 +12,7 @@ import 'main.dart'; // Para acessar widgets como EmptyStateWidget, showBjjSnackB
 class StudyNotebookPage extends StatefulWidget {
   final String userId; // Adicionado para identificar o usuário
 
-  const StudyNotebookPage({Key? key, required this.userId}) : super(key: key);
+  const StudyNotebookPage({super.key, required this.userId});
 
   @override
   _StudyNotebookPageState createState() => _StudyNotebookPageState();
@@ -64,19 +66,19 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text("Confirmar Exclusão"),
+        title: const Text("Confirmar Exclusão"),
         content: Text(
             "Tem certeza que deseja excluir permanentemente a anotação '${note.title}'?"),
         actions: [
           TextButton(
-            child: Text("Cancelar"),
+            child: const Text("Cancelar"),
             onPressed: () => Navigator.of(context).pop(),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
                 backgroundColor: BjjApp.errorColor,
                 foregroundColor: Colors.white),
-            child: Text("Excluir"),
+            child: const Text("Excluir"),
             onPressed: () {
               Navigator.of(context).pop();
               _deleteNote(note);
@@ -112,10 +114,10 @@ _Anotação do Match BJJ App_
                 controller: _searchController,
                 decoration: InputDecoration(
                   labelText: 'Buscar por título ou tag...',
-                  prefixIcon: Icon(Icons.search),
+                  prefixIcon: const Icon(Icons.search),
                   suffixIcon: _searchQuery.isNotEmpty
                       ? IconButton(
-                          icon: Icon(Icons.clear),
+                          icon: const Icon(Icons.clear),
                           onPressed: () => _searchController.clear(),
                         )
                       : null,
@@ -127,7 +129,7 @@ _Anotação do Match BJJ App_
                 future: _notesFuture,
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Center(child: CircularProgressIndicator());
+                    return const Center(child: CircularProgressIndicator());
                   } else if (snapshot.hasError) {
                     return EmptyStateWidget(
                       icon: Icons.error_outline,
@@ -135,7 +137,7 @@ _Anotação do Match BJJ App_
                       message: snapshot.error.toString(),
                     );
                   } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return EmptyStateWidget(
+                    return const EmptyStateWidget(
                       icon: Icons.note_add_outlined,
                       title: 'Nenhuma anotação encontrada',
                       message:
@@ -173,7 +175,7 @@ _Anotação do Match BJJ App_
                                   backgroundImage:
                                       FileImage(File(note.imagePath!)),
                                 )
-                              : CircleAvatar(
+                              : const CircleAvatar(
                                   child: Icon(Icons.notes_rounded),
                                 ),
                           title: Text(note.title,
@@ -240,7 +242,6 @@ _Anotação do Match BJJ App_
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        child: Icon(Icons.add),
         tooltip: 'Nova Anotação',
         onPressed: () async {
           await Navigator.of(context).push(
@@ -249,6 +250,7 @@ _Anotação do Match BJJ App_
           );
           _loadNotes();
         },
+        child: const Icon(Icons.add),
       ),
     );
   }

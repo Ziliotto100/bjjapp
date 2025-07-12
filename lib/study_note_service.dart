@@ -1,3 +1,5 @@
+// ignore_for_file: empty_catches
+
 import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -36,7 +38,6 @@ class StudyNoteService {
       return jsonList.map((json) => StudyNote.fromJson(json)).toList()
         ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     } catch (e) {
-      print("Erro ao carregar anotações para o usuário $userId: $e");
       return [];
     }
   }
@@ -68,7 +69,6 @@ class StudyNoteService {
       final savedFile = await File(imageFile.path).copy(newPath);
       return savedFile.path;
     } catch (e) {
-      print("Erro ao salvar imagem para o usuário $userId: $e");
       return null;
     }
   }
@@ -81,8 +81,6 @@ class StudyNoteService {
       if (await file.exists()) {
         await file.delete();
       }
-    } catch (e) {
-      print("Erro ao deletar imagem: $e");
-    }
+    } catch (e) {}
   }
 }
