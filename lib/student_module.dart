@@ -1,11 +1,11 @@
 // lib/student_module.dart
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
-import 'dart:io'; // ADICIONADO para File
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:image_picker/image_picker.dart'; // ADICIONADO para fotos
+import 'package:image_picker/image_picker.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 
@@ -13,8 +13,8 @@ import 'models.dart';
 import 'common_widgets.dart';
 import 'app_theme.dart';
 import 'scoreboard_module.dart';
-import 'study_notebook_module.dart'; // Import corrigido
-import 'auth_gate.dart'; // Import ADICIONADO
+import 'study_notebook_module.dart';
+import 'auth_gate.dart';
 
 // --- TELAS DO ALUNO ---
 class StudentHomePage extends StatefulWidget {
@@ -103,13 +103,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-          body:
-              AppBackground(child: Center(child: CircularProgressIndicator())));
-    }
-
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(_titulos[_paginaAtual]),
         actions: [
@@ -118,13 +113,15 @@ class _StudentHomePageState extends State<StudentHomePage> {
               tooltip: 'Configurações',
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => SettingsPage(user: widget.user)))),
-          IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: 'Sair',
-              onPressed: () => FirebaseAuth.instance.signOut()),
         ],
       ),
-      body: IndexedStack(index: _paginaAtual, children: _telas),
+      body: AppBackground(
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : SafeArea(
+                child: IndexedStack(index: _paginaAtual, children: _telas),
+              ),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _paginaAtual,
         onTap: (index) => setState(() => _paginaAtual = index),
@@ -143,7 +140,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
   }
 }
 
-// --- TELA DE INÍCIO DO ALUNO (MODIFICADA) ---
 class StudentProfilePage extends StatefulWidget {
   final UserModel user;
   const StudentProfilePage({super.key, required this.user});
@@ -221,74 +217,69 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const AppBackground(
-          child: Center(child: CircularProgressIndicator()));
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_aluno == null) {
-      return const AppBackground(
-        child: EmptyStateWidget(
-          icon: Icons.person_add_alt_1_rounded,
-          title: "Complete seu Perfil",
-          message:
-              "Vá para as Configurações para preencher seus dados de aluno e ter acesso a todas as funcionalidades.",
-        ),
+      return const EmptyStateWidget(
+        icon: Icons.person_add_alt_1_rounded,
+        title: "Complete seu Perfil",
+        message:
+            "Vá para as Configurações para preencher seus dados de aluno e ter acesso a todas as funcionalidades.",
       );
     }
 
     final bool isPaid = _currentMonthFee != null;
 
-    return AppBackground(
-      child: RefreshIndicator(
-        onRefresh: _loadStudentData,
-        child: ListView(
-          children: [
-            UserProfileHeader(user: widget.user, studentData: _aluno),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Card(
-                child: ListTile(
-                  leading: Icon(
-                    isPaid
-                        ? Icons.check_circle_outline_rounded
-                        : Icons.error_outline_rounded,
-                    color: isPaid ? successColor : warningColor,
-                    size: 30,
-                  ),
-                  title: const Text("Status da Mensalidade",
-                      style: TextStyle(color: textHint)),
-                  subtitle: Text(
-                    isPaid
-                        ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate)}'
-                        : 'Pendente para este mês',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(color: textPrimary),
-                  ),
+    return RefreshIndicator(
+      onRefresh: _loadStudentData,
+      child: ListView(
+        children: [
+          UserProfileHeader(user: widget.user, studentData: _aluno),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Card(
+              child: ListTile(
+                leading: Icon(
+                  isPaid
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.error_outline_rounded,
+                  color: isPaid ? successColor : warningColor,
+                  size: 30,
+                ),
+                title: const Text("Status da Mensalidade",
+                    style: TextStyle(color: textHint)),
+                subtitle: Text(
+                  isPaid
+                      ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate)}'
+                      : 'Pendente para este mês',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(color: textPrimary),
                 ),
               ),
             ),
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Card(
-                child: ListTile(
-                  leading: const Icon(Icons.fitness_center_rounded,
-                      color: primaryAccent, size: 30),
-                  title: const Text("Peso", style: TextStyle(color: textHint)),
-                  subtitle: Text(
-                    '${_aluno!.peso.toStringAsFixed(1)} kg',
-                    style: Theme.of(context)
-                        .textTheme
-                        .titleMedium
-                        ?.copyWith(color: textPrimary),
-                  ),
+          ),
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Card(
+              child: ListTile(
+                leading: const Icon(Icons.fitness_center_rounded,
+                    color: primaryAccent, size: 30),
+                title: const Text("Peso", style: TextStyle(color: textHint)),
+                subtitle: Text(
+                  '${_aluno!.peso.toStringAsFixed(1)} kg',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(color: textPrimary),
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -310,7 +301,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   int? _graus;
   bool _isLoading = true;
   bool _isSaving = false;
-  String? _newProfileImagePath; // NOVO CAMPO
+  String? _newProfileImagePath;
 
   final List<String> _faixasList = [
     'Branca',
@@ -468,123 +459,131 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text("Editar Perfil")),
       body: AppBackground(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(16.0),
-                children: [
-                  Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Center(
-                          child: Stack(
-                            children: [
-                              CircleAvatar(
-                                radius: 60,
-                                backgroundColor: primaryAccent.withOpacity(0.2),
-                                backgroundImage: _newProfileImagePath != null
-                                    ? FileImage(File(_newProfileImagePath!))
-                                    : (widget.user.profileImagePath != null
-                                        ? FileImage(
-                                            File(widget.user.profileImagePath!))
-                                        : null),
-                                child: _newProfileImagePath == null &&
-                                        widget.user.profileImagePath == null
-                                    ? const Icon(Icons.person,
-                                        size: 60, color: primaryAccent)
-                                    : null,
-                              ),
-                              Positioned(
-                                bottom: 0,
-                                right: 0,
-                                child: CircleAvatar(
-                                  backgroundColor: Theme.of(context).cardColor,
-                                  child: IconButton(
-                                    icon: const Icon(Icons.camera_alt_outlined),
-                                    onPressed: _pickImage,
-                                    tooltip: 'Alterar foto',
-                                  ),
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: const EdgeInsets.all(16.0),
+                  children: [
+                    Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Center(
+                            child: Stack(
+                              children: [
+                                CircleAvatar(
+                                  radius: 60,
+                                  backgroundColor:
+                                      primaryAccent.withOpacity(0.2),
+                                  backgroundImage: _newProfileImagePath != null
+                                      ? FileImage(File(_newProfileImagePath!))
+                                      : (widget.user.profileImagePath != null
+                                          ? FileImage(File(
+                                              widget.user.profileImagePath!))
+                                          : null),
+                                  child: _newProfileImagePath == null &&
+                                          widget.user.profileImagePath == null
+                                      ? const Icon(Icons.person,
+                                          size: 60, color: primaryAccent)
+                                      : null,
                                 ),
-                              )
-                            ],
+                                Positioned(
+                                  bottom: 0,
+                                  right: 0,
+                                  child: CircleAvatar(
+                                    backgroundColor:
+                                        Theme.of(context).cardColor,
+                                    child: IconButton(
+                                      icon:
+                                          const Icon(Icons.camera_alt_outlined),
+                                      onPressed: _pickImage,
+                                      tooltip: 'Alterar foto',
+                                    ),
+                                  ),
+                                )
+                              ],
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 24),
-                        TextFormField(
-                          controller: _nameController,
-                          decoration:
-                              const InputDecoration(labelText: 'Nome Completo'),
-                          validator: (v) => v == null || v.trim().isEmpty
-                              ? 'Nome não pode ser vazio'
-                              : null,
-                        ),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _weightController,
-                          decoration:
-                              const InputDecoration(labelText: 'Peso (kg)'),
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          validator: (v) {
-                            if (v == null || v.isEmpty) return 'Peso inválido';
-                            final x = double.tryParse(v.replaceAll(',', '.'));
-                            return (x == null || x <= 0)
-                                ? 'Peso inválido (deve ser > 0)'
-                                : null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<String>(
-                          value: _faixa,
-                          decoration: const InputDecoration(labelText: 'Faixa'),
-                          items: _faixasList
-                              .map((faixa) => DropdownMenuItem(
-                                  value: faixa, child: Text(faixa)))
-                              .toList(),
-                          onChanged: (value) => setState(() {
-                            _faixa = value;
-                            _grausList = _getGrausForFaixa(_faixa);
-                            _graus = null;
-                          }),
-                          validator: (value) =>
-                              value == null ? 'Selecione sua faixa' : null,
-                        ),
-                        if (_faixa != null) ...[
-                          const SizedBox(height: 16),
-                          DropdownButtonFormField<int>(
-                            value: _graus,
+                          const SizedBox(height: 24),
+                          TextFormField(
+                            controller: _nameController,
                             decoration: const InputDecoration(
-                                labelText: 'Graus (opcional)'),
-                            items: [
-                              const DropdownMenuItem<int>(
-                                  value: null, child: Text("Nenhum")),
-                              ..._grausList.map((g) => DropdownMenuItem(
-                                  value: g, child: Text("$gº Grau"))),
-                            ],
-                            onChanged: (value) =>
-                                setState(() => _graus = value),
+                                labelText: 'Nome Completo'),
+                            validator: (v) => v == null || v.trim().isEmpty
+                                ? 'Nome não pode ser vazio'
+                                : null,
                           ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _weightController,
+                            decoration:
+                                const InputDecoration(labelText: 'Peso (kg)'),
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                            validator: (v) {
+                              if (v == null || v.isEmpty)
+                                return 'Peso inválido';
+                              final x = double.tryParse(v.replaceAll(',', '.'));
+                              return (x == null || x <= 0)
+                                  ? 'Peso inválido (deve ser > 0)'
+                                  : null;
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          DropdownButtonFormField<String>(
+                            value: _faixa,
+                            decoration:
+                                const InputDecoration(labelText: 'Faixa'),
+                            items: _faixasList
+                                .map((faixa) => DropdownMenuItem(
+                                    value: faixa, child: Text(faixa)))
+                                .toList(),
+                            onChanged: (value) => setState(() {
+                              _faixa = value;
+                              _grausList = _getGrausForFaixa(_faixa);
+                              _graus = null;
+                            }),
+                            validator: (value) =>
+                                value == null ? 'Selecione sua faixa' : null,
+                          ),
+                          if (_faixa != null) ...[
+                            const SizedBox(height: 16),
+                            DropdownButtonFormField<int>(
+                              value: _graus,
+                              decoration: const InputDecoration(
+                                  labelText: 'Graus (opcional)'),
+                              items: [
+                                const DropdownMenuItem<int>(
+                                    value: null, child: Text("Nenhum")),
+                                ..._grausList.map((g) => DropdownMenuItem(
+                                    value: g, child: Text("$gº Grau"))),
+                              ],
+                              onChanged: (value) =>
+                                  setState(() => _graus = value),
+                            ),
+                          ],
+                          const SizedBox(height: 24),
+                          _isSaving
+                              ? const Center(child: CircularProgressIndicator())
+                              : ElevatedButton.icon(
+                                  onPressed: _updateProfile,
+                                  icon: const Icon(Icons.save),
+                                  label: const Text("Salvar Alterações"),
+                                  style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 16)),
+                                ),
                         ],
-                        const SizedBox(height: 24),
-                        _isSaving
-                            ? const Center(child: CircularProgressIndicator())
-                            : ElevatedButton.icon(
-                                onPressed: _updateProfile,
-                                icon: const Icon(Icons.save),
-                                label: const Text("Salvar Alterações"),
-                                style: ElevatedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 16)),
-                              ),
-                      ],
-                    ),
-                  )
-                ],
-              ),
+                      ),
+                    )
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -605,124 +604,117 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
   Widget build(BuildContext context) {
     final studentId = widget.user.studentRecordId;
     if (studentId == null) {
-      return const AppBackground(
-        child: EmptyStateWidget(
-            icon: Icons.link_off,
-            title: "Perfil não vinculado",
-            message:
-                "Seu login não está vinculado a um registro de aluno. Complete seu perfil na primeira aba."),
-      );
+      return const EmptyStateWidget(
+          icon: Icons.link_off,
+          title: "Perfil não vinculado",
+          message:
+              "Seu login não está vinculado a um registro de aluno. Complete seu perfil na primeira aba.");
     }
 
-    return AppBackground(
-      child: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('academies')
-            .doc(widget.user.academyId)
-            .collection('checkins')
-            .where('studentId', isEqualTo: studentId)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .collection('checkins')
+          .where('studentId', isEqualTo: studentId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
 
-          final allCheckins = snapshot.data?.docs
-                  .map((doc) => CheckinEntry.fromJson(
-                      doc.id, doc.data() as Map<String, dynamic>))
-                  .toList() ??
-              [];
+        final allCheckins = snapshot.data?.docs
+                .map((doc) => CheckinEntry.fromJson(
+                    doc.id, doc.data() as Map<String, dynamic>))
+                .toList() ??
+            [];
 
-          final eventosAgrupados = <DateTime, List<CheckinEntry>>{};
-          for (var checkin in allCheckins) {
-            final dataNormalizada = DateTime.utc(
-                checkin.date.year, checkin.date.month, checkin.date.day);
-            eventosAgrupados
-                .putIfAbsent(dataNormalizada, () => [])
-                .add(checkin);
-          }
+        final eventosAgrupados = <DateTime, List<CheckinEntry>>{};
+        for (var checkin in allCheckins) {
+          final dataNormalizada = DateTime.utc(
+              checkin.date.year, checkin.date.month, checkin.date.day);
+          eventosAgrupados.putIfAbsent(dataNormalizada, () => []).add(checkin);
+        }
 
-          final checkinsForFocusedMonth = allCheckins.where((checkin) {
-            return checkin.date.month == _focusedDay.month &&
-                checkin.date.year == _focusedDay.year;
-          }).toList();
+        final checkinsForFocusedMonth = allCheckins.where((checkin) {
+          return checkin.date.month == _focusedDay.month &&
+              checkin.date.year == _focusedDay.year;
+        }).toList();
 
-          return Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Card(
-                  elevation: 4,
-                  child: Padding(
-                    padding: const EdgeInsets.all(12.0),
-                    child: Text(
-                      'Treinos em ${DateFormat.yMMMM('pt_BR').format(_focusedDay)}: ${checkinsForFocusedMonth.length}',
-                      style: Theme.of(context)
-                          .textTheme
-                          .titleLarge
-                          ?.copyWith(color: primaryAccent),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
+        return Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Card(
+                elevation: 4,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                  child: Card(
-                    child: TableCalendar<CheckinEntry>(
-                      locale: 'pt_BR',
-                      firstDay: DateTime.utc(DateTime.now().year - 5, 1, 1),
-                      lastDay: DateTime.utc(DateTime.now().year + 5, 12, 31),
-                      focusedDay: _focusedDay,
-                      calendarFormat: CalendarFormat.month,
-                      headerStyle: const HeaderStyle(
-                        formatButtonVisible: false,
-                        titleCentered: true,
-                      ),
-                      eventLoader: (day) =>
-                          eventosAgrupados[
-                              DateTime.utc(day.year, day.month, day.day)] ??
-                          [],
-                      onPageChanged: (focusedDay) {
-                        setState(() {
-                          _focusedDay = focusedDay;
-                        });
+                  padding: const EdgeInsets.all(12.0),
+                  child: Text(
+                    'Treinos em ${DateFormat.yMMMM('pt_BR').format(_focusedDay)}: ${checkinsForFocusedMonth.length}',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(color: primaryAccent),
+                  ),
+                ),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Card(
+                  child: TableCalendar<CheckinEntry>(
+                    locale: 'pt_BR',
+                    firstDay: DateTime.utc(DateTime.now().year - 5, 1, 1),
+                    lastDay: DateTime.utc(DateTime.now().year + 5, 12, 31),
+                    focusedDay: _focusedDay,
+                    calendarFormat: CalendarFormat.month,
+                    headerStyle: const HeaderStyle(
+                      formatButtonVisible: false,
+                      titleCentered: true,
+                    ),
+                    eventLoader: (day) =>
+                        eventosAgrupados[
+                            DateTime.utc(day.year, day.month, day.day)] ??
+                        [],
+                    onPageChanged: (focusedDay) {
+                      setState(() {
+                        _focusedDay = focusedDay;
+                      });
+                    },
+                    calendarBuilders: CalendarBuilders(
+                      markerBuilder: (context, date, events) {
+                        if (events.isNotEmpty) {
+                          return Positioned(
+                            right: 1,
+                            bottom: 1,
+                            child: Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                  shape: BoxShape.circle, color: successColor),
+                            ),
+                          );
+                        }
+                        return null;
                       },
-                      calendarBuilders: CalendarBuilders(
-                        markerBuilder: (context, date, events) {
-                          if (events.isNotEmpty) {
-                            return Positioned(
-                              right: 1,
-                              bottom: 1,
-                              child: Container(
-                                width: 7,
-                                height: 7,
-                                decoration: const BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: successColor),
-                              ),
-                            );
-                          }
-                          return null;
-                        },
-                      ),
-                      calendarStyle: CalendarStyle(
-                        outsideDaysVisible: false,
-                        todayDecoration: BoxDecoration(
-                            color: primaryAccent.withOpacity(0.3),
-                            shape: BoxShape.circle),
-                        selectedDecoration: const BoxDecoration(
-                            color: primaryAccent, shape: BoxShape.circle),
-                      ),
+                    ),
+                    calendarStyle: CalendarStyle(
+                      outsideDaysVisible: false,
+                      todayDecoration: BoxDecoration(
+                          color: primaryAccent.withOpacity(0.3),
+                          shape: BoxShape.circle),
+                      selectedDecoration: const BoxDecoration(
+                          color: primaryAccent, shape: BoxShape.circle),
                     ),
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-            ],
-          );
-        },
-      ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        );
+      },
     );
   }
 }
@@ -734,54 +726,91 @@ class SettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text("Configurações"),
       ),
       body: AppBackground(
-        child: ListView(
-          padding: const EdgeInsets.all(8.0),
-          children: [
-            if (user.role == UserRole.student ||
-                user.role == UserRole.teacher ||
-                user.role == UserRole.manager)
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(8.0),
+            children: [
+              if (user.role == UserRole.student ||
+                  user.role == UserRole.teacher ||
+                  user.role == UserRole.manager)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.person_outline_rounded),
+                    title: const Text("Meu Perfil"),
+                    trailing:
+                        const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                    onTap: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => UserProfilePage(user: user),
+                      ));
+                    },
+                  ),
+                ),
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.person_outline_rounded),
-                  title: const Text("Meu Perfil"),
+                  leading: const Icon(Icons.lock_reset_rounded),
+                  title: const Text("Alterar Senha"),
                   trailing:
                       const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: () {
                     Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => UserProfilePage(user: user),
+                      builder: (_) => const ChangePasswordPage(),
                     ));
                   },
                 ),
               ),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.lock_reset_rounded),
-                title: const Text("Alterar Senha"),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                onTap: () {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const ChangePasswordPage(),
-                  ));
-                },
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.email_outlined),
+                  title: const Text("Alterar E-mail"),
+                  trailing:
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const ChangeEmailPage(),
+                    ));
+                  },
+                ),
               ),
-            ),
-            Card(
-              child: ListTile(
-                leading: const Icon(Icons.email_outlined),
-                title: const Text("Alterar E-mail"),
-                trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                onTap: () {
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => const ChangeEmailPage(),
-                  ));
-                },
+              // AJUSTE: Card de Logout
+              const SizedBox(height: 20),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.logout, color: errorColor),
+                  title: const Text("Sair (Deslogar)",
+                      style: TextStyle(color: errorColor)),
+                  onTap: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Confirmar Saída'),
+                        content: const Text(
+                            'Tem certeza que deseja sair do aplicativo?'),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(false),
+                            child: const Text('Cancelar'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(true),
+                            child: const Text('Sair'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true) {
+                      await FirebaseAuth.instance.signOut();
+                    }
+                  },
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -797,8 +826,8 @@ class UserProfilePage extends StatefulWidget {
 }
 
 class _UserProfilePageState extends State<UserProfilePage> {
-  Aluno? _aluno; // Apenas para estudantes
-  MonthlyFee? _currentMonthFee; // Apenas para estudantes
+  Aluno? _aluno;
+  MonthlyFee? _currentMonthFee;
   bool _isLoading = true;
 
   @override
@@ -921,114 +950,60 @@ class _UserProfilePageState extends State<UserProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text("Meu Perfil"),
       ),
       body: AppBackground(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : RefreshIndicator(
-                onRefresh: _loadProfileData,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
-                  children: [
-                    Center(
-                      child: CircleAvatar(
-                        radius: 50,
-                        backgroundColor: primaryAccent.withOpacity(0.2),
-                        backgroundImage: widget.user.profileImagePath != null &&
-                                widget.user.profileImagePath!.isNotEmpty
-                            ? FileImage(File(widget.user.profileImagePath!))
-                            : null,
-                        child: widget.user.profileImagePath == null ||
-                                widget.user.profileImagePath!.isEmpty
-                            ? const Icon(Icons.account_circle,
-                                size: 100, color: primaryAccent)
-                            : null,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Center(
-                      child: Text(
-                        widget.user.name,
-                        style: Theme.of(context).textTheme.headlineSmall,
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Center(
-                      child: Chip(
-                        avatar:
-                            const Icon(Icons.verified_user_outlined, size: 18),
-                        label: Text(_formatRole(widget.user.role)),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Cards de Informações do Usuário
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.email_outlined,
-                            color: primaryAccent, size: 30),
-                        title: const Text("E-mail de Login",
-                            style: TextStyle(color: textHint)),
-                        subtitle: Text(
-                          widget.user.email,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(color: textPrimary),
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : RefreshIndicator(
+                  onRefresh: _loadProfileData,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+                    children: [
+                      Center(
+                        child: CircleAvatar(
+                          radius: 50,
+                          backgroundColor: primaryAccent.withOpacity(0.2),
+                          backgroundImage: widget.user.profileImagePath !=
+                                      null &&
+                                  widget.user.profileImagePath!.isNotEmpty
+                              ? FileImage(File(widget.user.profileImagePath!))
+                              : null,
+                          child: widget.user.profileImagePath == null ||
+                                  widget.user.profileImagePath!.isEmpty
+                              ? const Icon(Icons.account_circle,
+                                  size: 100, color: primaryAccent)
+                              : null,
                         ),
                       ),
-                    ),
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.shield_outlined,
-                            color: primaryAccent, size: 30),
-                        title: const Text("Graduação",
-                            style: TextStyle(color: textHint)),
-                        subtitle: Text(
-                          _formatGraduation(widget.user, _aluno),
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(color: textPrimary),
+                      const SizedBox(height: 16),
+                      Center(
+                        child: Text(
+                          widget.user.name,
+                          style: Theme.of(context).textTheme.headlineSmall,
+                          textAlign: TextAlign.center,
                         ),
                       ),
-                    ),
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.fitness_center_rounded,
-                            color: primaryAccent, size: 30),
-                        title: const Text("Peso",
-                            style: TextStyle(color: textHint)),
-                        subtitle: Text(
-                          _formatWeight(widget.user, _aluno),
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(color: textPrimary),
+                      const SizedBox(height: 8),
+                      Center(
+                        child: Chip(
+                          avatar: const Icon(Icons.verified_user_outlined,
+                              size: 18),
+                          label: Text(_formatRole(widget.user.role)),
                         ),
                       ),
-                    ),
-                    if (widget.user.role == UserRole.student)
+                      const SizedBox(height: 24),
                       Card(
                         child: ListTile(
-                          leading: Icon(
-                            _currentMonthFee != null
-                                ? Icons.check_circle_outline_rounded
-                                : Icons.error_outline_rounded,
-                            color: _currentMonthFee != null
-                                ? successColor
-                                : warningColor,
-                            size: 30,
-                          ),
-                          title: const Text("Status da Mensalidade",
+                          leading: const Icon(Icons.email_outlined,
+                              color: primaryAccent, size: 30),
+                          title: const Text("E-mail de Login",
                               style: TextStyle(color: textHint)),
                           subtitle: Text(
-                            _currentMonthFee != null
-                                ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate)}'
-                                : 'Pendente para este mês',
+                            widget.user.email,
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -1036,9 +1011,65 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           ),
                         ),
                       ),
-                  ],
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.shield_outlined,
+                              color: primaryAccent, size: 30),
+                          title: const Text("Graduação",
+                              style: TextStyle(color: textHint)),
+                          subtitle: Text(
+                            _formatGraduation(widget.user, _aluno),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(color: textPrimary),
+                          ),
+                        ),
+                      ),
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.fitness_center_rounded,
+                              color: primaryAccent, size: 30),
+                          title: const Text("Peso",
+                              style: TextStyle(color: textHint)),
+                          subtitle: Text(
+                            _formatWeight(widget.user, _aluno),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(color: textPrimary),
+                          ),
+                        ),
+                      ),
+                      if (widget.user.role == UserRole.student)
+                        Card(
+                          child: ListTile(
+                            leading: Icon(
+                              _currentMonthFee != null
+                                  ? Icons.check_circle_outline_rounded
+                                  : Icons.error_outline_rounded,
+                              color: _currentMonthFee != null
+                                  ? successColor
+                                  : warningColor,
+                              size: 30,
+                            ),
+                            title: const Text("Status da Mensalidade",
+                                style: TextStyle(color: textHint)),
+                            subtitle: Text(
+                              _currentMonthFee != null
+                                  ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate)}'
+                                  : 'Pendente para este mês',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(color: textPrimary),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _navigateToEditPage,
@@ -1168,120 +1199,123 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text("Editar Perfil")),
       body: AppBackground(
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Stack(
-                      children: [
-                        CircleAvatar(
-                          radius: 60,
-                          backgroundColor: primaryAccent.withOpacity(0.2),
-                          backgroundImage: _newProfileImagePath != null
-                              ? FileImage(File(_newProfileImagePath!))
-                              : (widget.user.profileImagePath != null &&
-                                      widget.user.profileImagePath!.isNotEmpty
-                                  ? FileImage(
-                                      File(widget.user.profileImagePath!))
-                                  : null),
-                          child: _newProfileImagePath == null &&
-                                  (widget.user.profileImagePath == null ||
-                                      widget.user.profileImagePath!.isEmpty)
-                              ? const Icon(Icons.person,
-                                  size: 60, color: primaryAccent)
-                              : null,
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: CircleAvatar(
-                            backgroundColor: Theme.of(context).cardColor,
-                            child: IconButton(
-                              icon: const Icon(Icons.camera_alt_outlined),
-                              onPressed: _pickImage,
-                              tooltip: 'Alterar foto',
-                            ),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Center(
+                      child: Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 60,
+                            backgroundColor: primaryAccent.withOpacity(0.2),
+                            backgroundImage: _newProfileImagePath != null
+                                ? FileImage(File(_newProfileImagePath!))
+                                : (widget.user.profileImagePath != null &&
+                                        widget.user.profileImagePath!.isNotEmpty
+                                    ? FileImage(
+                                        File(widget.user.profileImagePath!))
+                                    : null),
+                            child: _newProfileImagePath == null &&
+                                    (widget.user.profileImagePath == null ||
+                                        widget.user.profileImagePath!.isEmpty)
+                                ? const Icon(Icons.person,
+                                    size: 60, color: primaryAccent)
+                                : null,
                           ),
-                        )
-                      ],
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: CircleAvatar(
+                              backgroundColor: Theme.of(context).cardColor,
+                              child: IconButton(
+                                icon: const Icon(Icons.camera_alt_outlined),
+                                onPressed: _pickImage,
+                                tooltip: 'Alterar foto',
+                              ),
+                            ),
+                          )
+                        ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 24),
-                  TextFormField(
-                    controller: _nameController,
-                    decoration:
-                        const InputDecoration(labelText: 'Nome Completo'),
-                    validator: (v) => v == null || v.trim().isEmpty
-                        ? 'Nome não pode ser vazio'
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _weightController,
-                    decoration: const InputDecoration(labelText: 'Peso (kg)'),
-                    keyboardType:
-                        const TextInputType.numberWithOptions(decimal: true),
-                    validator: (v) {
-                      if (v == null || v.isEmpty) return 'Peso inválido';
-                      final x = double.tryParse(v.replaceAll(',', '.'));
-                      return (x == null || x <= 0)
-                          ? 'Peso inválido (deve ser > 0)'
-                          : null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: _faixa,
-                    decoration: const InputDecoration(labelText: 'Faixa'),
-                    items: _faixasList
-                        .map((faixa) =>
-                            DropdownMenuItem(value: faixa, child: Text(faixa)))
-                        .toList(),
-                    onChanged: (value) => setState(() {
-                      _faixa = value;
-                      _grausList = _getGrausForFaixa(_faixa);
-                      _graus = null;
-                    }),
-                    validator: (value) =>
-                        value == null ? 'Selecione sua faixa' : null,
-                  ),
-                  if (_faixa != null) ...[
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<int>(
-                      value: _graus,
+                    const SizedBox(height: 24),
+                    TextFormField(
+                      controller: _nameController,
                       decoration:
-                          const InputDecoration(labelText: 'Graus (opcional)'),
-                      items: [
-                        const DropdownMenuItem<int>(
-                            value: null, child: Text("Nenhum")),
-                        ..._grausList.map((g) => DropdownMenuItem(
-                            value: g, child: Text("$gº Grau"))),
-                      ],
-                      onChanged: (value) => setState(() => _graus = value),
+                          const InputDecoration(labelText: 'Nome Completo'),
+                      validator: (v) => v == null || v.trim().isEmpty
+                          ? 'Nome não pode ser vazio'
+                          : null,
                     ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _weightController,
+                      decoration: const InputDecoration(labelText: 'Peso (kg)'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Peso inválido';
+                        final x = double.tryParse(v.replaceAll(',', '.'));
+                        return (x == null || x <= 0)
+                            ? 'Peso inválido (deve ser > 0)'
+                            : null;
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _faixa,
+                      decoration: const InputDecoration(labelText: 'Faixa'),
+                      items: _faixasList
+                          .map((faixa) => DropdownMenuItem(
+                              value: faixa, child: Text(faixa)))
+                          .toList(),
+                      onChanged: (value) => setState(() {
+                        _faixa = value;
+                        _grausList = _getGrausForFaixa(_faixa);
+                        _graus = null;
+                      }),
+                      validator: (value) =>
+                          value == null ? 'Selecione sua faixa' : null,
+                    ),
+                    if (_faixa != null) ...[
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<int>(
+                        value: _graus,
+                        decoration: const InputDecoration(
+                            labelText: 'Graus (opcional)'),
+                        items: [
+                          const DropdownMenuItem<int>(
+                              value: null, child: Text("Nenhum")),
+                          ..._grausList.map((g) => DropdownMenuItem(
+                              value: g, child: Text("$gº Grau"))),
+                        ],
+                        onChanged: (value) => setState(() => _graus = value),
+                      ),
+                    ],
+                    const SizedBox(height: 24),
+                    _isSaving
+                        ? const Center(child: CircularProgressIndicator())
+                        : ElevatedButton.icon(
+                            onPressed: _updateProfile,
+                            icon: const Icon(Icons.save),
+                            label: const Text("Salvar Alterações"),
+                            style: ElevatedButton.styleFrom(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 16)),
+                          ),
                   ],
-                  const SizedBox(height: 24),
-                  _isSaving
-                      ? const Center(child: CircularProgressIndicator())
-                      : ElevatedButton.icon(
-                          onPressed: _updateProfile,
-                          icon: const Icon(Icons.save),
-                          label: const Text("Salvar Alterações"),
-                          style: ElevatedButton.styleFrom(
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 16)),
-                        ),
-                ],
-              ),
-            )
-          ],
+                ),
+              )
+            ],
+          ),
         ),
       ),
     );

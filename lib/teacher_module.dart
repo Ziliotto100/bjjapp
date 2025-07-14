@@ -103,7 +103,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   void _buildScreens() {
     _telas = [
       TeacherDashboardPage(
-        // <- MODIFICADO
         user: widget.user,
         isSparringMode: _isSparringMode,
         onNavigateToSparring: () {
@@ -123,7 +122,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           isSparringMode: _isSparringMode,
           onIniciarSparring: _startSparring,
           onCheckinAlunos: _checkinStudents),
-      // Chamada CORRIGIDA
       StudyNotebookPage(userId: widget.user.uid),
       MatchSetupPage(
           academyId: widget.user.academyId,
@@ -223,13 +221,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingAlunos) {
-      return const Scaffold(
-          body:
-              AppBackground(child: Center(child: CircularProgressIndicator())));
-    }
-
     return Scaffold(
+      // AJUSTE EDGE-TO-EDGE: Garante que o fundo do AppBackground seja visível
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(_titulos[_paginaAtual]),
         actions: [
@@ -244,7 +238,15 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
               onPressed: () => FirebaseAuth.instance.signOut()),
         ],
       ),
-      body: IndexedStack(index: _paginaAtual, children: _telas),
+      // AJUSTE EDGE-TO-EDGE: SafeArea aplicado ao IndexedStack
+      // para proteger todas as telas filhas das barras do sistema.
+      body: AppBackground(
+        child: _isLoadingAlunos
+            ? const Center(child: CircularProgressIndicator())
+            : SafeArea(
+                child: IndexedStack(index: _paginaAtual, children: _telas),
+              ),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _paginaAtual,
         onTap: (index) => setState(() => _paginaAtual = index),
@@ -345,102 +347,99 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppBackground(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Buscar aluno por nome...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => _searchController.clear(),
-                      )
-                    : null,
-              ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              labelText: 'Buscar aluno por nome...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => _searchController.clear(),
+                    )
+                  : null,
             ),
           ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('academies')
-                  .doc(widget.academyId)
-                  .collection('students')
-                  .orderBy('nome')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text("Erro: ${snapshot.error}"));
-                }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const EmptyStateWidget(
-                    icon: Icons.no_accounts_rounded,
-                    title: 'Nenhum Aluno Cadastrado',
-                    message:
-                        'Clique no botão "+" para adicionar o primeiro aluno da sua academia.',
-                  );
-                }
-
-                final allAlunos = snapshot.data!.docs.map((doc) {
-                  return Aluno.fromJson(
-                      doc.id, doc.data() as Map<String, dynamic>);
-                }).toList();
-
-                final filteredAlunos = allAlunos.where((aluno) {
-                  return aluno.nome
-                      .toLowerCase()
-                      .contains(_searchQuery.toLowerCase());
-                }).toList();
-
-                if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
-                  return EmptyStateWidget(
-                    icon: Icons.person_search,
-                    title: "Nenhum Aluno Encontrado",
-                    message:
-                        "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
-                  itemCount: filteredAlunos.length,
-                  itemBuilder: (context, index) {
-                    final aluno = filteredAlunos[index];
-                    return Card(
-                      child: ListTile(
-                        onTap: () =>
-                            Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => StudentDetailPage(
-                            academyId: widget.academyId,
-                            student: aluno,
-                          ),
-                        )),
-                        title: Text(aluno.nome,
-                            style: Theme.of(context).textTheme.titleMedium),
-                        subtitle: Text(
-                            '${aluno.faixa}${aluno.graus != null ? ' - ${aluno.graus}º' : ''} - ${aluno.peso}kg'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.edit_outlined,
-                              color: primaryAccent),
-                          onPressed: () => _editAluno(aluno),
-                          tooltip: 'Editar Aluno',
-                        ),
-                      ),
-                    );
-                  },
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('academies')
+                .doc(widget.academyId)
+                .collection('students')
+                .orderBy('nome')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text("Erro: ${snapshot.error}"));
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.no_accounts_rounded,
+                  title: 'Nenhum Aluno Cadastrado',
+                  message:
+                      'Clique no botão "+" para adicionar o primeiro aluno da sua academia.',
                 );
-              },
-            ),
+              }
+
+              final allAlunos = snapshot.data!.docs.map((doc) {
+                return Aluno.fromJson(
+                    doc.id, doc.data() as Map<String, dynamic>);
+              }).toList();
+
+              final filteredAlunos = allAlunos.where((aluno) {
+                return aluno.nome
+                    .toLowerCase()
+                    .contains(_searchQuery.toLowerCase());
+              }).toList();
+
+              if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
+                return EmptyStateWidget(
+                  icon: Icons.person_search,
+                  title: "Nenhum Aluno Encontrado",
+                  message:
+                      "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
+                itemCount: filteredAlunos.length,
+                itemBuilder: (context, index) {
+                  final aluno = filteredAlunos[index];
+                  return Card(
+                    child: ListTile(
+                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => StudentDetailPage(
+                          academyId: widget.academyId,
+                          student: aluno,
+                        ),
+                      )),
+                      title: Text(aluno.nome,
+                          style: Theme.of(context).textTheme.titleMedium),
+                      subtitle: Text(
+                          '${aluno.faixa}${aluno.graus != null ? ' - ${aluno.graus}º' : ''} - ${aluno.peso}kg'),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.edit_outlined,
+                            color: primaryAccent),
+                        onPressed: () => _editAluno(aluno),
+                        tooltip: 'Editar Aluno',
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -459,53 +458,51 @@ class TeacherDashboardPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AppBackground(
-      child: ListView(
-        children: [
-          UserProfileHeader(user: user),
-          if (isSparringMode)
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: Card(
-                elevation: 5,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: primaryAccent, width: 2),
-                ),
-                child: InkWell(
-                  onTap: onNavigateToSparring,
-                  borderRadius: BorderRadius.circular(12),
-                  child: Padding(
-                    padding: const EdgeInsets.all(20.0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.sports_kabaddi_rounded,
-                            color: primaryAccent, size: 30),
-                        const SizedBox(width: 16),
-                        Text("Ver Treino em Andamento",
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(color: primaryAccent)),
-                      ],
-                    ),
+    return ListView(
+      children: [
+        UserProfileHeader(user: user),
+        if (isSparringMode)
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Card(
+              elevation: 5,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: primaryAccent, width: 2),
+              ),
+              child: InkWell(
+                onTap: onNavigateToSparring,
+                borderRadius: BorderRadius.circular(12),
+                child: Padding(
+                  padding: const EdgeInsets.all(20.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.sports_kabaddi_rounded,
+                          color: primaryAccent, size: 30),
+                      const SizedBox(width: 16),
+                      Text("Ver Treino em Andamento",
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(color: primaryAccent)),
+                    ],
                   ),
                 ),
               ),
-            )
-          else
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Text(
-                'Use a barra de navegação abaixo para gerenciar suas turmas e aulas.',
-                style: TextStyle(color: textHint, fontSize: 16),
-                textAlign: TextAlign.center,
-              ),
             ),
-        ],
-      ),
+          )
+        else
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Text(
+              'Use a barra de navegação abaixo para gerenciar suas turmas e aulas.',
+              style: TextStyle(color: textHint, fontSize: 16),
+              textAlign: TextAlign.center,
+            ),
+          ),
+      ],
     );
   }
 }
@@ -563,68 +560,66 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppBackground(
-      child: ListView(
-        padding: const EdgeInsets.all(16.0),
-        children: [
-          Card(
-            child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              leading: const Icon(Icons.checklist_rtl_rounded,
-                  color: primaryAccent, size: 40),
-              title: Text("Fazer Chamada da Turma",
-                  style: Theme.of(context).textTheme.titleMedium),
-              subtitle: const Text("Registre a presença de hoje."),
-              trailing:
-                  const Icon(Icons.arrow_forward_ios_rounded, color: textHint),
-              onTap: _navigateToBulkCheckin,
-            ),
+    return ListView(
+      padding: const EdgeInsets.all(16.0),
+      children: [
+        Card(
+          child: ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            leading: const Icon(Icons.checklist_rtl_rounded,
+                color: primaryAccent, size: 40),
+            title: Text("Fazer Chamada da Turma",
+                style: Theme.of(context).textTheme.titleMedium),
+            subtitle: const Text("Registre a presença de hoje."),
+            trailing:
+                const Icon(Icons.arrow_forward_ios_rounded, color: textHint),
+            onTap: _navigateToBulkCheckin,
           ),
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              leading: const Icon(Icons.edit_calendar_rounded,
-                  color: warningColor, size: 40),
-              title: Text("Lançar Check-in Retroativo",
-                  style: Theme.of(context).textTheme.titleMedium),
-              subtitle: const Text("Registre uma presença de um dia anterior."),
-              trailing:
-                  const Icon(Icons.arrow_forward_ios_rounded, color: textHint),
-              onTap: _navigateToRetroactiveCheckin,
-            ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            leading: const Icon(Icons.edit_calendar_rounded,
+                color: warningColor, size: 40),
+            title: Text("Lançar Check-in Retroativo",
+                style: Theme.of(context).textTheme.titleMedium),
+            subtitle: const Text("Registre uma presença de um dia anterior."),
+            trailing:
+                const Icon(Icons.arrow_forward_ios_rounded, color: textHint),
+            onTap: _navigateToRetroactiveCheckin,
           ),
-          const SizedBox(height: 12),
-          Card(
-            child: ListTile(
-              contentPadding:
-                  const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-              leading: const Icon(Icons.leaderboard_rounded,
-                  color: infoColor, size: 40),
-              title: Text("Ver Ranking de Presença",
-                  style: Theme.of(context).textTheme.titleMedium),
-              subtitle: const Text("Acompanhe a frequência dos participantes."),
-              trailing:
-                  const Icon(Icons.arrow_forward_ios_rounded, color: textHint),
-              onTap: () {
-                if (widget.todosParticipantesDaAcademia.isEmpty) {
-                  showBjjSnackBar(context, 'Cadastre participantes primeiro.',
-                      type: 'info');
-                  return;
-                }
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        RankingTeacherPage(academyId: widget.academyId),
-                  ),
-                );
-              },
-            ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+            leading: const Icon(Icons.leaderboard_rounded,
+                color: infoColor, size: 40),
+            title: Text("Ver Ranking de Presença",
+                style: Theme.of(context).textTheme.titleMedium),
+            subtitle: const Text("Acompanhe a frequência dos participantes."),
+            trailing:
+                const Icon(Icons.arrow_forward_ios_rounded, color: textHint),
+            onTap: () {
+              if (widget.todosParticipantesDaAcademia.isEmpty) {
+                showBjjSnackBar(context, 'Cadastre participantes primeiro.',
+                    type: 'info');
+                return;
+              }
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      RankingTeacherPage(academyId: widget.academyId),
+                ),
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -728,67 +723,71 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text("Chamada da Turma"),
       ),
       body: AppBackground(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  labelText: 'Buscar por nome...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                          },
-                        )
-                      : null,
+        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o Column
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    labelText: 'Buscar por nome...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
+                            },
+                          )
+                        : null,
+                  ),
                 ),
               ),
-            ),
-            Expanded(
-              child: _filteredParticipants.isEmpty
-                  ? EmptyStateWidget(
-                      icon: Icons.person_off,
-                      title: "Nenhum Participante Encontrado",
-                      message: _searchController.text.isNotEmpty
-                          ? "Verifique o nome digitado."
-                          : "Adicione alunos ou professores para fazer a chamada.",
-                    )
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
-                      itemCount: _filteredParticipants.length,
-                      itemBuilder: (context, index) {
-                        final aluno = _filteredParticipants[index];
-                        final isSelected =
-                            _selectedStudentIds.contains(aluno.id);
-                        return Card(
-                          child: CheckboxListTile(
-                            title: Text(aluno.nome),
-                            subtitle: Text(aluno.faixa),
-                            value: isSelected,
-                            onChanged: (bool? value) {
-                              setState(() {
-                                if (value == true) {
-                                  _selectedStudentIds.add(aluno.id);
-                                } else {
-                                  _selectedStudentIds.remove(aluno.id);
-                                }
-                              });
-                            },
-                            secondary: const Icon(Icons.person_outline),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+              Expanded(
+                child: _filteredParticipants.isEmpty
+                    ? EmptyStateWidget(
+                        icon: Icons.person_off,
+                        title: "Nenhum Participante Encontrado",
+                        message: _searchController.text.isNotEmpty
+                            ? "Verifique o nome digitado."
+                            : "Adicione alunos ou professores para fazer a chamada.",
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
+                        itemCount: _filteredParticipants.length,
+                        itemBuilder: (context, index) {
+                          final aluno = _filteredParticipants[index];
+                          final isSelected =
+                              _selectedStudentIds.contains(aluno.id);
+                          return Card(
+                            child: CheckboxListTile(
+                              title: Text(aluno.nome),
+                              subtitle: Text(aluno.faixa),
+                              value: isSelected,
+                              onChanged: (bool? value) {
+                                setState(() {
+                                  if (value == true) {
+                                    _selectedStudentIds.add(aluno.id);
+                                  } else {
+                                    _selectedStudentIds.remove(aluno.id);
+                                  }
+                                });
+                              },
+                              secondary: const Icon(Icons.person_outline),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
       floatingActionButton: _isLoading
@@ -926,73 +925,78 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text("Check-in Retroativo"),
       ),
       body: AppBackground(
-        child: Column(
-          children: [
-            Card(
-              margin: const EdgeInsets.all(16),
-              child: ListTile(
-                leading: const Icon(Icons.calendar_month, color: primaryAccent),
-                title: const Text("Data do Check-in"),
-                subtitle:
-                    Text(DateFormat.yMMMMd('pt_BR').format(_selectedDate)),
-                onTap: _pickDate,
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  labelText: 'Buscar por nome...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchController.text.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () {
-                            _searchController.clear();
-                          },
-                        )
-                      : null,
+        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o Column
+        child: SafeArea(
+          child: Column(
+            children: [
+              Card(
+                margin: const EdgeInsets.all(16),
+                child: ListTile(
+                  leading:
+                      const Icon(Icons.calendar_month, color: primaryAccent),
+                  title: const Text("Data do Check-in"),
+                  subtitle:
+                      Text(DateFormat.yMMMMd('pt_BR').format(_selectedDate)),
+                  onTap: _pickDate,
                 ),
               ),
-            ),
-            Expanded(
-              child: _filteredParticipants.isEmpty
-                  ? const EmptyStateWidget(
-                      icon: Icons.person_search,
-                      title: "Nenhum Participante Encontrado")
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
-                      itemCount: _filteredParticipants.length,
-                      itemBuilder: (context, index) {
-                        final aluno = _filteredParticipants[index];
-                        final isSelected =
-                            _selectedStudentIds.contains(aluno.id);
-                        return Card(
-                          child: CheckboxListTile(
-                            title: Text(aluno.nome),
-                            subtitle: Text(aluno.faixa),
-                            value: isSelected,
-                            onChanged: (bool? value) {
-                              setState(() {
-                                if (value == true) {
-                                  _selectedStudentIds.add(aluno.id);
-                                } else {
-                                  _selectedStudentIds.remove(aluno.id);
-                                }
-                              });
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    labelText: 'Buscar por nome...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              _searchController.clear();
                             },
-                            secondary: const Icon(Icons.person_outline),
-                          ),
-                        );
-                      },
-                    ),
-            ),
-          ],
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: _filteredParticipants.isEmpty
+                    ? const EmptyStateWidget(
+                        icon: Icons.person_search,
+                        title: "Nenhum Participante Encontrado")
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+                        itemCount: _filteredParticipants.length,
+                        itemBuilder: (context, index) {
+                          final aluno = _filteredParticipants[index];
+                          final isSelected =
+                              _selectedStudentIds.contains(aluno.id);
+                          return Card(
+                            child: CheckboxListTile(
+                              title: Text(aluno.nome),
+                              subtitle: Text(aluno.faixa),
+                              value: isSelected,
+                              onChanged: (bool? value) {
+                                setState(() {
+                                  if (value == true) {
+                                    _selectedStudentIds.add(aluno.id);
+                                  } else {
+                                    _selectedStudentIds.remove(aluno.id);
+                                  }
+                                });
+                              },
+                              secondary: const Icon(Icons.person_outline),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
       floatingActionButton: _isLoading
@@ -1122,77 +1126,84 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
     });
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Ranking de Presença')),
       body: AppBackground(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              child: SegmentedButton<String>(
-                segments: const <ButtonSegment<String>>[
-                  ButtonSegment<String>(value: 'mes', label: Text('Mês Atual')),
-                  ButtonSegment<String>(value: 'ano', label: Text('Este Ano')),
-                  ButtonSegment<String>(value: 'total', label: Text('Total')),
-                ],
-                selected: {_filter},
-                onSelectionChanged: (newSelection) {
-                  setState(() => _filter = newSelection.first);
-                  _fetchRankingData();
-                },
+        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o Column
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: SegmentedButton<String>(
+                  segments: const <ButtonSegment<String>>[
+                    ButtonSegment<String>(
+                        value: 'mes', label: Text('Mês Atual')),
+                    ButtonSegment<String>(
+                        value: 'ano', label: Text('Este Ano')),
+                    ButtonSegment<String>(value: 'total', label: Text('Total')),
+                  ],
+                  selected: {_filter},
+                  onSelectionChanged: (newSelection) {
+                    setState(() => _filter = newSelection.first);
+                    _fetchRankingData();
+                  },
+                ),
               ),
-            ),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : rankedParticipantes.isEmpty
-                      ? const EmptyStateWidget(
-                          icon: Icons.group_off_rounded,
-                          title: "Nenhum participante encontrado.")
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(8.0, 0, 8.0, 16.0),
-                          itemCount: rankedParticipantes.length,
-                          itemBuilder: (context, index) {
-                            final aluno = rankedParticipantes[index];
-                            final count = _checkinCounts[aluno.id] ?? 0;
-                            final rank = index + 1;
-                            Widget leadingIcon;
-                            if (rank == 1) {
-                              leadingIcon = const Icon(Icons.emoji_events,
-                                  color: primaryAccent, size: 30);
-                            } else if (rank == 2) {
-                              leadingIcon = const Icon(Icons.emoji_events,
-                                  color: Color(0xFFC0C0C0), size: 28);
-                            } else if (rank == 3) {
-                              leadingIcon = const Icon(Icons.emoji_events,
-                                  color: Color(0xFFCD7F32), size: 26);
-                            } else {
-                              leadingIcon = CircleAvatar(
-                                  radius: 14,
-                                  backgroundColor: darkSurface,
-                                  child: Text('$rank',
-                                      style: const TextStyle(
-                                          color: textHint,
-                                          fontWeight: FontWeight.bold)));
-                            }
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : rankedParticipantes.isEmpty
+                        ? const EmptyStateWidget(
+                            icon: Icons.group_off_rounded,
+                            title: "Nenhum participante encontrado.")
+                        : ListView.builder(
+                            padding:
+                                const EdgeInsets.fromLTRB(8.0, 0, 8.0, 16.0),
+                            itemCount: rankedParticipantes.length,
+                            itemBuilder: (context, index) {
+                              final aluno = rankedParticipantes[index];
+                              final count = _checkinCounts[aluno.id] ?? 0;
+                              final rank = index + 1;
+                              Widget leadingIcon;
+                              if (rank == 1) {
+                                leadingIcon = const Icon(Icons.emoji_events,
+                                    color: primaryAccent, size: 30);
+                              } else if (rank == 2) {
+                                leadingIcon = const Icon(Icons.emoji_events,
+                                    color: Color(0xFFC0C0C0), size: 28);
+                              } else if (rank == 3) {
+                                leadingIcon = const Icon(Icons.emoji_events,
+                                    color: Color(0xFFCD7F32), size: 26);
+                              } else {
+                                leadingIcon = CircleAvatar(
+                                    radius: 14,
+                                    backgroundColor: darkSurface,
+                                    child: Text('$rank',
+                                        style: const TextStyle(
+                                            color: textHint,
+                                            fontWeight: FontWeight.bold)));
+                              }
 
-                            return Card(
-                              child: ListTile(
-                                leading: leadingIcon,
-                                title: Text(aluno.nome,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium),
-                                trailing: Text('$count treinos',
-                                    style: const TextStyle(
-                                        color: primaryAccent,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 16)),
-                              ),
-                            );
-                          },
-                        ),
-            ),
-          ],
+                              return Card(
+                                child: ListTile(
+                                  leading: leadingIcon,
+                                  title: Text(aluno.nome,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium),
+                                  trailing: Text('$count treinos',
+                                      style: const TextStyle(
+                                          color: primaryAccent,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16)),
+                                ),
+                              );
+                            },
+                          ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1391,94 +1402,92 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppBackground(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.group_add_outlined),
-                      label: Text(
-                          'Selecionar Participantes (${_alunosParticipantes.length})'),
-                      onPressed: widget.isSparringMode
-                          ? null
-                          : _navegarParaSelecaoAlunos,
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: _tipoGeracao,
-                      decoration:
-                          const InputDecoration(labelText: 'Tipo de Sorteio'),
-                      items: _opcoesGeracao
-                          .map((String value) => DropdownMenuItem<String>(
-                              value: value, child: Text(value)))
-                          .toList(),
-                      onChanged: widget.isSparringMode
-                          ? null
-                          : (v) => setState(() {
-                                _tipoGeracao = v!;
-                                _rodadasGeradas = [];
-                              }),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.shuffle),
-                      label: const Text('Gerar Rodadas'),
-                      onPressed: widget.isSparringMode ||
-                              _alunosParticipantes.length < 2
-                          ? null
-                          : _gerarRodadasClicado,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          if (_rodadasGeradas.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('Iniciar Treino'),
-                onPressed: _iniciarSparringClicado,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: successColor,
-                  minimumSize: const Size(double.infinity, 50),
-                ),
-              ),
-            ),
-          Expanded(
-            child: _rodadasGeradas.isEmpty
-                ? const EmptyStateWidget(
-                    icon: Icons.list_alt_rounded,
-                    title: "Nenhuma Rodada Gerada",
-                    message:
-                        "Selecione os participantes e gere as rodadas acima.")
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                    itemCount: _rodadasGeradas.length,
-                    itemBuilder: (context, index) {
-                      final rodada = _rodadasGeradas[index];
-                      return Card(
-                        child: ExpansionTile(
-                          leading: CircleAvatar(child: Text('${index + 1}')),
-                          title: Text('Rodada ${index + 1}'),
-                          children: rodada
-                              .map((luta) => ListTile(title: Text(luta)))
-                              .toList(),
-                        ),
-                      );
-                    },
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.group_add_outlined),
+                    label: Text(
+                        'Selecionar Participantes (${_alunosParticipantes.length})'),
+                    onPressed: widget.isSparringMode
+                        ? null
+                        : _navegarParaSelecaoAlunos,
                   ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _tipoGeracao,
+                    decoration:
+                        const InputDecoration(labelText: 'Tipo de Sorteio'),
+                    items: _opcoesGeracao
+                        .map((String value) => DropdownMenuItem<String>(
+                            value: value, child: Text(value)))
+                        .toList(),
+                    onChanged: widget.isSparringMode
+                        ? null
+                        : (v) => setState(() {
+                              _tipoGeracao = v!;
+                              _rodadasGeradas = [];
+                            }),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    icon: const Icon(Icons.shuffle),
+                    label: const Text('Gerar Rodadas'),
+                    onPressed:
+                        widget.isSparringMode || _alunosParticipantes.length < 2
+                            ? null
+                            : _gerarRodadasClicado,
+                  ),
+                ],
+              ),
+            ),
           ),
-        ],
-      ),
+        ),
+        if (_rodadasGeradas.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: const Text('Iniciar Treino'),
+              onPressed: _iniciarSparringClicado,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: successColor,
+                minimumSize: const Size(double.infinity, 50),
+              ),
+            ),
+          ),
+        Expanded(
+          child: _rodadasGeradas.isEmpty
+              ? const EmptyStateWidget(
+                  icon: Icons.list_alt_rounded,
+                  title: "Nenhuma Rodada Gerada",
+                  message:
+                      "Selecione os participantes e gere as rodadas acima.")
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                  itemCount: _rodadasGeradas.length,
+                  itemBuilder: (context, index) {
+                    final rodada = _rodadasGeradas[index];
+                    return Card(
+                      child: ExpansionTile(
+                        leading: CircleAvatar(child: Text('${index + 1}')),
+                        title: Text('Rodada ${index + 1}'),
+                        children: rodada
+                            .map((luta) => ListTile(title: Text(luta)))
+                            .toList(),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }
@@ -1577,6 +1586,7 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
   Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
+          backgroundColor: Colors.transparent,
           body:
               AppBackground(child: Center(child: CircularProgressIndicator())));
     }
@@ -1584,11 +1594,14 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
     bool isSparringMode = _sparringState['isSparringMode'] ?? false;
     if (!isSparringMode) {
       return Scaffold(
+        backgroundColor: Colors.transparent,
         appBar: AppBar(title: const Text("Treino")),
-        body: const EmptyStateWidget(
-          icon: Icons.pause_circle_outline_rounded,
-          title: 'Nenhum treino em andamento.',
-          message: 'Volte para a tela de sorteio para iniciar um treino.',
+        body: const AppBackground(
+          child: EmptyStateWidget(
+            icon: Icons.pause_circle_outline_rounded,
+            title: 'Nenhum treino em andamento.',
+            message: 'Volte para a tela de sorteio para iniciar um treino.',
+          ),
         ),
       );
     }
@@ -1609,57 +1622,63 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
     }
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(title: Text(roundTitle)),
       body: AppBackground(
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: currentRoundFights.length,
-                itemBuilder: (context, index) {
-                  final matchText = currentRoundFights[index];
-                  bool isResting = matchText.contains('(descansa)');
+        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o Column
+        child: SafeArea(
+          child: Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: currentRoundFights.length,
+                  itemBuilder: (context, index) {
+                    final matchText = currentRoundFights[index];
+                    bool isResting = matchText.contains('(descansa)');
 
-                  return Card(
-                    color:
-                        isResting ? darkSurface.withOpacity(0.5) : darkSurface,
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Center(
-                        child: Text(matchText,
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                                    color: isResting ? textHint : textPrimary)),
+                    return Card(
+                      color: isResting
+                          ? darkSurface.withOpacity(0.5)
+                          : darkSurface,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Center(
+                          child: Text(matchText,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(
+                                      color:
+                                          isResting ? textHint : textPrimary)),
+                        ),
                       ),
+                    );
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.stop_circle_rounded),
+                      onPressed: _finishSparring,
+                      label: const Text('Finalizar'),
+                      style:
+                          ElevatedButton.styleFrom(backgroundColor: errorColor),
                     ),
-                  );
-                },
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.skip_next_rounded),
+                      onPressed: isLastRound ? null : _nextRound,
+                      label: const Text('Próxima'),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.stop_circle_rounded),
-                    onPressed: _finishSparring,
-                    label: const Text('Finalizar'),
-                    style:
-                        ElevatedButton.styleFrom(backgroundColor: errorColor),
-                  ),
-                  ElevatedButton.icon(
-                    icon: const Icon(Icons.skip_next_rounded),
-                    onPressed: isLastRound ? null : _nextRound,
-                    label: const Text('Próxima'),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1691,36 +1710,40 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Selecionar Participantes'),
       ),
       body: AppBackground(
-        child: widget.todosOsAlunos.isEmpty
-            ? const EmptyStateWidget(
-                icon: Icons.person_search_rounded,
-                title: 'Nenhum Participante Cadastrado na Academia')
-            : ListView.builder(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
-                itemCount: widget.todosOsAlunos.length,
-                itemBuilder: (context, index) {
-                  final a = widget.todosOsAlunos[index];
-                  final s = _alunosAtuaisSelecionados.contains(a);
-                  return Card(
-                    child: CheckboxListTile(
-                      title: Text(a.nome),
-                      subtitle: Text('${a.faixa} - ${a.peso}kg'),
-                      value: s,
-                      onChanged: (v) => setState(() {
-                        if (v == true) {
-                          _alunosAtuaisSelecionados.add(a);
-                        } else {
-                          _alunosAtuaisSelecionados.remove(a);
-                        }
-                      }),
-                      secondary: const Icon(Icons.person),
-                    ),
-                  );
-                }),
+        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o conteúdo do body
+        child: SafeArea(
+          child: widget.todosOsAlunos.isEmpty
+              ? const EmptyStateWidget(
+                  icon: Icons.person_search_rounded,
+                  title: 'Nenhum Participante Cadastrado na Academia')
+              : ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+                  itemCount: widget.todosOsAlunos.length,
+                  itemBuilder: (context, index) {
+                    final a = widget.todosOsAlunos[index];
+                    final s = _alunosAtuaisSelecionados.contains(a);
+                    return Card(
+                      child: CheckboxListTile(
+                        title: Text(a.nome),
+                        subtitle: Text('${a.faixa} - ${a.peso}kg'),
+                        value: s,
+                        onChanged: (v) => setState(() {
+                          if (v == true) {
+                            _alunosAtuaisSelecionados.add(a);
+                          } else {
+                            _alunosAtuaisSelecionados.remove(a);
+                          }
+                        }),
+                        secondary: const Icon(Icons.person),
+                      ),
+                    );
+                  }),
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
           onPressed: () =>

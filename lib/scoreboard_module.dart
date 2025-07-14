@@ -5,7 +5,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'models.dart';
-import 'common_widgets.dart';
 import 'app_theme.dart';
 
 class MatchSetupPage extends StatefulWidget {
@@ -83,105 +82,103 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: AppBackground(
-        child: Form(
-          key: _formKey,
-          child: ListView(
-            padding: const EdgeInsets.all(16.0),
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Atleta 1",
-                          style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 16),
-                      _buildAthleteSelector(
-                        athlete: _athlete1,
-                        onTap: () => _selectAthlete(1),
-                        validator: (value) =>
-                            value == null ? 'Selecione o atleta 1' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        value: _kimonoColor1,
-                        decoration:
-                            const InputDecoration(labelText: 'Cor do Kimono'),
-                        items: _kimonoColors
-                            .map((color) => DropdownMenuItem<String>(
-                                value: color, child: Text(color)))
-                            .toList(),
-                        onChanged: (color) =>
-                            setState(() => _kimonoColor1 = color!),
-                      ),
-                    ],
+    // AJUSTE EDGE-TO-EDGE: O Scaffold agora está implícito, pois esta
+    // página é renderizada dentro do IndexedStack da HomePage.
+    // O SafeArea já é aplicado no pai (Student/Teacher HomePage).
+    return Form(
+      key: _formKey,
+      child: ListView(
+        padding: const EdgeInsets.all(16.0),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Atleta 1",
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 16),
+                  _buildAthleteSelector(
+                    athlete: _athlete1,
+                    onTap: () => _selectAthlete(1),
+                    validator: (value) =>
+                        value == null ? 'Selecione o atleta 1' : null,
                   ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Atleta 2",
-                          style: Theme.of(context).textTheme.titleLarge),
-                      const SizedBox(height: 16),
-                      _buildAthleteSelector(
-                        athlete: _athlete2,
-                        onTap: () => _selectAthlete(2),
-                        validator: (value) =>
-                            value == null ? 'Selecione o atleta 2' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        value: _kimonoColor2,
-                        decoration:
-                            const InputDecoration(labelText: 'Cor do Kimono'),
-                        items: _kimonoColors
-                            .map((color) => DropdownMenuItem<String>(
-                                value: color, child: Text(color)))
-                            .toList(),
-                        onChanged: (color) =>
-                            setState(() => _kimonoColor2 = color!),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: DropdownButtonFormField<int>(
-                    value: _matchTimeInMinutes,
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _kimonoColor1,
                     decoration:
-                        const InputDecoration(labelText: 'Tempo de Luta'),
-                    items: _matchTimes
-                        .map((time) => DropdownMenuItem<int>(
-                            value: time, child: Text('$time minutos')))
+                        const InputDecoration(labelText: 'Cor do Kimono'),
+                    items: _kimonoColors
+                        .map((color) => DropdownMenuItem<String>(
+                            value: color, child: Text(color)))
                         .toList(),
-                    onChanged: (time) =>
-                        setState(() => _matchTimeInMinutes = time!),
+                    onChanged: (color) =>
+                        setState(() => _kimonoColor1 = color!),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.play_arrow_rounded),
-                label: const Text('INICIAR LUTA'),
-                onPressed: _startMatch,
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-              )
-            ],
+            ),
           ),
-        ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("Atleta 2",
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 16),
+                  _buildAthleteSelector(
+                    athlete: _athlete2,
+                    onTap: () => _selectAthlete(2),
+                    validator: (value) =>
+                        value == null ? 'Selecione o atleta 2' : null,
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _kimonoColor2,
+                    decoration:
+                        const InputDecoration(labelText: 'Cor do Kimono'),
+                    items: _kimonoColors
+                        .map((color) => DropdownMenuItem<String>(
+                            value: color, child: Text(color)))
+                        .toList(),
+                    onChanged: (color) =>
+                        setState(() => _kimonoColor2 = color!),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: DropdownButtonFormField<int>(
+                value: _matchTimeInMinutes,
+                decoration: const InputDecoration(labelText: 'Tempo de Luta'),
+                items: _matchTimes
+                    .map((time) => DropdownMenuItem<int>(
+                        value: time, child: Text('$time minutos')))
+                    .toList(),
+                onChanged: (time) =>
+                    setState(() => _matchTimeInMinutes = time!),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: const Text('INICIAR LUTA'),
+            onPressed: _startMatch,
+            style: ElevatedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+            ),
+          )
+        ],
       ),
     );
   }

@@ -35,7 +35,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   void initState() {
     super.initState();
     _telas = [
-      ManagerDashboardPage(user: widget.user), // <- MODIFICADO
+      ManagerDashboardPage(user: widget.user),
       AlunosManagerPage(academyId: widget.user.academyId),
       ProfessoresManagerPage(academyId: widget.user.academyId),
       MonthlyFeeManagerPage(academyId: widget.user.academyId),
@@ -106,6 +106,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(_titulos[_paginaAtual]),
         actions: [
@@ -114,13 +115,13 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
               tooltip: 'Configurações',
               onPressed: () => Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => SettingsPage(user: widget.user)))),
-          IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: 'Sair',
-              onPressed: () => FirebaseAuth.instance.signOut()),
         ],
       ),
-      body: IndexedStack(index: _paginaAtual, children: _telas),
+      body: AppBackground(
+        child: SafeArea(
+          child: IndexedStack(index: _paginaAtual, children: _telas),
+        ),
+      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _paginaAtual,
         onTap: _onItemTapped,
@@ -160,32 +161,27 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   }
 }
 
-// --- TELA DE INÍCIO DO GERENTE (MODIFICADA) ---
 class ManagerDashboardPage extends StatelessWidget {
   final UserModel user;
   const ManagerDashboardPage({super.key, required this.user});
 
   @override
   Widget build(BuildContext context) {
-    return AppBackground(
-      child: ListView(
-        // Usar ListView para garantir rolagem em telas pequenas
-        children: [
-          UserProfileHeader(user: user),
-          Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Card(
-              child: ListTile(
-                leading: const Icon(Icons.business, color: primaryAccent),
-                title: const Text("ID da sua Academia"),
-                subtitle:
-                    Text(user.academyId, style: const TextStyle(fontSize: 16)),
-              ),
+    return ListView(
+      children: [
+        UserProfileHeader(user: user),
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Card(
+            child: ListTile(
+              leading: const Icon(Icons.business, color: primaryAccent),
+              title: const Text("ID da sua Academia"),
+              subtitle:
+                  Text(user.academyId, style: const TextStyle(fontSize: 16)),
             ),
           ),
-          // Você pode adicionar mais cards com estatísticas aqui no futuro
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -227,7 +223,6 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
           .doc(aluno.id)
           .update(aluno.toJson());
 
-      // Se o aluno tiver um login, atualiza o nome no 'users' também.
       if (aluno.userId != null) {
         await FirebaseFirestore.instance
             .collection('users')
@@ -341,130 +336,164 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppBackground(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Buscar aluno por nome...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => _searchController.clear(),
-                      )
-                    : null,
-              ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              labelText: 'Buscar aluno por nome...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => _searchController.clear(),
+                    )
+                  : null,
             ),
           ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('academies')
-                  .doc(widget.academyId)
-                  .collection('students')
-                  .orderBy('nome')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text("Erro: ${snapshot.error}"));
-                }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const EmptyStateWidget(
-                    icon: Icons.no_accounts_rounded,
-                    title: 'Nenhum Aluno Cadastrado',
-                    message:
-                        'Clique no botão "+" para adicionar o primeiro aluno da sua academia.',
-                  );
-                }
-
-                final allAlunos = snapshot.data!.docs.map((doc) {
-                  return Aluno.fromJson(
-                      doc.id, doc.data() as Map<String, dynamic>);
-                }).toList();
-
-                final filteredAlunos = allAlunos.where((aluno) {
-                  return aluno.nome
-                      .toLowerCase()
-                      .contains(_searchQuery.toLowerCase());
-                }).toList();
-
-                if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
-                  return EmptyStateWidget(
-                    icon: Icons.person_search,
-                    title: "Nenhum Aluno Encontrado",
-                    message:
-                        "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
-                  itemCount: filteredAlunos.length,
-                  itemBuilder: (context, index) {
-                    final aluno = filteredAlunos[index];
-                    return Card(
-                      child: ListTile(
-                        onTap: () =>
-                            Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => StudentDetailPage(
-                            academyId: widget.academyId,
-                            student: aluno,
-                          ),
-                        )),
-                        title: Text(aluno.nome,
-                            style: Theme.of(context).textTheme.titleMedium),
-                        subtitle: Text('${aluno.faixa} - ${aluno.peso}kg'),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (aluno.userId == null)
-                              TextButton(
-                                child: const Text("Criar Acesso"),
-                                onPressed: () => _showCreateAccessDialog(aluno),
-                              )
-                            else
-                              const Tooltip(
-                                message: "Acesso de aluno já criado",
-                                child: Icon(Icons.check_circle,
-                                    color: successColor),
-                              ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined),
-                              onPressed: () => _showEditAlunoDialog(aluno),
-                              tooltip: 'Editar Aluno',
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline_rounded,
-                                  color: errorColor),
-                              onPressed: () => _confirmDeleteAluno(aluno),
-                              tooltip: 'Excluir Aluno',
-                            )
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('academies')
+                .doc(widget.academyId)
+                .collection('students')
+                .orderBy('nome')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text("Erro: ${snapshot.error}"));
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.no_accounts_rounded,
+                  title: 'Nenhum Aluno Cadastrado',
+                  message:
+                      'Clique no botão "+" para adicionar o primeiro aluno da sua academia.',
                 );
-              },
-            ),
+              }
+
+              final allAlunos = snapshot.data!.docs.map((doc) {
+                return Aluno.fromJson(
+                    doc.id, doc.data() as Map<String, dynamic>);
+              }).toList();
+
+              final filteredAlunos = allAlunos.where((aluno) {
+                return aluno.nome
+                    .toLowerCase()
+                    .contains(_searchQuery.toLowerCase());
+              }).toList();
+
+              if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
+                return EmptyStateWidget(
+                  icon: Icons.person_search,
+                  title: "Nenhum Aluno Encontrado",
+                  message:
+                      "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
+                itemCount: filteredAlunos.length,
+                itemBuilder: (context, index) {
+                  final aluno = filteredAlunos[index];
+                  return Card(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(aluno.nome,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium),
+                                    const SizedBox(height: 2),
+                                    Text('${aluno.faixa} - ${aluno.peso}kg',
+                                        style:
+                                            const TextStyle(color: textHint)),
+                                  ],
+                                ),
+                              ),
+                              if (aluno.userId != null)
+                                const Tooltip(
+                                  message: "Acesso de aluno já criado",
+                                  child: Icon(Icons.check_circle,
+                                      color: successColor),
+                                ),
+                            ],
+                          ),
+                          const Divider(height: 16, color: borderNormal),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton.icon(
+                                icon: const Icon(Icons.visibility_outlined,
+                                    size: 20, color: textHint),
+                                label: const Text("Ver",
+                                    style: TextStyle(color: textHint)),
+                                onPressed: () => Navigator.of(context)
+                                    .push(MaterialPageRoute(
+                                  builder: (_) => StudentDetailPage(
+                                    academyId: widget.academyId,
+                                    student: aluno,
+                                  ),
+                                )),
+                              ),
+                              if (aluno.userId == null)
+                                TextButton.icon(
+                                  icon:
+                                      const Icon(Icons.login_rounded, size: 20),
+                                  label: const Text("Criar Acesso"),
+                                  onPressed: () =>
+                                      _showCreateAccessDialog(aluno),
+                                ),
+                              const Spacer(),
+                              Tooltip(
+                                message: 'Editar Aluno',
+                                child: IconButton(
+                                  icon: const Icon(Icons.edit_outlined),
+                                  onPressed: () => _showEditAlunoDialog(aluno),
+                                ),
+                              ),
+                              Tooltip(
+                                message: 'Excluir Aluno',
+                                child: IconButton(
+                                  icon: const Icon(Icons.delete_outline_rounded,
+                                      color: errorColor),
+                                  onPressed: () => _confirmDeleteAluno(aluno),
+                                ),
+                              ),
+                            ],
+                          )
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
 
 class AdicionarAlunoDialog extends StatefulWidget {
   final Function(Aluno) onAlunoAdicionado;
-  final Aluno? alunoParaEditar; // Parâmetro opcional para edição
+  final Aluno? alunoParaEditar;
   const AdicionarAlunoDialog(
       {super.key, required this.onAlunoAdicionado, this.alunoParaEditar});
   @override
@@ -601,15 +630,12 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
             onPressed: () {
               if (formKey.currentState!.validate()) {
                 final double peso = double.parse(pC.text.replaceAll(',', '.'));
-                // Se estiver editando, cria um Aluno com o ID existente.
-                // Se não, cria um Aluno novo (ID será gerado pelo Firestore depois).
                 final alunoResult = Aluno(
                   id: isEditing ? widget.alunoParaEditar!.id : '',
                   nome: nC.text.trim(),
                   faixa: fS!,
                   peso: peso,
                   graus: gS,
-                  // Mantém o userId se já existir
                   userId: isEditing ? widget.alunoParaEditar!.userId : null,
                 );
 
@@ -779,8 +805,6 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
 
   Future<void> _deleteProfessor(UserModel professor) async {
     try {
-      // Idealmente, a exclusão de um usuário do Auth deveria ser feita
-      // por uma Cloud Function para segurança. No app, apenas deletamos o registro.
       await FirebaseFirestore.instance
           .collection('users')
           .doc(professor.uid)
@@ -827,107 +851,104 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
 
   @override
   Widget build(BuildContext context) {
-    return AppBackground(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Buscar professor por nome...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => _searchController.clear(),
-                      )
-                    : null,
-              ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              labelText: 'Buscar professor por nome...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => _searchController.clear(),
+                    )
+                  : null,
             ),
           ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .where('academyId', isEqualTo: widget.academyId)
-                  .where('role', isEqualTo: 'teacher')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text("Erro: ${snapshot.error}"));
-                }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const EmptyStateWidget(
-                    icon: Icons.school_outlined,
-                    title: 'Nenhum Professor Cadastrado',
-                    message:
-                        'Clique no botão "+" para adicionar o primeiro professor.',
-                  );
-                }
-
-                final allProfessores = snapshot.data!.docs.map((doc) {
-                  return UserModel.fromFirestore(doc);
-                }).toList();
-
-                final filteredProfessores = allProfessores.where((prof) {
-                  return prof.name
-                      .toLowerCase()
-                      .contains(_searchQuery.toLowerCase());
-                }).toList();
-
-                if (filteredProfessores.isEmpty && _searchQuery.isNotEmpty) {
-                  return EmptyStateWidget(
-                    icon: Icons.person_search,
-                    title: "Nenhum Professor Encontrado",
-                    message:
-                        "Nenhum professor corresponde à sua busca '$_searchQuery'.",
-                  );
-                }
-
-                return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
-                  itemCount: filteredProfessores.length,
-                  itemBuilder: (context, index) {
-                    final professor = filteredProfessores[index];
-                    return Card(
-                      child: ListTile(
-                        leading: const CircleAvatar(
-                            child: Icon(Icons.school_rounded)),
-                        title: Text(professor.name,
-                            style: Theme.of(context).textTheme.titleMedium),
-                        subtitle: Text(
-                            "${professor.faixa ?? 'Faixa não definida'} - ${professor.email}"),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined),
-                              onPressed: () =>
-                                  _showEditProfessorDialog(professor),
-                              tooltip: 'Editar Professor',
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline_rounded,
-                                  color: errorColor),
-                              onPressed: () =>
-                                  _confirmDeleteProfessor(professor),
-                              tooltip: 'Excluir Professor',
-                            ),
-                          ],
-                        ),
-                      ),
-                    );
-                  },
+        ),
+        Expanded(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .where('academyId', isEqualTo: widget.academyId)
+                .where('role', isEqualTo: 'teacher')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text("Erro: ${snapshot.error}"));
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.school_outlined,
+                  title: 'Nenhum Professor Cadastrado',
+                  message:
+                      'Clique no botão "+" para adicionar o primeiro professor.',
                 );
-              },
-            ),
+              }
+
+              final allProfessores = snapshot.data!.docs.map((doc) {
+                return UserModel.fromFirestore(doc);
+              }).toList();
+
+              final filteredProfessores = allProfessores.where((prof) {
+                return prof.name
+                    .toLowerCase()
+                    .contains(_searchQuery.toLowerCase());
+              }).toList();
+
+              if (filteredProfessores.isEmpty && _searchQuery.isNotEmpty) {
+                return EmptyStateWidget(
+                  icon: Icons.person_search,
+                  title: "Nenhum Professor Encontrado",
+                  message:
+                      "Nenhum professor corresponde à sua busca '$_searchQuery'.",
+                );
+              }
+
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
+                itemCount: filteredProfessores.length,
+                itemBuilder: (context, index) {
+                  final professor = filteredProfessores[index];
+                  return Card(
+                    child: ListTile(
+                      leading:
+                          const CircleAvatar(child: Icon(Icons.school_rounded)),
+                      title: Text(professor.name,
+                          style: Theme.of(context).textTheme.titleMedium),
+                      subtitle: Text(
+                          "${professor.faixa ?? 'Faixa não definida'} - ${professor.email}"),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined),
+                            onPressed: () =>
+                                _showEditProfessorDialog(professor),
+                            tooltip: 'Editar Professor',
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline_rounded,
+                                color: errorColor),
+                            onPressed: () => _confirmDeleteProfessor(professor),
+                            tooltip: 'Excluir Professor',
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1017,7 +1038,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
         'role': 'teacher',
         'faixa': _faixa,
         'graus': _graus,
-        'peso': null, // Professor pode preencher depois
+        'peso': null,
         'createdAt': FieldValue.serverTimestamp(),
         'mustChangePassword': true,
         'isActive': true,
@@ -1284,7 +1305,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 validator: (v) {
-                  if (v == null || v.isEmpty) return null; // Opcional
+                  if (v == null || v.isEmpty) return null;
                   final x = double.tryParse(v.replaceAll(',', '.'));
                   return (x == null || x <= 0)
                       ? 'Peso inválido (deve ser > 0)'
@@ -1375,7 +1396,6 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
       if (paidStudentIds.contains(student.id)) {
         student.paymentStatus = PaymentStatus.pago;
       } else {
-        // Regra de negócio: Vencimento dia 10
         student.paymentStatus =
             (now.day > 10) ? PaymentStatus.atrasado : PaymentStatus.pendente;
       }
@@ -1399,7 +1419,7 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
     if (success == true) {
       showBjjSnackBar(context, "Pagamento registrado com sucesso!",
           type: 'success');
-      _fetchStudentsWithPaymentStatus(); // Recarrega os dados
+      _fetchStudentsWithPaymentStatus();
     }
   }
 
@@ -1449,111 +1469,103 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
       return student.nome.toLowerCase().contains(_searchQuery.toLowerCase());
     }).toList();
 
-    return AppBackground(
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Buscar aluno por nome...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchQuery.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => _searchController.clear(),
-                      )
-                    : null,
-              ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              labelText: 'Buscar aluno por nome...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => _searchController.clear(),
+                    )
+                  : null,
             ),
           ),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
-                : _allStudentsWithStatus.isEmpty
-                    ? const EmptyStateWidget(
-                        icon: Icons.no_accounts_rounded,
-                        title: 'Nenhum Aluno Cadastrado',
-                        message: 'Adicione alunos na aba "Gerenciar Alunos".',
-                      )
-                    : RefreshIndicator(
-                        onRefresh: _fetchStudentsWithPaymentStatus,
-                        child: filteredStudents.isEmpty &&
-                                _searchQuery.isNotEmpty
-                            ? EmptyStateWidget(
-                                icon: Icons.person_search,
-                                title: "Nenhum Aluno Encontrado",
-                                message:
-                                    "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
-                              )
-                            : ListView.builder(
-                                padding: const EdgeInsets.fromLTRB(
-                                    8.0, 8.0, 8.0, 80.0),
-                                itemCount: filteredStudents.length,
-                                itemBuilder: (context, index) {
-                                  final student = filteredStudents[index];
-                                  final bool isPaid = student.paymentStatus ==
-                                      PaymentStatus.pago;
-                                  return Card(
-                                    child: Padding(
-                                      padding: const EdgeInsets.all(12.0),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          Text(student.nome,
-                                              style: Theme.of(context)
-                                                  .textTheme
-                                                  .titleMedium),
-                                          const Divider(
-                                              height: 16, color: borderNormal),
-                                          Row(
-                                            mainAxisAlignment:
-                                                MainAxisAlignment.spaceBetween,
-                                            children: [
-                                              _buildStatusChip(
-                                                  student.paymentStatus),
-                                              Row(
-                                                children: [
-                                                  if (!isPaid)
-                                                    TextButton.icon(
-                                                      icon: const Icon(
-                                                          Icons.payment,
-                                                          size: 20),
-                                                      label: const Text(
-                                                          "Registrar"),
-                                                      onPressed: () =>
-                                                          _showAddPaymentDialog(
-                                                              student),
-                                                    ),
-                                                  TextButton.icon(
-                                                    icon: const Icon(
-                                                        Icons.history,
-                                                        size: 20,
-                                                        color: textHint),
-                                                    label: const Text(
-                                                        "Histórico",
-                                                        style: TextStyle(
-                                                            color: textHint)),
+        ),
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _allStudentsWithStatus.isEmpty
+                  ? const EmptyStateWidget(
+                      icon: Icons.no_accounts_rounded,
+                      title: 'Nenhum Aluno Cadastrado',
+                      message: 'Adicione alunos na aba "Gerenciar Alunos".',
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _fetchStudentsWithPaymentStatus,
+                      child: filteredStudents.isEmpty && _searchQuery.isNotEmpty
+                          ? EmptyStateWidget(
+                              icon: Icons.person_search,
+                              title: "Nenhum Aluno Encontrado",
+                              message:
+                                  "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
+                            )
+                          : ListView.builder(
+                              padding: const EdgeInsets.fromLTRB(
+                                  8.0, 8.0, 8.0, 80.0),
+                              itemCount: filteredStudents.length,
+                              itemBuilder: (context, index) {
+                                final student = filteredStudents[index];
+                                final bool isPaid =
+                                    student.paymentStatus == PaymentStatus.pago;
+                                return Card(
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12.0),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(student.nome,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .titleMedium),
+                                        const Divider(
+                                            height: 16, color: borderNormal),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            _buildStatusChip(
+                                                student.paymentStatus),
+                                            Wrap(
+                                              spacing: 0,
+                                              runSpacing: 4,
+                                              alignment: WrapAlignment.end,
+                                              children: [
+                                                if (!isPaid)
+                                                  TextButton(
+                                                    child:
+                                                        const Text("Registrar"),
                                                     onPressed: () =>
-                                                        _navigateToHistory(
+                                                        _showAddPaymentDialog(
                                                             student),
                                                   ),
-                                                ],
-                                              ),
-                                            ],
-                                          )
-                                        ],
-                                      ),
+                                                TextButton(
+                                                  child: const Text("Histórico",
+                                                      style: TextStyle(
+                                                          color: textHint)),
+                                                  onPressed: () =>
+                                                      _navigateToHistory(
+                                                          student),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        )
+                                      ],
                                     ),
-                                  );
-                                },
-                              ),
-                      ),
-          ),
-        ],
-      ),
+                                  ),
+                                );
+                              },
+                            ),
+                    ),
+        ),
+      ],
     );
   }
 }
@@ -1590,7 +1602,6 @@ class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
     final payments =
         snapshot.docs.map((doc) => MonthlyFee.fromFirestore(doc)).toList();
 
-    // Agrupa por ano
     final Map<int, List<MonthlyFee>> groupedByYear = {};
     for (var payment in payments) {
       groupedByYear.putIfAbsent(payment.paymentYear, () => []).add(payment);
@@ -1599,86 +1610,87 @@ class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
   }
 
   String _getMonthName(int month) {
-    // Usando DateFormat para obter o nome do mês formatado em português.
-    // Cria uma data qualquer com o mês desejado.
     return DateFormat.MMMM('pt_BR').format(DateTime(0, month)).capitalize();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text("Histórico de ${widget.student.nome}"),
       ),
       body: AppBackground(
-        child: FutureBuilder<Map<int, List<MonthlyFee>>>(
-          future: _historyFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-            if (snapshot.hasError) {
-              return Center(child: Text("Erro: ${snapshot.error}"));
-            }
-            if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return const EmptyStateWidget(
-                icon: Icons.receipt_long_rounded,
-                title: 'Nenhum Pagamento Registrado',
-                message:
-                    'Este aluno ainda não possui um histórico de pagamentos.',
-              );
-            }
-
-            final history = snapshot.data!;
-            final years = history.keys.toList()..sort((a, b) => b.compareTo(a));
-
-            return ListView.builder(
-              padding: const EdgeInsets.all(8.0),
-              itemCount: years.length,
-              itemBuilder: (context, index) {
-                final year = years[index];
-                final paymentsForYear = history[year]!;
-
-                return Card(
-                  margin:
-                      const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-                  child: ExpansionTile(
-                    initiallyExpanded: year == DateTime.now().year,
-                    title: Text(year.toString(),
-                        style: Theme.of(context).textTheme.titleLarge),
-                    children: paymentsForYear.map((payment) {
-                      return ListTile(
-                        leading:
-                            const Icon(Icons.check_circle, color: successColor),
-                        title: Text(_getMonthName(payment.paymentMonth)),
-                        subtitle: Text(
-                            'Pago em: ${DateFormat.yMd('pt_BR').format(payment.paymentDate)} - ${payment.paymentMethod}'),
-                        trailing: Text(
-                          'R\$ ${payment.amount.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                              color: textPrimary, fontWeight: FontWeight.bold),
-                        ),
-                      );
-                    }).toList(),
-                  ),
+        child: SafeArea(
+          child: FutureBuilder<Map<int, List<MonthlyFee>>>(
+            future: _historyFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text("Erro: ${snapshot.error}"));
+              }
+              if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.receipt_long_rounded,
+                  title: 'Nenhum Pagamento Registrado',
+                  message:
+                      'Este aluno ainda não possui um histórico de pagamentos.',
                 );
-              },
-            );
-          },
+              }
+
+              final history = snapshot.data!;
+              final years = history.keys.toList()
+                ..sort((a, b) => b.compareTo(a));
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(8.0),
+                itemCount: years.length,
+                itemBuilder: (context, index) {
+                  final year = years[index];
+                  final paymentsForYear = history[year]!;
+
+                  return Card(
+                    margin:
+                        const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    child: ExpansionTile(
+                      initiallyExpanded: year == DateTime.now().year,
+                      title: Text(year.toString(),
+                          style: Theme.of(context).textTheme.titleLarge),
+                      children: paymentsForYear.map((payment) {
+                        return ListTile(
+                          leading: const Icon(Icons.check_circle,
+                              color: successColor),
+                          title: Text(_getMonthName(payment.paymentMonth)),
+                          subtitle: Text(
+                              'Pago em: ${DateFormat.yMd('pt_BR').format(payment.paymentDate)} - ${payment.paymentMethod}'),
+                          trailing: Text(
+                            'R\$ ${payment.amount.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                                color: textPrimary,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
         ),
       ),
     );
   }
 }
 
-// Extensão para capitalizar a primeira letra
 extension StringExtension on String {
   String capitalize() {
     return "${this[0].toUpperCase()}${substring(1)}";
   }
 }
 
-// --- DIÁLOGO PARA ADICIONAR PAGAMENTO ---
 class AddPaymentDialog extends StatefulWidget {
   final String academyId;
   final Aluno student;
@@ -1717,7 +1729,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
 
     final now = DateTime.now();
     final newPayment = MonthlyFee(
-      id: '', // será gerado pelo firestore
+      id: '',
       studentId: widget.student.id,
       amount: double.parse(_amountController.text.replaceAll(',', '.')),
       paymentDate: now,
@@ -1734,7 +1746,7 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
           .add(newPayment.toMap());
 
       if (mounted) {
-        Navigator.of(context).pop(true); // Retorna sucesso
+        Navigator.of(context).pop(true);
       }
     } catch (e) {
       if (mounted) {
@@ -1845,10 +1857,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         .map((doc) => CheckinEntry.fromJson(doc.id, doc.data()))
         .toList();
 
-    // Agrupa por mês/ano usando intl
     final Map<String, List<CheckinEntry>> groupedByMonth = {};
     for (var checkin in checkins) {
-      // Formato "MMMM 'de' yyyy" -> "julho de 2025"
       String monthKey =
           DateFormat.yMMMM('pt_BR').format(checkin.date).capitalize();
       groupedByMonth.putIfAbsent(monthKey, () => []).add(checkin);
@@ -1860,91 +1870,91 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(widget.student.nome),
       ),
       body: AppBackground(
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            // Card com informações do aluno
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text("Informações do Aluno",
-                        style: theme.textTheme.titleLarge),
-                    const Divider(height: 20),
-                    _buildInfoRow(context, Icons.shield_outlined, "Faixa",
-                        widget.student.faixa),
-                    if (widget.student.graus != null &&
-                        widget.student.graus! > 0)
-                      _buildInfoRow(context, Icons.star_outline_rounded,
-                          "Graus", '${widget.student.graus}º Grau'),
-                    _buildInfoRow(context, Icons.fitness_center_rounded, "Peso",
-                        '${widget.student.peso} kg'),
-                  ],
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text("Informações do Aluno",
+                          style: theme.textTheme.titleLarge),
+                      const Divider(height: 20),
+                      _buildInfoRow(context, Icons.shield_outlined, "Faixa",
+                          widget.student.faixa),
+                      if (widget.student.graus != null &&
+                          widget.student.graus! > 0)
+                        _buildInfoRow(context, Icons.star_outline_rounded,
+                            "Graus", '${widget.student.graus}º Grau'),
+                      _buildInfoRow(context, Icons.fitness_center_rounded,
+                          "Peso", '${widget.student.peso} kg'),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 20),
-            // Histórico de treinos
-            Text("Histórico de Treinos", style: theme.textTheme.titleLarge),
-            const SizedBox(height: 8),
-            FutureBuilder<Map<String, List<CheckinEntry>>>(
-              future: _checkinsFuture,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(
-                      child:
-                          Text("Erro ao carregar treinos: ${snapshot.error}"));
-                }
-                if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                  return const EmptyStateWidget(
-                    icon: Icons.calendar_month_outlined,
-                    title: 'Nenhum Treino Registrado',
-                    message: 'Este aluno ainda não possui check-ins.',
-                  );
-                }
-
-                final groupedCheckins = snapshot.data!;
-                final months = groupedCheckins.keys.toList();
-
-                return ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: months.length,
-                  itemBuilder: (context, index) {
-                    final month = months[index];
-                    final checkinsInMonth = groupedCheckins[month]!;
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 8.0),
-                      child: ExpansionTile(
-                        title:
-                            Text("$month (${checkinsInMonth.length} treinos)"),
-                        leading: const Icon(Icons.calendar_today_rounded),
-                        initiallyExpanded:
-                            index == 0, // Expande o mês mais recente
-                        children: checkinsInMonth.map((checkin) {
-                          return ListTile(
-                            title: Text(DateFormat.yMMMEd('pt_BR')
-                                .format(checkin.date)),
-                            leading:
-                                const Icon(Icons.check, color: successColor),
-                          );
-                        }).toList(),
-                      ),
+              const SizedBox(height: 20),
+              Text("Histórico de Treinos", style: theme.textTheme.titleLarge),
+              const SizedBox(height: 8),
+              FutureBuilder<Map<String, List<CheckinEntry>>>(
+                future: _checkinsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                        child: Text(
+                            "Erro ao carregar treinos: ${snapshot.error}"));
+                  }
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const EmptyStateWidget(
+                      icon: Icons.calendar_month_outlined,
+                      title: 'Nenhum Treino Registrado',
+                      message: 'Este aluno ainda não possui check-ins.',
                     );
-                  },
-                );
-              },
-            ),
-          ],
+                  }
+
+                  final groupedCheckins = snapshot.data!;
+                  final months = groupedCheckins.keys.toList();
+
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: months.length,
+                    itemBuilder: (context, index) {
+                      final month = months[index];
+                      final checkinsInMonth = groupedCheckins[month]!;
+                      return Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: ExpansionTile(
+                          title: Text(
+                              "$month (${checkinsInMonth.length} treinos)"),
+                          leading: const Icon(Icons.calendar_today_rounded),
+                          initiallyExpanded: index == 0,
+                          children: checkinsInMonth.map((checkin) {
+                            return ListTile(
+                              title: Text(DateFormat.yMMMEd('pt_BR')
+                                  .format(checkin.date)),
+                              leading:
+                                  const Icon(Icons.check, color: successColor),
+                            );
+                          }).toList(),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

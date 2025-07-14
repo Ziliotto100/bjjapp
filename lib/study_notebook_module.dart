@@ -161,100 +161,90 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: AppBackground(
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-              child: TextField(
-                controller: _searchController,
-                decoration: InputDecoration(
-                  labelText: 'Buscar por título, conteúdo ou tag...',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear),
-                          onPressed: () => _searchController.clear(),
-                        )
-                      : null,
-                ),
-              ),
+    // AJUSTE EDGE-TO-EDGE: A página agora não tem Scaffold próprio,
+    // pois é exibida dentro do IndexedStack que já tem um SafeArea.
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+          child: TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              labelText: 'Buscar por título, conteúdo ou tag...',
+              prefixIcon: const Icon(Icons.search),
+              suffixIcon: _searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () => _searchController.clear(),
+                    )
+                  : null,
             ),
-            Expanded(
-              child: _isLoading
-                  ? const Center(child: CircularProgressIndicator())
-                  : _notes.isEmpty
-                      ? const EmptyStateWidget(
-                          icon: Icons.note_add_rounded,
-                          title: 'Nenhuma Anotação',
-                          message:
-                              'Clique no botão "+" para criar sua primeira anotação de estudo.')
-                      : _filteredNotes.isEmpty
-                          ? EmptyStateWidget(
-                              icon: Icons.search_off_rounded,
-                              title: 'Nenhum resultado',
-                              message:
-                                  "Sua busca por '$_searchQuery' não retornou resultados.")
-                          : ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(
-                                  8.0, 8.0, 8.0, 80.0),
-                              itemCount: _filteredNotes.length,
-                              itemBuilder: (context, index) {
-                                final note = _filteredNotes[index];
-                                return Card(
-                                  child: ListTile(
-                                    title: Text(note.title),
-                                    subtitle: Text(
-                                      note.content,
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    trailing: PopupMenuButton<String>(
-                                      onSelected: (value) {
-                                        if (value == 'edit') {
-                                          Navigator.of(context)
-                                              .push(MaterialPageRoute(
-                                                  builder: (_) =>
-                                                      EditStudyNotePage(
-                                                          note: note,
-                                                          userId:
-                                                              widget.userId)))
-                                              .then((_) => _loadNotes());
-                                        } else if (value == 'delete') {
-                                          _confirmDelete(note.id);
-                                        }
-                                      },
-                                      itemBuilder: (context) => [
-                                        const PopupMenuItem(
-                                            value: 'edit',
-                                            child: Text('Editar')),
-                                        const PopupMenuItem(
-                                            value: 'delete',
-                                            child: Text('Excluir')),
-                                      ],
-                                    ),
-                                    onTap: () => Navigator.of(context).push(
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                NoteDetailPage(note: note))),
-                                  ),
-                                );
-                              }),
-            )
-          ],
+          ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.of(context)
-            .push(MaterialPageRoute(
-                builder: (_) => EditStudyNotePage(userId: widget.userId)))
-            .then((_) => _loadNotes()),
-        tooltip: 'Nova Anotação',
-        child: const Icon(Icons.add),
-      ),
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _notes.isEmpty
+                  ? EmptyStateWidget(
+                      icon: Icons.note_add_rounded,
+                      title: 'Nenhuma Anotação',
+                      message:
+                          'Clique no botão "${_isEditing ? 'Salvar' : 'Nova Anotação'}" para criar sua primeira anotação de estudo.',
+                    )
+                  : _filteredNotes.isEmpty
+                      ? EmptyStateWidget(
+                          icon: Icons.search_off_rounded,
+                          title: 'Nenhum resultado',
+                          message:
+                              "Sua busca por '$_searchQuery' não retornou resultados.")
+                      : ListView.builder(
+                          padding:
+                              const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
+                          itemCount: _filteredNotes.length,
+                          itemBuilder: (context, index) {
+                            final note = _filteredNotes[index];
+                            return Card(
+                              child: ListTile(
+                                title: Text(note.title),
+                                subtitle: Text(
+                                  note.content,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: PopupMenuButton<String>(
+                                  onSelected: (value) {
+                                    if (value == 'edit') {
+                                      Navigator.of(context)
+                                          .push(MaterialPageRoute(
+                                              builder: (_) => EditStudyNotePage(
+                                                  note: note,
+                                                  userId: widget.userId)))
+                                          .then((_) => _loadNotes());
+                                    } else if (value == 'delete') {
+                                      _confirmDelete(note.id);
+                                    }
+                                  },
+                                  itemBuilder: (context) => [
+                                    const PopupMenuItem(
+                                        value: 'edit', child: Text('Editar')),
+                                    const PopupMenuItem(
+                                        value: 'delete',
+                                        child: Text('Excluir')),
+                                  ],
+                                ),
+                                onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            NoteDetailPage(note: note))),
+                              ),
+                            );
+                          }),
+        )
+      ],
     );
   }
+
+  bool get _isEditing => false;
 }
 
 // --- TELA DE DETALHES ---
@@ -281,56 +271,62 @@ class NoteDetailPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(note.title),
       ),
       body: AppBackground(
-        child: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            Text(
-              note.title,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            const SizedBox(height: 16),
-            if (note.tags.isNotEmpty)
-              Wrap(
-                spacing: 8.0,
-                runSpacing: 4.0,
-                children:
-                    note.tags.map((tag) => Chip(label: Text(tag))).toList(),
+        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o ListView
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              Text(
+                note.title,
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
-            const SizedBox(height: 16),
-            if (note.imagePath != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 16.0),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12.0),
-                  child: Image.file(File(note.imagePath!)),
+              const SizedBox(height: 16),
+              if (note.tags.isNotEmpty)
+                Wrap(
+                  spacing: 8.0,
+                  runSpacing: 4.0,
+                  children:
+                      note.tags.map((tag) => Chip(label: Text(tag))).toList(),
                 ),
-              ),
-            if (note.videoUrl != null && note.videoUrl!.isNotEmpty)
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.video_library_rounded,
-                      color: primaryAccent),
-                  title: const Text("Assistir Vídeo de Referência"),
-                  trailing: const Icon(Icons.open_in_new),
-                  onTap: () => _launchUrl(context),
+              const SizedBox(height: 16),
+              if (note.imagePath != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16.0),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12.0),
+                    child: Image.file(File(note.imagePath!)),
+                  ),
                 ),
+              if (note.videoUrl != null && note.videoUrl!.isNotEmpty)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.video_library_rounded,
+                        color: primaryAccent),
+                    title: const Text("Assistir Vídeo de Referência"),
+                    trailing: const Icon(Icons.open_in_new),
+                    onTap: () => _launchUrl(context),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              Text(
+                "Anotações",
+                style: Theme.of(context).textTheme.titleLarge,
               ),
-            const SizedBox(height: 16),
-            Text(
-              "Anotações",
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const Divider(height: 20),
-            SelectableText(
-              note.content,
-              style:
-                  Theme.of(context).textTheme.bodyLarge?.copyWith(height: 1.5),
-            ),
-          ],
+              const Divider(height: 20),
+              SelectableText(
+                note.content,
+                style: Theme.of(context)
+                    .textTheme
+                    .bodyLarge
+                    ?.copyWith(height: 1.5),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -469,6 +465,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(_isEditing ? 'Editar Anotação' : 'Nova Anotação'),
         actions: [
@@ -480,79 +477,83 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
         ],
       ),
       body: AppBackground(
-        child: _isSaving
-            ? const Center(child: CircularProgressIndicator())
-            : Form(
-                key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.all(16.0),
-                  children: [
-                    TextFormField(
-                      controller: _titleController,
-                      decoration: const InputDecoration(labelText: 'Título'),
-                      validator: (v) =>
-                          v!.trim().isEmpty ? 'O título é obrigatório.' : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _contentController,
-                      decoration: const InputDecoration(
-                        labelText: 'Anotações',
-                        alignLabelWithHint: true,
+        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o conteúdo do body
+        child: SafeArea(
+          child: _isSaving
+              ? const Center(child: CircularProgressIndicator())
+              : Form(
+                  key: _formKey,
+                  child: ListView(
+                    padding: const EdgeInsets.all(16.0),
+                    children: [
+                      TextFormField(
+                        controller: _titleController,
+                        decoration: const InputDecoration(labelText: 'Título'),
+                        validator: (v) => v!.trim().isEmpty
+                            ? 'O título é obrigatório.'
+                            : null,
                       ),
-                      maxLines: 10,
-                      validator: (v) => v!.trim().isEmpty
-                          ? 'O conteúdo é obrigatório.'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _tagsController,
-                      decoration: const InputDecoration(
-                          labelText: 'Tags (separadas por vírgula)'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _urlController,
-                      decoration: const InputDecoration(
-                          labelText: 'Link do Vídeo (Opcional)'),
-                    ),
-                    const SizedBox(height: 24),
-                    if (_imagePath != null)
-                      Column(
-                        children: [
-                          Text("Imagem Anexada:",
-                              style: Theme.of(context).textTheme.titleSmall),
-                          const SizedBox(height: 8),
-                          Stack(
-                            alignment: Alignment.topRight,
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Image.file(File(_imagePath!)),
-                              ),
-                              IconButton(
-                                icon: const CircleAvatar(
-                                    backgroundColor: Colors.black54,
-                                    child:
-                                        Icon(Icons.close, color: Colors.white)),
-                                onPressed: _removeImage,
-                              )
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                        ],
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _contentController,
+                        decoration: const InputDecoration(
+                          labelText: 'Anotações',
+                          alignLabelWithHint: true,
+                        ),
+                        maxLines: 10,
+                        validator: (v) => v!.trim().isEmpty
+                            ? 'O conteúdo é obrigatório.'
+                            : null,
                       ),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.attach_file),
-                      label: Text(_imagePath == null
-                          ? 'Anexar Imagem'
-                          : 'Trocar Imagem'),
-                      onPressed: _pickImage,
-                    ),
-                  ],
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _tagsController,
+                        decoration: const InputDecoration(
+                            labelText: 'Tags (separadas por vírgula)'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _urlController,
+                        decoration: const InputDecoration(
+                            labelText: 'Link do Vídeo (Opcional)'),
+                      ),
+                      const SizedBox(height: 24),
+                      if (_imagePath != null)
+                        Column(
+                          children: [
+                            Text("Imagem Anexada:",
+                                style: Theme.of(context).textTheme.titleSmall),
+                            const SizedBox(height: 8),
+                            Stack(
+                              alignment: Alignment.topRight,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(12),
+                                  child: Image.file(File(_imagePath!)),
+                                ),
+                                IconButton(
+                                  icon: const CircleAvatar(
+                                      backgroundColor: Colors.black54,
+                                      child: Icon(Icons.close,
+                                          color: Colors.white)),
+                                  onPressed: _removeImage,
+                                )
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                          ],
+                        ),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.attach_file),
+                        label: Text(_imagePath == null
+                            ? 'Anexar Imagem'
+                            : 'Trocar Imagem'),
+                        onPressed: _pickImage,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+        ),
       ),
     );
   }
