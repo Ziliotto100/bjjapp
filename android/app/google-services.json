@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "461427127162",
-    "project_id": "dev-bjjmatch",
-    "storage_bucket": "dev-bjjmatch.firebasestorage.app"
+    "project_number": "757933813601",
+    "project_id": "matchbjj",
+    "storage_bucket": "matchbjj.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:461427127162:android:f2dbb8cbcfccf223765cc3",
+        "mobilesdk_app_id": "1:757933813601:android:af1462c0e58058fb8c9f20",
         "android_client_info": {
           "package_name": "com.ziliottosmartdev.matchbjj"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyCQJ97pO6jOts0KpLClMVlG_fYa0wXRqh4"
+          "current_key": "AIzaSyDVhpVDU3o5QT4v9XXXaUzbCyWm0R_Yo8s"
         }
       ],
       "services": {
