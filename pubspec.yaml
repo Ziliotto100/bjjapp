@@ -49,6 +49,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/images/faixas/
 
 # Bloco de configuração para o ÍCONE
 flutter_launcher_icons:

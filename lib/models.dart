@@ -31,6 +31,7 @@ class UserModel {
   final String? faixa;
   final int? graus;
   final double? peso;
+  final String? profileImagePath; // CAMPO ADICIONADO
 
   UserModel({
     required this.uid,
@@ -44,6 +45,7 @@ class UserModel {
     this.faixa,
     this.graus,
     this.peso,
+    this.profileImagePath, // CAMPO ADICIONADO
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
@@ -75,6 +77,7 @@ class UserModel {
       faixa: data['faixa'],
       graus: data['graus'],
       peso: (data['peso'] as num?)?.toDouble(),
+      profileImagePath: data['profileImagePath'], // CAMPO ADICIONADO
     );
   }
 }

@@ -1,0 +1,243 @@
+// lib/common_widgets.dart
+// ignore_for_file: deprecated_member_use
+
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'app_theme.dart';
+import 'models.dart';
+
+// --- WIDGETS COMUNS REUTILIZÁVEIS ---
+
+/// Plano de fundo padrão para a maioria das telas do aplicativo.
+class AppBackground extends StatelessWidget {
+  final Widget child;
+  const AppBackground({super.key, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: double.infinity,
+      decoration: const BoxDecoration(
+        image: DecorationImage(
+          image: AssetImage('assets/images/planofundo.png'),
+          fit: BoxFit.cover,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Exibe uma SnackBar (mensagem temporária) customizada na parte inferior da tela.
+void showBjjSnackBar(BuildContext context, String message,
+    {String type = 'info'}) {
+  Color backgroundColor;
+  IconData icon;
+
+  switch (type) {
+    case 'success':
+      backgroundColor = successColor;
+      icon = Icons.check_circle_outline;
+      break;
+    case 'error':
+      backgroundColor = errorColor;
+      icon = Icons.error_outline;
+      break;
+    case 'warning':
+      backgroundColor = warningColor;
+      icon = Icons.warning_amber_rounded;
+      break;
+    default: // info
+      backgroundColor = infoColor;
+      icon = Icons.info_outline;
+  }
+
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: Row(
+        children: [
+          Icon(icon, color: Colors.white),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                  color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+      backgroundColor: backgroundColor,
+      behavior: SnackBarBehavior.floating,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.all(16),
+      duration: const Duration(seconds: 4),
+    ),
+  );
+}
+
+/// Widget exibido quando uma lista ou conteúdo está vazio.
+class EmptyStateWidget extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String? message;
+
+  const EmptyStateWidget(
+      {super.key, required this.icon, required this.title, this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(icon, size: 80, color: textHint),
+            const SizedBox(height: 20),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            if (message != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                message!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: textHint, fontSize: 16),
+              ),
+            ]
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- HELPER E WIDGET DE PERFIL ---
+
+/// Retorna o caminho do asset da imagem da faixa com base no nome da faixa.
+String getBeltImagePath(String? beltName) {
+  if (beltName == null || beltName.isEmpty) {
+    return 'assets/images/faixas/branca.png'; // Padrão para faixa branca
+  }
+
+  final formattedName = beltName
+      .toLowerCase()
+      .replaceAll(' com ponta ', '_')
+      .replaceAll(' ', '_');
+
+  const validBelts = [
+    'branca',
+    'cinza',
+    'cinza_branco',
+    'cinza_preto',
+    'amarela',
+    'amarela_branco',
+    'amarela_preto',
+    'laranja',
+    'laranja_preto',
+    'laranja_branco',
+    'verde',
+    'verde_branco',
+    'verde_preto',
+    'azul',
+    'roxa',
+    'marrom',
+    'preta'
+  ];
+
+  if (validBelts.contains(formattedName)) {
+    return 'assets/images/faixas/$formattedName.png';
+  }
+
+  return 'assets/images/faixas/branca.png';
+}
+
+/// Cabeçalho de perfil reutilizável.
+/// CORRIGIDO: Posição e tamanho da faixa ajustados para exibição completa e espaçamento dos textos aumentado.
+class UserProfileHeader extends StatelessWidget {
+  final UserModel user;
+  final Aluno? studentData;
+
+  const UserProfileHeader({
+    super.key,
+    required this.user,
+    this.studentData,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final profileImagePath = user.profileImagePath;
+
+    final beltName = (user.role == UserRole.student && studentData != null)
+        ? studentData!.faixa
+        : user.faixa;
+
+    final beltImagePath = getBeltImagePath(beltName);
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Stack(
+              alignment: Alignment.center,
+              clipBehavior: Clip.none,
+              children: [
+                // 1. Círculo para a foto de perfil
+                CircleAvatar(
+                  radius: 70,
+                  backgroundColor: primaryAccent.withOpacity(0.2),
+                  backgroundImage:
+                      (profileImagePath != null && profileImagePath.isNotEmpty)
+                          ? FileImage(File(profileImagePath))
+                          : null,
+                  child: (profileImagePath == null || profileImagePath.isEmpty)
+                      ? const Icon(Icons.person, size: 80, color: primaryAccent)
+                      : null,
+                ),
+                // 2. Imagem da Faixa
+                Positioned(
+                  bottom: -57, // Move a faixa para baixo para não ser cortada
+                  child: SizedBox(
+                    width: 90, // Largura maior para exibir a faixa completa
+                    height: 100,
+                    child: Image.asset(
+                      beltImagePath,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Tooltip(
+                          message: 'Imagem da faixa não encontrada',
+                          child: Icon(Icons.error_outline, color: textHint),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 50), // Aumenta o espaço para o texto
+            // Nome e saudação
+            Text(
+              'Bem-vindo(a),',
+              style: theme.textTheme.titleMedium?.copyWith(color: textHint),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              user.name,
+              style:
+                  theme.textTheme.headlineSmall, // Ajustado para headlineSmall
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
