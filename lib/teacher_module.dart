@@ -3,7 +3,6 @@
 
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
@@ -14,7 +13,8 @@ import 'app_theme.dart';
 import 'manager_module.dart';
 import 'scoreboard_module.dart';
 import 'student_module.dart';
-import 'study_notebook_module.dart'; // Import corrigido
+import 'study_notebook_module.dart';
+import 'auth_gate.dart';
 
 // --- TELAS DO PROFESSOR ---
 class TeacherHomePage extends StatefulWidget {
@@ -222,7 +222,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // AJUSTE EDGE-TO-EDGE: Garante que o fundo do AppBackground seja visível
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(_titulos[_paginaAtual]),
@@ -230,16 +229,25 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           IconButton(
               icon: const Icon(Icons.settings),
               tooltip: 'Configurações',
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SettingsPage(user: widget.user)))),
-          IconButton(
-              icon: const Icon(Icons.logout),
-              tooltip: 'Sair',
-              onPressed: () => FirebaseAuth.instance.signOut()),
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => SettingsPage(
+                    user: widget.user,
+                    onGoToChangePassword: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ChangePasswordPage(),
+                      ));
+                    },
+                    onGoToChangeEmail: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ChangeEmailPage(),
+                      ));
+                    },
+                  ),
+                ));
+              }),
         ],
       ),
-      // AJUSTE EDGE-TO-EDGE: SafeArea aplicado ao IndexedStack
-      // para proteger todas as telas filhas das barras do sistema.
       body: AppBackground(
         child: _isLoadingAlunos
             ? const Center(child: CircularProgressIndicator())
@@ -444,7 +452,6 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
   }
 }
 
-// --- TELA DE INÍCIO DO PROFESSOR (MODIFICADA) ---
 class TeacherDashboardPage extends StatelessWidget {
   final UserModel user;
   final bool isSparringMode;
@@ -507,7 +514,8 @@ class TeacherDashboardPage extends StatelessWidget {
   }
 }
 
-class CheckinTeacherPage extends StatefulWidget {
+// --- PÁGINA DE CHECK-IN (LAYOUT DE LISTA) ---
+class CheckinTeacherPage extends StatelessWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
   const CheckinTeacherPage(
@@ -516,110 +524,244 @@ class CheckinTeacherPage extends StatefulWidget {
       required this.todosParticipantesDaAcademia});
 
   @override
-  State<CheckinTeacherPage> createState() => _CheckinTeacherPageState();
-}
-
-class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
-  void _navigateToBulkCheckin() async {
-    final checkedInCount = await Navigator.of(context).push<int>(
-      MaterialPageRoute(
-        builder: (_) => BulkCheckinPage(
-          academyId: widget.academyId,
-          todosParticipantesDaAcademia: widget.todosParticipantesDaAcademia,
-        ),
-      ),
-    );
-
-    if (checkedInCount != null && checkedInCount > 0 && mounted) {
-      showBjjSnackBar(context, '$checkedInCount presenças confirmadas!',
-          type: 'success');
-    }
-  }
-
-  void _navigateToRetroactiveCheckin() async {
-    final checkedInCount = await Navigator.of(context).push<int>(
-      MaterialPageRoute(
-        builder: (_) => RetroactiveCheckinPage(
-          academyId: widget.academyId,
-          todosParticipantesDaAcademia: widget.todosParticipantesDaAcademia,
-        ),
-      ),
-    );
-
-    if (checkedInCount != null && mounted) {
-      if (checkedInCount > 0) {
-        showBjjSnackBar(
-            context, '$checkedInCount presenças retroativas confirmadas!',
-            type: 'success');
-      } else {
-        showBjjSnackBar(context, 'Nenhuma presença nova foi registrada.',
-            type: 'info');
-      }
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(8.0),
       children: [
         Card(
           child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-            leading: const Icon(Icons.checklist_rtl_rounded,
-                color: primaryAccent, size: 40),
-            title: Text("Fazer Chamada da Turma",
-                style: Theme.of(context).textTheme.titleMedium),
-            subtitle: const Text("Registre a presença de hoje."),
-            trailing:
-                const Icon(Icons.arrow_forward_ios_rounded, color: textHint),
-            onTap: _navigateToBulkCheckin,
+            leading:
+                const Icon(Icons.checklist_rtl_rounded, color: primaryAccent),
+            title: const Text("Fazer Chamada"),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            onTap: () async {
+              final checkedInCount = await Navigator.of(context).push<int>(
+                MaterialPageRoute(
+                  builder: (_) => BulkCheckinPage(
+                    academyId: academyId,
+                    todosParticipantesDaAcademia: todosParticipantesDaAcademia,
+                  ),
+                ),
+              );
+
+              if (checkedInCount != null &&
+                  checkedInCount > 0 &&
+                  context.mounted) {
+                showBjjSnackBar(
+                    context, '$checkedInCount presenças confirmadas!',
+                    type: 'success');
+              }
+            },
           ),
         ),
-        const SizedBox(height: 12),
         Card(
           child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-            leading: const Icon(Icons.edit_calendar_rounded,
-                color: warningColor, size: 40),
-            title: Text("Lançar Check-in Retroativo",
-                style: Theme.of(context).textTheme.titleMedium),
-            subtitle: const Text("Registre uma presença de um dia anterior."),
-            trailing:
-                const Icon(Icons.arrow_forward_ios_rounded, color: textHint),
-            onTap: _navigateToRetroactiveCheckin,
+            leading:
+                const Icon(Icons.edit_calendar_rounded, color: warningColor),
+            title: const Text("Lançar Retroativo"),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            onTap: () async {
+              final checkedInCount = await Navigator.of(context).push<int>(
+                MaterialPageRoute(
+                  builder: (_) => RetroactiveCheckinPage(
+                    academyId: academyId,
+                    todosParticipantesDaAcademia: todosParticipantesDaAcademia,
+                  ),
+                ),
+              );
+
+              if (checkedInCount != null && context.mounted) {
+                if (checkedInCount > 0) {
+                  showBjjSnackBar(context,
+                      '$checkedInCount presenças retroativas confirmadas!',
+                      type: 'success');
+                } else {
+                  showBjjSnackBar(
+                      context, 'Nenhuma presença nova foi registrada.',
+                      type: 'info');
+                }
+              }
+            },
           ),
         ),
-        const SizedBox(height: 12),
         Card(
           child: ListTile(
-            contentPadding:
-                const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-            leading: const Icon(Icons.leaderboard_rounded,
-                color: infoColor, size: 40),
-            title: Text("Ver Ranking de Presença",
-                style: Theme.of(context).textTheme.titleMedium),
-            subtitle: const Text("Acompanhe a frequência dos participantes."),
-            trailing:
-                const Icon(Icons.arrow_forward_ios_rounded, color: textHint),
+            leading: const Icon(Icons.leaderboard_rounded, color: infoColor),
+            title: const Text("Ranking de Presença"),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
             onTap: () {
-              if (widget.todosParticipantesDaAcademia.isEmpty) {
+              if (todosParticipantesDaAcademia.isEmpty) {
                 showBjjSnackBar(context, 'Cadastre participantes primeiro.',
                     type: 'info');
                 return;
               }
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) =>
-                      RankingTeacherPage(academyId: widget.academyId),
+                  builder: (_) => RankingTeacherPage(academyId: academyId),
                 ),
               );
             },
           ),
         ),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.history_rounded, color: successColor),
+            title: const Text("Histórico de Check-in"),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            onTap: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => CheckinHistoryPage(
+                  academyId: academyId,
+                  allParticipants: todosParticipantesDaAcademia,
+                ),
+              ));
+            },
+          ),
+        ),
       ],
+    );
+  }
+}
+
+// --- TELA DE HISTÓRICO DE CHECK-IN (COM SELETOR DE DATA SIMPLES) ---
+class CheckinHistoryPage extends StatefulWidget {
+  final String academyId;
+  final List<Aluno> allParticipants;
+
+  const CheckinHistoryPage({
+    super.key,
+    required this.academyId,
+    required this.allParticipants,
+  });
+
+  @override
+  State<CheckinHistoryPage> createState() => _CheckinHistoryPageState();
+}
+
+class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
+  late final Map<String, Aluno> _participantsMap;
+  DateTime _selectedDay = DateTime.now();
+  List<Aluno> _checkedInStudents = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _participantsMap = {for (var p in widget.allParticipants) p.id: p};
+    _fetchCheckinsForDay(_selectedDay);
+  }
+
+  Future<void> _fetchCheckinsForDay(DateTime day) async {
+    setState(() => _isLoading = true);
+    final dateOnly = DateTime(day.year, day.month, day.day);
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('checkins')
+          .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
+          .get();
+
+      final studentIds =
+          snapshot.docs.map((doc) => doc['studentId'] as String).toList();
+      final students = studentIds
+          .map((id) => _participantsMap[id])
+          .whereType<Aluno>()
+          .toList();
+      students.sort((a, b) => a.nome.compareTo(b.nome));
+
+      if (mounted) {
+        setState(() {
+          _checkedInStudents = students;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoading = false);
+        showBjjSnackBar(context, "Erro ao buscar presenças.", type: 'error');
+      }
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDay,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      locale: const Locale('pt', 'BR'),
+    );
+    if (picked != null && picked != _selectedDay) {
+      setState(() {
+        _selectedDay = picked;
+      });
+      _fetchCheckinsForDay(picked);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text("Histórico de Check-in"),
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              Card(
+                margin: const EdgeInsets.all(12.0),
+                child: ListTile(
+                  leading:
+                      const Icon(Icons.calendar_today, color: primaryAccent),
+                  title: const Text("Data Selecionada"),
+                  subtitle: Text(
+                    DateFormat.yMMMMd('pt_BR').format(_selectedDay),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  onTap: _pickDate,
+                ),
+              ),
+              Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+                child: Text(
+                  "Presentes na data selecionada (${_checkedInStudents.length})",
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _checkedInStudents.isEmpty
+                        ? const EmptyStateWidget(
+                            icon: Icons.group_off_rounded,
+                            title: "Nenhum check-in",
+                            message: "Ninguém treinou neste dia.",
+                          )
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+                            itemCount: _checkedInStudents.length,
+                            itemBuilder: (context, index) {
+                              final student = _checkedInStudents[index];
+                              return Card(
+                                child: ListTile(
+                                  leading: const Icon(Icons.check_circle,
+                                      color: successColor),
+                                  title: Text(student.nome),
+                                  subtitle: Text(student.faixa),
+                                ),
+                              );
+                            },
+                          ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -728,7 +870,6 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
         title: const Text("Chamada da Turma"),
       ),
       body: AppBackground(
-        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o Column
         child: SafeArea(
           child: Column(
             children: [
@@ -930,7 +1071,6 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
         title: const Text("Check-in Retroativo"),
       ),
       body: AppBackground(
-        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o Column
         child: SafeArea(
           child: Column(
             children: [
@@ -1129,7 +1269,6 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Ranking de Presença')),
       body: AppBackground(
-        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o Column
         child: SafeArea(
           child: Column(
             children: [
@@ -1625,7 +1764,6 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: Text(roundTitle)),
       body: AppBackground(
-        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o Column
         child: SafeArea(
           child: Column(
             children: [
@@ -1693,7 +1831,7 @@ class SelecaoAlunosTeacherPage extends StatefulWidget {
       required this.todosOsAlunos,
       required this.alunosSelecionadosIniciais});
   @override
-  State<SelecaoAlunosTeacherPage> createState() =>
+  _SelecaoAlunosTeacherPageState createState() =>
       _SelecaoAlunosTeacherPageState();
 }
 
@@ -1715,7 +1853,6 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
         title: const Text('Selecionar Participantes'),
       ),
       body: AppBackground(
-        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o conteúdo do body
         child: SafeArea(
           child: widget.todosOsAlunos.isEmpty
               ? const EmptyStateWidget(

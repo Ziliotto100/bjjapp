@@ -1,30 +1,32 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // 1. IMPORTE O PACOTE DE SERVIÇOS
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
+
+// [MODIFICAÇÃO PRINCIPAL]
+// Importamos o seu arquivo de tema, que agora contém o widget BjjApp.
 import 'app_theme.dart';
+
+// A lógica de flavors e Firebase continua a mesma
 import 'firebase_options_dev.dart' as dev;
 import 'firebase_options_prod.dart' as prod;
 
 const flavor = String.fromEnvironment('FLAVOR');
 
 void main() async {
+  // 1. Garante que os serviços do Flutter estão prontos.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Habilita o modo Edge-to-Edge para uma UI mais imersiva
+  // 2. Configura a UI para o modo imersivo (edge-to-edge).
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-
-  // Deixa as barras de navegação e de status transparentes para que o fundo do app apareça
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-    systemNavigationBarColor:
-        Colors.transparent, // Cor da barra de navegação (inferior)
-    statusBarColor: Colors.transparent, // Cor da barra de status (superior)
-    statusBarIconBrightness: Brightness
-        .light, // Ícones da barra de status (relógio, bateria) em branco/claro
-    systemNavigationBarIconBrightness: Brightness
-        .light, // Ícones da barra de navegação (botões) em branco/claro
+    systemNavigationBarColor: Colors.transparent,
+    statusBarColor: Colors.transparent,
+    statusBarIconBrightness: Brightness.light,
+    systemNavigationBarIconBrightness: Brightness.light,
   ));
 
+  // 3. Seleciona as configurações do Firebase com base no flavor.
   FirebaseOptions options;
   if (flavor == 'prod') {
     options = prod.DefaultFirebaseOptions.currentPlatform;
@@ -32,11 +34,11 @@ void main() async {
     options = dev.DefaultFirebaseOptions.currentPlatform;
   }
 
+  // Inicializa o Firebase com as opções corretas.
   await Firebase.initializeApp(
     options: options,
   );
 
-  runApp(
-    const BjjApp(),
-  );
+  // 4. Executa o aplicativo usando o widget BjjApp importado de app_theme.dart.
+  runApp(const BjjApp());
 }

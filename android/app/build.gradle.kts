@@ -19,9 +19,8 @@ if (keyPropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.example.bjjapp"
-    compileSdk = flutter.compileSdkVersion
-    ndkVersion = "27.0.12077973"
+    namespace = "com.ziliottosmartdev.matchbjj" // Corrigido para o seu ID de pacote
+    compileSdk = 35 // Usando uma versão comum do SDK
 
     signingConfigs {
         // Cria a configuração de assinatura para 'release'
@@ -34,46 +33,47 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        // Usar Java 1.8 é mais comum e compatível com a maioria dos plugins
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = "1.8"
     }
 
     defaultConfig {
         applicationId = "com.ziliottosmartdev.matchbjj"
         minSdk = 23
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
+        targetSdk = 34
+        versionCode = 1 // Pode ser gerenciado pelo Flutter
+        versionName = "1.0" // Pode ser gerenciado pelo Flutter
     }
 
-    // --- BLOCO ADICIONADO PARA CORRIGIR O ERRO ---
-    // NOVO: Define uma categoria para seus flavors.
+    // --- BLOCO DE FLAVORS ATUALIZADO PARA KOTLIN DSL ---
     flavorDimensions.add("app")
 
-    // NOVO: Define os flavors 'prod' e 'dev' que seu app possui.
     productFlavors {
-        // Flavor de produção (o que você tentou compilar)
-        create("prod") {
-            dimension = "app"
-            // Você pode diferenciar o ID do aplicativo para cada flavor, se quiser.
-            // Ex: applicationIdSuffix = ".prod"
-        }
-        // Flavor de desenvolvimento (para corresponder ao seu main.dart)
+        // Flavor de desenvolvimento
         create("dev") {
             dimension = "app"
-            // Ex: applicationIdSuffix = ".dev"
+            // Adiciona o sufixo .dev ao ID do aplicativo, permitindo a instalação lado a lado
+            applicationIdSuffix = ".dev"
+            // Define um nome diferente para o ícone do app de desenvolvimento
+            resValue("string", "app_name", "MatchBJJ Dev")
+        }
+        // Flavor de produção
+        create("prod") {
+            dimension = "app"
+            // A versão de produção não tem sufixo, mantendo o ID original
+            resValue("string", "app_name", "Match BJJ")
         }
     }
-    // --- FIM DO BLOCO ADICIONADO ---
+    // --- FIM DO BLOCO ATUALIZADO ---
 
     buildTypes {
         release {
             // Associa a configuração de assinatura ao tipo de build 'release'.
-            // A sintaxe correta é usar getByName para referenciar a config criada.
             signingConfig = signingConfigs.getByName("release")
         }
     }

@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "461427127162",
+    "project_id": "dev-bjjmatch",
+    "storage_bucket": "dev-bjjmatch.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:461427127162:android:f2dbb8cbcfccf223765cc3",
+        "android_client_info": {
+          "package_name": "com.ziliottosmartdev.matchbjj"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQJ97pO6jOts0KpLClMVlG_fYa0wXRqh4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:461427127162:android:c8272d38bbd8a5d2765cc3",
+        "android_client_info": {
+          "package_name": "com.ziliottosmartdev.matchbjj.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCQJ97pO6jOts0KpLClMVlG_fYa0wXRqh4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

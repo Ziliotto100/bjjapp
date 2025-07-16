@@ -11,6 +11,7 @@ import 'models.dart';
 import 'common_widgets.dart';
 import 'app_theme.dart';
 import 'student_module.dart';
+import 'auth_gate.dart'; // Import adicionado para ChangePasswordPage e ChangeEmailPage
 
 // --- TELAS DO GERENTE ---
 class ManagerHomePage extends StatefulWidget {
@@ -113,8 +114,23 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
           IconButton(
               icon: const Icon(Icons.settings),
               tooltip: 'Configurações',
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SettingsPage(user: widget.user)))),
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => SettingsPage(
+                    user: widget.user,
+                    onGoToChangePassword: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ChangePasswordPage(),
+                      ));
+                    },
+                    onGoToChangeEmail: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ChangeEmailPage(),
+                      ));
+                    },
+                  ),
+                ));
+              }),
         ],
       ),
       body: AppBackground(

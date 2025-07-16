@@ -1,3 +1,4 @@
+// lib/models.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
@@ -31,7 +32,7 @@ class UserModel {
   final String? faixa;
   final int? graus;
   final double? peso;
-  final String? profileImagePath; // CAMPO ADICIONADO
+  final String? profileImagePath;
 
   UserModel({
     required this.uid,
@@ -45,7 +46,7 @@ class UserModel {
     this.faixa,
     this.graus,
     this.peso,
-    this.profileImagePath, // CAMPO ADICIONADO
+    this.profileImagePath,
   });
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
@@ -77,14 +78,13 @@ class UserModel {
       faixa: data['faixa'],
       graus: data['graus'],
       peso: (data['peso'] as num?)?.toDouble(),
-      profileImagePath: data['profileImagePath'], // CAMPO ADICIONADO
+      profileImagePath: data['profileImagePath'],
     );
   }
 }
 
 /// Modelo para representar um Aluno na academia.
 /// Pode ou não ter um `userId` associado (se tiver acesso de login).
-/// Também é usado para representar participantes em sorteios e placares (incluindo professores).
 class Aluno {
   final String id; // ID do documento na subcoleção 'students'
   String nome;
@@ -93,6 +93,8 @@ class Aluno {
   int? graus;
   String? userId; // ID do usuário no Auth, se tiver acesso
   PaymentStatus paymentStatus; // Usado na tela de mensalidades
+  final String? registeredByUid; // [MELHORIA] UID de quem cadastrou
+  final String? registeredByName; // [MELHORIA] Nome de quem cadastrou
 
   Aluno({
     required this.id,
@@ -102,6 +104,8 @@ class Aluno {
     this.graus,
     this.userId,
     this.paymentStatus = PaymentStatus.pendente,
+    this.registeredByUid,
+    this.registeredByName,
   });
 
   // Construtor para criar um Aluno sem ID ainda (antes de salvar no Firestore)
@@ -112,7 +116,9 @@ class Aluno {
     this.graus,
     this.userId,
   })  : id = '',
-        paymentStatus = PaymentStatus.pendente;
+        paymentStatus = PaymentStatus.pendente,
+        registeredByUid = null,
+        registeredByName = null;
 
   // Converte um objeto Aluno para um Map JSON para salvar no Firestore.
   Map<String, dynamic> toJson() {
@@ -122,6 +128,8 @@ class Aluno {
       'peso': peso,
       'graus': graus,
       'userId': userId,
+      'registeredByUid': registeredByUid,
+      'registeredByName': registeredByName,
     };
   }
 
@@ -134,6 +142,8 @@ class Aluno {
       peso: (json['peso'] as num?)?.toDouble() ?? 0.0,
       graus: json['graus'],
       userId: json['userId'],
+      registeredByUid: json['registeredByUid'],
+      registeredByName: json['registeredByName'],
     );
   }
 
@@ -149,7 +159,6 @@ class Aluno {
     );
   }
 
-  // Sobrescreve hashCode e operator== para permitir comparações em Sets
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -175,7 +184,6 @@ class MatchSettings {
     required this.matchDuration,
   });
 
-  // Mapeia a string da cor para um objeto Color do Flutter.
   Color get colorForAthlete1 => _getColorFromString(kimonoColor1);
   Color get colorForAthlete2 => _getColorFromString(kimonoColor2);
 
@@ -184,7 +192,7 @@ class MatchSettings {
       case 'azul':
         return Colors.blue.shade300;
       case 'preto':
-        return Colors.grey.shade800; // Será tratado como branco no texto
+        return Colors.grey.shade800;
       case 'branco':
       default:
         return Colors.white;
@@ -242,15 +250,34 @@ class CheckinEntry {
   final String id;
   final String studentId;
   final DateTime date;
+  final String? creatorId;
+  final String? creatorName;
 
-  CheckinEntry({required this.id, required this.studentId, required this.date});
+  CheckinEntry({
+    required this.id,
+    required this.studentId,
+    required this.date,
+    this.creatorId,
+    this.creatorName,
+  });
 
   factory CheckinEntry.fromJson(String id, Map<String, dynamic> json) {
     return CheckinEntry(
       id: id,
       studentId: json['studentId'],
       date: (json['date'] as Timestamp).toDate(),
+      creatorId: json['creatorId'],
+      creatorName: json['creatorName'],
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'studentId': studentId,
+      'date': Timestamp.fromDate(date),
+      'creatorId': creatorId,
+      'creatorName': creatorName,
+    };
   }
 }
 
@@ -263,16 +290,14 @@ class Luta {
   Luta(this.aluno1, this.aluno2, this.custo);
 }
 
-// --- NOVO MODELO PARA O CADERNO DE ESTUDOS ---
-
 /// Modelo para uma anotação no caderno de estudos pessoal de cada usuário.
 class StudyNote {
-  final String id; // Usaremos um timestamp ou UUID para o ID
+  final String id;
   String title;
   String content;
   List<String> tags;
   String? videoUrl;
-  String? imagePath; // Caminho para a imagem salva LOCALMENTE no dispositivo
+  String? imagePath;
   final DateTime createdAt;
   DateTime updatedAt;
 
@@ -287,7 +312,6 @@ class StudyNote {
     required this.updatedAt,
   });
 
-  // Construtor de fábrica para criar uma nova anotação de forma conveniente.
   factory StudyNote.create({
     required String title,
     required String content,
@@ -297,7 +321,7 @@ class StudyNote {
   }) {
     final now = DateTime.now();
     return StudyNote(
-      id: now.millisecondsSinceEpoch.toString(), // ID simples baseado no tempo
+      id: now.millisecondsSinceEpoch.toString(),
       title: title,
       content: content,
       tags: tags ?? [],
@@ -308,7 +332,6 @@ class StudyNote {
     );
   }
 
-  // Converte o objeto para um Map JSON para ser salvo no arquivo local.
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -322,7 +345,6 @@ class StudyNote {
     };
   }
 
-  // Cria um objeto StudyNote a partir de um Map JSON lido do arquivo local.
   factory StudyNote.fromJson(Map<String, dynamic> json) {
     return StudyNote(
       id: json['id'],

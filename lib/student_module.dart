@@ -14,7 +14,7 @@ import 'common_widgets.dart';
 import 'app_theme.dart';
 import 'scoreboard_module.dart';
 import 'study_notebook_module.dart';
-import 'auth_gate.dart';
+import 'auth_gate.dart'; // Import necessário para a navegação
 
 // --- TELAS DO ALUNO ---
 class StudentHomePage extends StatefulWidget {
@@ -111,8 +111,23 @@ class _StudentHomePageState extends State<StudentHomePage> {
           IconButton(
               icon: const Icon(Icons.settings),
               tooltip: 'Configurações',
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SettingsPage(user: widget.user)))),
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => SettingsPage(
+                    user: widget.user,
+                    onGoToChangePassword: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ChangePasswordPage(),
+                      ));
+                    },
+                    onGoToChangeEmail: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const ChangeEmailPage(),
+                      ));
+                    },
+                  ),
+                ));
+              }),
         ],
       ),
       body: AppBackground(
@@ -526,8 +541,9 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                             keyboardType: const TextInputType.numberWithOptions(
                                 decimal: true),
                             validator: (v) {
-                              if (v == null || v.isEmpty)
+                              if (v == null || v.isEmpty) {
                                 return 'Peso inválido';
+                              }
                               final x = double.tryParse(v.replaceAll(',', '.'));
                               return (x == null || x <= 0)
                                   ? 'Peso inválido (deve ser > 0)'
@@ -721,7 +737,15 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
 
 class SettingsPage extends StatelessWidget {
   final UserModel user;
-  const SettingsPage({super.key, required this.user});
+  final VoidCallback onGoToChangePassword;
+  final VoidCallback onGoToChangeEmail;
+
+  const SettingsPage({
+    super.key,
+    required this.user,
+    required this.onGoToChangePassword,
+    required this.onGoToChangeEmail,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -757,11 +781,7 @@ class SettingsPage extends StatelessWidget {
                   title: const Text("Alterar Senha"),
                   trailing:
                       const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const ChangePasswordPage(),
-                    ));
-                  },
+                  onTap: onGoToChangePassword,
                 ),
               ),
               Card(
@@ -770,14 +790,9 @@ class SettingsPage extends StatelessWidget {
                   title: const Text("Alterar E-mail"),
                   trailing:
                       const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const ChangeEmailPage(),
-                    ));
-                  },
+                  onTap: onGoToChangeEmail,
                 ),
               ),
-              // AJUSTE: Card de Logout
               const SizedBox(height: 20),
               Card(
                 child: ListTile(
