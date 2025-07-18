@@ -1,7 +1,6 @@
 // lib/common_widgets.dart
 // ignore_for_file: deprecated_member_use
 
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app_theme.dart';
@@ -159,7 +158,6 @@ String getBeltImagePath(String? beltName) {
 }
 
 /// Cabeçalho de perfil reutilizável.
-/// CORRIGIDO: Posição e tamanho da faixa ajustados para exibição completa e espaçamento dos textos aumentado.
 class UserProfileHeader extends StatelessWidget {
   final UserModel user;
   final Aluno? studentData;
@@ -180,8 +178,6 @@ class UserProfileHeader extends StatelessWidget {
         : user.faixa;
 
     final beltImagePath = getBeltImagePath(beltName);
-
-    // [MELHORIA] Gerente não tem faixa, então não mostra a imagem.
     final bool showBelt = user.role != UserRole.manager;
 
     return Center(
@@ -194,24 +190,23 @@ class UserProfileHeader extends StatelessWidget {
               alignment: Alignment.center,
               clipBehavior: Clip.none,
               children: [
-                // 1. Círculo para a foto de perfil
                 CircleAvatar(
                   radius: 70,
                   backgroundColor: primaryAccent.withOpacity(0.2),
+                  // MODIFICAÇÃO: Usa NetworkImage para URLs e null se for vazio.
                   backgroundImage:
                       (profileImagePath != null && profileImagePath.isNotEmpty)
-                          ? FileImage(File(profileImagePath))
+                          ? NetworkImage(profileImagePath)
                           : null,
                   child: (profileImagePath == null || profileImagePath.isEmpty)
                       ? const Icon(Icons.person, size: 80, color: primaryAccent)
                       : null,
                 ),
-                // 2. Imagem da Faixa (se não for gerente)
                 if (showBelt)
                   Positioned(
-                    bottom: -57, // Move a faixa para baixo para não ser cortada
+                    bottom: -57,
                     child: SizedBox(
-                      width: 90, // Largura maior para exibir a faixa completa
+                      width: 90,
                       height: 100,
                       child: Image.asset(
                         beltImagePath,
@@ -227,9 +222,7 @@ class UserProfileHeader extends StatelessWidget {
                   ),
               ],
             ),
-            SizedBox(
-                height: showBelt ? 50 : 16), // Aumenta o espaço para o texto
-            // Nome e saudação
+            SizedBox(height: showBelt ? 50 : 16),
             Text(
               'Bem-vindo(a),',
               style: theme.textTheme.titleMedium?.copyWith(color: textHint),
@@ -237,8 +230,7 @@ class UserProfileHeader extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               user.name,
-              style:
-                  theme.textTheme.headlineSmall, // Ajustado para headlineSmall
+              style: theme.textTheme.headlineSmall,
               textAlign: TextAlign.center,
             ),
           ],
@@ -248,26 +240,22 @@ class UserProfileHeader extends StatelessWidget {
   }
 }
 
-// [NOVO] Formatador de texto para datas no formato DD/MM/AAAA.
+/// Formatador de texto para datas no formato DD/MM/AAAA.
 class DateInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(
       TextEditingValue oldValue, TextEditingValue newValue) {
-    // Se o novo valor estiver vazio, não faz nada
     if (newValue.text.isEmpty) {
       return newValue.copyWith(text: '');
     }
 
-    // Pega apenas os dígitos do novo valor
     String newText = newValue.text.replaceAll(RegExp(r'\D'), '');
     String formattedText = '';
 
-    // Limita a 8 dígitos (DDMMAAAA)
     if (newText.length > 8) {
       newText = newText.substring(0, 8);
     }
 
-    // Adiciona as barras
     if (newText.length > 4) {
       formattedText =
           '${newText.substring(0, 2)}/${newText.substring(2, 4)}/${newText.substring(4)}';
@@ -277,7 +265,6 @@ class DateInputFormatter extends TextInputFormatter {
       formattedText = newText;
     }
 
-    // Retorna o valor formatado com a posição do cursor no final
     return newValue.copyWith(
       text: formattedText,
       selection: TextSelection.collapsed(offset: formattedText.length),

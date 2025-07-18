@@ -2,60 +2,74 @@
 
 // ignore_for_file: use_build_context_synchronously
 
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:convert';
+
+// ADIÇÕES: Imports para o Firebase
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'models.dart';
 import 'common_widgets.dart';
 import 'app_theme.dart';
 
 // --- SERVICE ---
-// Colocando o serviço no mesmo arquivo para simplificar.
 class StudyNoteService {
-  Future<String> get _localPath async {
-    final directory = await getApplicationDocumentsDirectory();
-    return directory.path;
+  final String userId;
+  // CORREÇÃO: A coleção agora é do tipo genérico, pois faremos a conversão manualmente.
+  late final CollectionReference _notesCollection;
+
+  StudyNoteService({required this.userId}) {
+    _notesCollection = FirebaseFirestore.instance
+        .collection('users')
+        .doc(userId)
+        .collection('study_notes');
   }
 
-  Future<File> _localFile(String userId) async {
-    final path = await _localPath;
-    return File('$path/studynotes_$userId.json');
+  // Retorna um Stream para ouvir as anotações em tempo real.
+  Stream<QuerySnapshot> getNotesStream() {
+    return _notesCollection.orderBy('updatedAt', descending: true).snapshots();
   }
 
-  Future<List<StudyNote>> loadNotes(String userId) async {
-    try {
-      final file = await _localFile(userId);
-      if (!await file.exists()) {
-        return [];
-      }
-      final contents = await file.readAsString();
-      final List<dynamic> jsonList = json.decode(contents);
-      return jsonList.map((json) => StudyNote.fromJson(json)).toList();
-    } catch (e) {
-      // Em caso de erro, retorna uma lista vazia
-      return [];
+  // CORREÇÃO: Converte manualmente o objeto StudyNote para um Map antes de salvar.
+  Future<void> saveNote(StudyNote note) {
+    final data = {
+      'title': note.title,
+      'content': note.content,
+      'tags': note.tags,
+      'videoUrl': note.videoUrl,
+      'imagePath': note.imagePath,
+      'updatedAt': Timestamp.fromDate(note.updatedAt),
+      'createdAt': Timestamp.fromDate(note.createdAt),
+    };
+
+    if (note.id.isEmpty) {
+      return _notesCollection.add(data);
+    } else {
+      return _notesCollection.doc(note.id).set(data, SetOptions(merge: true));
     }
   }
 
-  Future<File> saveNotes(String userId, List<StudyNote> notes) async {
-    final file = await _localFile(userId);
-    final jsonList = notes.map((note) => note.toJson()).toList();
-    return file.writeAsString(json.encode(jsonList));
+  // Deleta uma anotação.
+  Future<void> deleteNote(String noteId) {
+    return _notesCollection.doc(noteId).delete();
   }
 
-  Future<String?> saveImage(String userId, XFile image) async {
+  // O upload da imagem continua o mesmo, funcionando corretamente.
+  Future<String?> saveImage(XFile image) async {
     try {
-      final path = await _localPath;
       final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final newImagePath = '$path/$fileName';
-      final newImageFile = File(newImagePath);
-      await newImageFile.writeAsBytes(await image.readAsBytes());
-      return newImagePath;
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('study_notes_images')
+          .child(userId)
+          .child(fileName);
+
+      await ref.putData(await image.readAsBytes());
+      return await ref.getDownloadURL();
     } catch (e) {
+      debugPrint("Erro ao salvar imagem no Storage: $e");
       return null;
     }
   }
@@ -71,23 +85,14 @@ class StudyNotebookPage extends StatefulWidget {
 }
 
 class _StudyNotebookPageState extends State<StudyNotebookPage> {
-  final StudyNoteService _noteService = StudyNoteService();
-  List<StudyNote> _notes = [];
-  List<StudyNote> _filteredNotes = [];
-  bool _isLoading = true;
-  String _searchQuery = '';
+  late final StudyNoteService _noteService;
   final _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadNotes();
-    _searchController.addListener(() {
-      setState(() {
-        _searchQuery = _searchController.text;
-        _filterNotes();
-      });
-    });
+    _noteService = StudyNoteService(userId: widget.userId);
+    _searchController.addListener(() => setState(() {}));
   }
 
   @override
@@ -96,169 +101,175 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
     super.dispose();
   }
 
-  Future<void> _loadNotes() async {
-    setState(() => _isLoading = true);
-    try {
-      final notes = await _noteService.loadNotes(widget.userId);
-      notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-      setState(() {
-        _notes = notes;
-        _filterNotes();
-        _isLoading = false;
-      });
-    } catch (e) {
-      if (mounted) {
-        showBjjSnackBar(context, 'Erro ao carregar anotações.', type: 'error');
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  void _filterNotes() {
-    if (_searchQuery.isEmpty) {
-      _filteredNotes = _notes;
-    } else {
-      _filteredNotes = _notes.where((note) {
-        final query = _searchQuery.toLowerCase();
-        return note.title.toLowerCase().contains(query) ||
-            note.content.toLowerCase().contains(query) ||
-            note.tags.any((tag) => tag.toLowerCase().contains(query));
-      }).toList();
-    }
-  }
-
-  Future<void> _deleteNote(String id) async {
-    final updatedNotes = _notes.where((note) => note.id != id).toList();
-    await _noteService.saveNotes(widget.userId, updatedNotes);
-    _loadNotes();
-    if (mounted) {
-      showBjjSnackBar(context, 'Anotação excluída!', type: 'success');
-    }
-  }
-
   void _confirmDelete(String id) {
     showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-              title: const Text('Excluir Anotação?'),
-              content: const Text(
-                  'Esta ação não pode ser desfeita. Deseja continuar?'),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancelar')),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    _deleteNote(id);
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: errorColor),
-                  child: const Text('Excluir'),
-                )
-              ],
-            ));
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir Anotação?'),
+        content:
+            const Text('Esta ação não pode ser desfeita. Deseja continuar?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              await _noteService.deleteNote(id);
+              if (mounted) {
+                showBjjSnackBar(context, 'Anotação excluída!', type: 'success');
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text('Excluir'),
+          )
+        ],
+      ),
+    );
+  }
+
+  void _navigateAndReload(Widget page) {
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
   }
 
   @override
   Widget build(BuildContext context) {
-    // AJUSTE EDGE-TO-EDGE: A página agora não tem Scaffold próprio,
-    // pois é exibida dentro do IndexedStack que já tem um SafeArea.
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              labelText: 'Buscar por título, conteúdo ou tag...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () => _searchController.clear(),
-                    )
-                  : null,
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: 'Buscar por título, conteúdo ou tag...',
+                prefixIcon: const Icon(Icons.search),
+                suffixIcon: _searchController.text.isNotEmpty
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        onPressed: () => _searchController.clear(),
+                      )
+                    : null,
+              ),
             ),
           ),
-        ),
-        Expanded(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _notes.isEmpty
-                  ? EmptyStateWidget(
-                      icon: Icons.note_add_rounded,
-                      title: 'Nenhuma Anotação',
+          Expanded(
+            // CORREÇÃO: O StreamBuilder agora espera um QuerySnapshot genérico.
+            child: StreamBuilder<QuerySnapshot>(
+              stream: _noteService.getNotesStream(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return const EmptyStateWidget(
+                      icon: Icons.error_outline,
+                      title: 'Erro ao carregar',
+                      message: 'Não foi possível buscar suas anotações.');
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const EmptyStateWidget(
+                    icon: Icons.note_add_rounded,
+                    title: 'Nenhuma Anotação',
+                    message:
+                        'Clique no botão "+" para criar sua primeira anotação de estudo.',
+                  );
+                }
+
+                // CORREÇÃO: Converte manualmente cada documento do Firestore em um objeto StudyNote.
+                final allNotes = snapshot.data!.docs.map((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return StudyNote(
+                    id: doc.id,
+                    title: data['title'] ?? '',
+                    content: data['content'] ?? '',
+                    tags: List<String>.from(data['tags'] ?? []),
+                    videoUrl: data['videoUrl'],
+                    imagePath: data['imagePath'],
+                    // Converte o Timestamp do Firebase para DateTime do Dart.
+                    updatedAt: (data['updatedAt'] as Timestamp).toDate(),
+                    createdAt: (data['createdAt'] as Timestamp).toDate(),
+                  );
+                }).toList();
+
+                final searchQuery = _searchController.text.toLowerCase();
+                final filteredNotes = searchQuery.isEmpty
+                    ? allNotes
+                    : allNotes.where((note) {
+                        return note.title.toLowerCase().contains(searchQuery) ||
+                            note.content.toLowerCase().contains(searchQuery) ||
+                            note.tags.any((tag) =>
+                                tag.toLowerCase().contains(searchQuery));
+                      }).toList();
+
+                if (filteredNotes.isEmpty) {
+                  return EmptyStateWidget(
+                      icon: Icons.search_off_rounded,
+                      title: 'Nenhum resultado',
                       message:
-                          'Clique no botão "${_isEditing ? 'Salvar' : 'Nova Anotação'}" para criar sua primeira anotação de estudo.',
-                    )
-                  : _filteredNotes.isEmpty
-                      ? EmptyStateWidget(
-                          icon: Icons.search_off_rounded,
-                          title: 'Nenhum resultado',
-                          message:
-                              "Sua busca por '$_searchQuery' não retornou resultados.")
-                      : ListView.builder(
-                          padding:
-                              const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
-                          itemCount: _filteredNotes.length,
-                          itemBuilder: (context, index) {
-                            final note = _filteredNotes[index];
-                            return Card(
-                              child: ListTile(
-                                title: Text(note.title),
-                                subtitle: Text(
-                                  note.content,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                trailing: PopupMenuButton<String>(
-                                  onSelected: (value) {
-                                    if (value == 'edit') {
-                                      Navigator.of(context)
-                                          .push(MaterialPageRoute(
-                                              builder: (_) => EditStudyNotePage(
-                                                  note: note,
-                                                  userId: widget.userId)))
-                                          .then((_) => _loadNotes());
-                                    } else if (value == 'delete') {
-                                      _confirmDelete(note.id);
-                                    }
-                                  },
-                                  itemBuilder: (context) => [
-                                    const PopupMenuItem(
-                                        value: 'edit', child: Text('Editar')),
-                                    const PopupMenuItem(
-                                        value: 'delete',
-                                        child: Text('Excluir')),
-                                  ],
-                                ),
-                                onTap: () => Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                        builder: (_) =>
-                                            NoteDetailPage(note: note))),
-                              ),
-                            );
-                          }),
-        )
-      ],
+                          "Sua busca por '${_searchController.text}' não retornou resultados.");
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
+                  itemCount: filteredNotes.length,
+                  itemBuilder: (context, index) {
+                    final note = filteredNotes[index];
+                    return Card(
+                      child: ListTile(
+                        title: Text(note.title),
+                        subtitle: Text(
+                          note.content,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        trailing: PopupMenuButton<String>(
+                          onSelected: (value) {
+                            if (value == 'edit') {
+                              _navigateAndReload(EditStudyNotePage(
+                                  note: note, userId: widget.userId));
+                            } else if (value == 'delete') {
+                              _confirmDelete(note.id);
+                            }
+                          },
+                          itemBuilder: (context) => [
+                            const PopupMenuItem(
+                                value: 'edit', child: Text('Editar')),
+                            const PopupMenuItem(
+                                value: 'delete', child: Text('Excluir')),
+                          ],
+                        ),
+                        onTap: () =>
+                            _navigateAndReload(NoteDetailPage(note: note)),
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+          )
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () =>
+            _navigateAndReload(EditStudyNotePage(userId: widget.userId)),
+        tooltip: 'Nova Anotação',
+        child: const Icon(Icons.add),
+      ),
     );
   }
-
-  bool get _isEditing => false;
 }
 
 // --- TELA DE DETALHES ---
 class NoteDetailPage extends StatelessWidget {
   final StudyNote note;
-
   const NoteDetailPage({super.key, required this.note});
 
   Future<void> _launchUrl(BuildContext context) async {
     if (note.videoUrl != null && note.videoUrl!.isNotEmpty) {
       final uri = Uri.parse(note.videoUrl!);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-      } else {
+      if (!await launchUrl(uri)) {
         if (context.mounted) {
           showBjjSnackBar(
               context, 'Não foi possível abrir o link: ${note.videoUrl}',
@@ -272,19 +283,14 @@ class NoteDetailPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: Text(note.title),
-      ),
+      appBar: AppBar(title: Text(note.title)),
       body: AppBackground(
-        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o ListView
         child: SafeArea(
           child: ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
-              Text(
-                note.title,
-                style: Theme.of(context).textTheme.headlineSmall,
-              ),
+              Text(note.title,
+                  style: Theme.of(context).textTheme.headlineSmall),
               const SizedBox(height: 16),
               if (note.tags.isNotEmpty)
                 Wrap(
@@ -294,12 +300,23 @@ class NoteDetailPage extends StatelessWidget {
                       note.tags.map((tag) => Chip(label: Text(tag))).toList(),
                 ),
               const SizedBox(height: 16),
-              if (note.imagePath != null)
+              if (note.imagePath != null && note.imagePath!.isNotEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16.0),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(12.0),
-                    child: Image.file(File(note.imagePath!)),
+                    child: Image.network(
+                      note.imagePath!,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return const Center(child: CircularProgressIndicator());
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return const Icon(Icons.broken_image,
+                            size: 50, color: textHint);
+                      },
+                    ),
                   ),
                 ),
               if (note.videoUrl != null && note.videoUrl!.isNotEmpty)
@@ -313,10 +330,7 @@ class NoteDetailPage extends StatelessWidget {
                   ),
                 ),
               const SizedBox(height: 16),
-              Text(
-                "Anotações",
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+              Text("Anotações", style: Theme.of(context).textTheme.titleLarge),
               const Divider(height: 20),
               SelectableText(
                 note.content,
@@ -346,7 +360,7 @@ class EditStudyNotePage extends StatefulWidget {
 
 class _EditStudyNotePageState extends State<EditStudyNotePage> {
   final _formKey = GlobalKey<FormState>();
-  final _noteService = StudyNoteService();
+  late final StudyNoteService _noteService;
   final _titleController = TextEditingController();
   final _contentController = TextEditingController();
   final _tagsController = TextEditingController();
@@ -360,6 +374,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
   @override
   void initState() {
     super.initState();
+    _noteService = StudyNoteService(userId: widget.userId);
     if (_isEditing) {
       _titleController.text = widget.note!.title;
       _contentController.text = widget.note!.content;
@@ -392,14 +407,12 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
         },
       );
 
-      final savedPath = await _noteService.saveImage(widget.userId, image);
+      final savedPath = await _noteService.saveImage(image);
 
       if (context.mounted) Navigator.of(context).pop();
 
       if (savedPath != null) {
-        setState(() {
-          _imagePath = savedPath;
-        });
+        setState(() => _imagePath = savedPath);
       } else {
         if (context.mounted) {
           showBjjSnackBar(context, "Não foi possível salvar a imagem.",
@@ -416,50 +429,45 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
 
     setState(() => _isSaving = true);
 
-    final allNotes = await _noteService.loadNotes(widget.userId);
     final tags = _tagsController.text
         .split(',')
         .map((t) => t.trim())
         .where((t) => t.isNotEmpty)
         .toList();
 
-    if (_isEditing) {
-      final index = allNotes.indexWhere((n) => n.id == widget.note!.id);
-      if (index != -1) {
-        allNotes[index].title = _titleController.text;
-        allNotes[index].content = _contentController.text;
-        allNotes[index].tags = tags;
-        allNotes[index].videoUrl = _urlController.text.trim().isEmpty
-            ? null
-            : _urlController.text.trim();
-        allNotes[index].imagePath = _imagePath;
-        allNotes[index].updatedAt = DateTime.now();
+    final noteToSave = StudyNote(
+      id: _isEditing ? widget.note!.id : '',
+      title: _titleController.text,
+      content: _contentController.text,
+      tags: tags,
+      videoUrl: _urlController.text.trim().isEmpty
+          ? null
+          : _urlController.text.trim(),
+      imagePath: _imagePath,
+      updatedAt: DateTime.now(),
+      createdAt: _isEditing ? widget.note!.createdAt : DateTime.now(),
+    );
+
+    try {
+      await _noteService.saveNote(noteToSave);
+      if (mounted) {
+        showBjjSnackBar(context, "Anotação salva com sucesso!",
+            type: 'success');
+        Navigator.of(context).pop();
       }
-    } else {
-      final newNote = StudyNote.create(
-        title: _titleController.text,
-        content: _contentController.text,
-        tags: tags,
-        videoUrl: _urlController.text.trim().isEmpty
-            ? null
-            : _urlController.text.trim(),
-        imagePath: _imagePath,
-      );
-      allNotes.add(newNote);
-    }
-
-    await _noteService.saveNotes(widget.userId, allNotes);
-
-    if (mounted) {
-      showBjjSnackBar(context, "Anotação salva com sucesso!", type: 'success');
-      Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, "Erro ao salvar anotação.", type: 'error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
   void _removeImage() {
-    setState(() {
-      _imagePath = null;
-    });
+    setState(() => _imagePath = null);
   }
 
   @override
@@ -477,7 +485,6 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
         ],
       ),
       body: AppBackground(
-        // AJUSTE EDGE-TO-EDGE: SafeArea envolvendo o conteúdo do body
         child: SafeArea(
           child: _isSaving
               ? const Center(child: CircularProgressIndicator())
@@ -518,7 +525,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
                             labelText: 'Link do Vídeo (Opcional)'),
                       ),
                       const SizedBox(height: 24),
-                      if (_imagePath != null)
+                      if (_imagePath != null && _imagePath!.isNotEmpty)
                         Column(
                           children: [
                             Text("Imagem Anexada:",
@@ -529,7 +536,20 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
                               children: [
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(12),
-                                  child: Image.file(File(_imagePath!)),
+                                  child: Image.network(
+                                    _imagePath!,
+                                    fit: BoxFit.cover,
+                                    loadingBuilder: (context, child,
+                                            progress) =>
+                                        progress == null
+                                            ? child
+                                            : const Center(
+                                                child:
+                                                    CircularProgressIndicator()),
+                                    errorBuilder: (context, error, stack) =>
+                                        const Icon(Icons.error,
+                                            color: textHint),
+                                  ),
                                 ),
                                 IconButton(
                                   icon: const CircleAvatar(
