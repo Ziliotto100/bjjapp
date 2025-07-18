@@ -1,8 +1,9 @@
 // lib/student_module.dart
-// ignore_for_file: deprecated_member_use, use_build_context_synchronously
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously, unused_element
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,7 +15,8 @@ import 'common_widgets.dart';
 import 'app_theme.dart';
 import 'scoreboard_module.dart';
 import 'study_notebook_module.dart';
-import 'auth_gate.dart'; // Import necessário para a navegação
+import 'auth_gate.dart';
+import 'schedule_module.dart'; // Import do novo módulo
 
 // --- TELAS DO ALUNO ---
 class StudentHomePage extends StatefulWidget {
@@ -29,10 +31,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
   int _paginaAtual = 0;
   late List<Widget> _telas;
   List<Aluno> _todosOsAlunosDaAcademia = [];
+  List<UserModel> _teachers = [];
   bool _isLoading = true;
 
   final List<String> _titulos = const [
     'Meu Perfil',
+    'Grade de Horários',
     'Histórico',
     'Caderno de Estudos',
     'Placar Individual'
@@ -51,6 +55,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       final firestore = FirebaseFirestore.instance;
       final academyId = widget.user.academyId;
 
+      // Fetch all participants (students)
       final studentsSnapshot = await firestore
           .collection('academies')
           .doc(academyId)
@@ -61,13 +66,17 @@ class _StudentHomePageState extends State<StudentHomePage> {
           .map((doc) => Aluno.fromJson(doc.id, doc.data()))
           .toList();
 
-      final teachersSnapshot = await firestore
+      // Fetch all teachers and managers
+      final usersSnapshot = await firestore
           .collection('users')
           .where('academyId', isEqualTo: academyId)
-          .where('role', isEqualTo: 'teacher')
-          .get();
-      final teacherParticipants = teachersSnapshot.docs
-          .map((doc) => Aluno.fromUserModel(UserModel.fromFirestore(doc)))
+          .where('role', whereIn: ['teacher', 'manager']).get();
+      final teacherAndManagerUsers = usersSnapshot.docs
+          .map((doc) => UserModel.fromFirestore(doc))
+          .toList();
+
+      final teacherParticipants = teacherAndManagerUsers
+          .map((user) => Aluno.fromUserModel(user))
           .toList();
 
       final allParticipants = [...studentParticipants, ...teacherParticipants];
@@ -76,6 +85,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       if (mounted) {
         setState(() {
           _todosOsAlunosDaAcademia = allParticipants;
+          _teachers = teacherAndManagerUsers;
           _buildScreens();
           _isLoading = false;
         });
@@ -85,14 +95,15 @@ class _StudentHomePageState extends State<StudentHomePage> {
         setState(() => _isLoading = false);
         showBjjSnackBar(context, 'Erro ao carregar dados da academia.',
             type: 'error');
-        _buildScreens();
+        _buildScreens(); // Build with empty data to avoid crash
       }
     }
   }
 
   void _buildScreens() {
     _telas = [
-      StudentProfilePage(user: widget.user),
+      UserProfilePage(user: widget.user),
+      SchedulePage(user: widget.user, teachers: _teachers),
       MyCheckinsPage(user: widget.user),
       StudyNotebookPage(userId: widget.user.uid),
       MatchSetupPage(
@@ -115,16 +126,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => SettingsPage(
                     user: widget.user,
-                    onGoToChangePassword: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const ChangePasswordPage(),
-                      ));
-                    },
-                    onGoToChangeEmail: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const ChangeEmailPage(),
-                      ));
-                    },
                   ),
                 ));
               }),
@@ -143,6 +144,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
         items: const [
           BottomNavigationBarItem(
               icon: Icon(Icons.person_rounded), label: 'Meu Perfil'),
+          BottomNavigationBarItem(
+              icon: Icon(Icons.calendar_month_rounded), label: 'Grade'),
           BottomNavigationBarItem(
               icon: Icon(Icons.calendar_today_rounded), label: 'Histórico'),
           BottomNavigationBarItem(
@@ -164,6 +167,7 @@ class StudentProfilePage extends StatefulWidget {
 }
 
 class _StudentProfilePageState extends State<StudentProfilePage> {
+  UserModel? _currentUser;
   Aluno? _aluno;
   MonthlyFee? _currentMonthFee;
   bool _isLoading = true;
@@ -171,6 +175,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
   @override
   void initState() {
     super.initState();
+    _currentUser = widget.user;
     _loadStudentData();
   }
 
@@ -178,47 +183,57 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
     if (!mounted) return;
     setState(() => _isLoading = true);
 
-    if (widget.user.studentRecordId == null) {
-      if (mounted) setState(() => _isLoading = false);
-      return;
-    }
-
     try {
       final firestore = FirebaseFirestore.instance;
-      final academyId = widget.user.academyId;
-      final studentId = widget.user.studentRecordId!;
-      final now = DateTime.now();
+      final userDoc =
+          await firestore.collection('users').doc(widget.user.uid).get();
 
-      final doc = await firestore
-          .collection('academies')
-          .doc(academyId)
-          .collection('students')
-          .doc(studentId)
-          .get();
+      if (!userDoc.exists && mounted) {
+        showBjjSnackBar(context, "Usuário não encontrado.", type: 'error');
+        FirebaseAuth.instance.signOut();
+        return;
+      }
 
+      final freshUser = UserModel.fromFirestore(userDoc);
+      Aluno? freshAluno;
       MonthlyFee? fee;
-      final paymentSnapshot = await firestore
-          .collection('academies')
-          .doc(academyId)
-          .collection('monthly_fees')
-          .where('studentId', isEqualTo: studentId)
-          .where('paymentYear', isEqualTo: now.year)
-          .where('paymentMonth', isEqualTo: now.month)
-          .limit(1)
-          .get();
 
-      if (paymentSnapshot.docs.isNotEmpty) {
-        fee = MonthlyFee.fromFirestore(paymentSnapshot.docs.first);
+      if (freshUser.role == UserRole.student &&
+          freshUser.studentRecordId != null) {
+        final studentDoc = await firestore
+            .collection('academies')
+            .doc(freshUser.academyId)
+            .collection('students')
+            .doc(freshUser.studentRecordId!)
+            .get();
+
+        if (studentDoc.exists) {
+          freshAluno = Aluno.fromJson(studentDoc.id, studentDoc.data()!);
+        }
+
+        final now = DateTime.now();
+        final paymentSnapshot = await firestore
+            .collection('academies')
+            .doc(freshUser.academyId)
+            .collection('monthly_fees')
+            .where('studentId', isEqualTo: freshUser.studentRecordId)
+            .where('paymentYear', isEqualTo: now.year)
+            .where('paymentMonth', isEqualTo: now.month)
+            .limit(1)
+            .get();
+
+        if (paymentSnapshot.docs.isNotEmpty) {
+          fee = MonthlyFee.fromFirestore(paymentSnapshot.docs.first);
+        }
       }
 
       if (mounted) {
-        if (doc.exists) {
-          setState(() {
-            _aluno = Aluno.fromJson(doc.id, doc.data()!);
-            _currentMonthFee = fee;
-          });
-        }
-        setState(() => _isLoading = false);
+        setState(() {
+          _currentUser = freshUser;
+          _aluno = freshAluno;
+          _currentMonthFee = fee;
+          _isLoading = false;
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -231,11 +246,11 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
+    if (_isLoading || _currentUser == null) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_aluno == null) {
+    if (_currentUser!.role == UserRole.student && _aluno == null) {
       return const EmptyStateWidget(
         icon: Icons.person_add_alt_1_rounded,
         title: "Complete seu Perfil",
@@ -250,7 +265,7 @@ class _StudentProfilePageState extends State<StudentProfilePage> {
       onRefresh: _loadStudentData,
       child: ListView(
         children: [
-          UserProfileHeader(user: widget.user, studentData: _aluno),
+          UserProfileHeader(user: _currentUser!, studentData: _aluno),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: Card(
@@ -312,6 +327,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _weightController = TextEditingController();
+  final _dateController = TextEditingController();
   String? _faixa;
   int? _graus;
   bool _isLoading = true;
@@ -349,6 +365,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   void dispose() {
     _nameController.dispose();
     _weightController.dispose();
+    _dateController.dispose();
     super.dispose();
   }
 
@@ -382,6 +399,10 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
         _weightController.text = aluno.peso.toString();
         _faixa = aluno.faixa;
         _graus = aluno.graus;
+        if (aluno.dataNascimento != null) {
+          _dateController.text =
+              DateFormat('dd/MM/yyyy').format(aluno.dataNascimento!);
+        }
         _grausList = _getGrausForFaixa(_faixa);
       } else if (mounted) {
         _nameController.text = widget.user.name;
@@ -423,6 +444,20 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
 
     setState(() => _isSaving = true);
 
+    DateTime? dataNascimento;
+    if (_dateController.text.isNotEmpty) {
+      try {
+        dataNascimento =
+            DateFormat('dd/MM/yyyy').parseStrict(_dateController.text);
+      } catch (e) {
+        if (mounted) {
+          showBjjSnackBar(context, "Formato de data inválido.", type: 'error');
+          setState(() => _isSaving = false);
+        }
+        return;
+      }
+    }
+
     try {
       final firestore = FirebaseFirestore.instance;
       final batch = firestore.batch();
@@ -438,6 +473,8 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
         'peso': double.parse(_weightController.text.replaceAll(',', '.')),
         'faixa': _faixa,
         'graus': _graus,
+        'dataNascimento':
+            dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
       });
 
       final userRef = firestore.collection('users').doc(widget.user.uid);
@@ -497,12 +534,17 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                       primaryAccent.withOpacity(0.2),
                                   backgroundImage: _newProfileImagePath != null
                                       ? FileImage(File(_newProfileImagePath!))
-                                      : (widget.user.profileImagePath != null
+                                      : (widget.user.profileImagePath != null &&
+                                              widget.user.profileImagePath!
+                                                  .isNotEmpty
                                           ? FileImage(File(
                                               widget.user.profileImagePath!))
                                           : null),
                                   child: _newProfileImagePath == null &&
-                                          widget.user.profileImagePath == null
+                                          (widget.user.profileImagePath ==
+                                                  null ||
+                                              widget.user.profileImagePath!
+                                                  .isEmpty)
                                       ? const Icon(Icons.person,
                                           size: 60, color: primaryAccent)
                                       : null,
@@ -532,6 +574,36 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                             validator: (v) => v == null || v.trim().isEmpty
                                 ? 'Nome não pode ser vazio'
                                 : null,
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _dateController,
+                            decoration: const InputDecoration(
+                              labelText: 'Data de Nascimento',
+                              hintText: 'DD/MM/AAAA',
+                              prefixIcon: Icon(Icons.cake_rounded),
+                              counterText: '',
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              DateInputFormatter(),
+                            ],
+                            maxLength: 10,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) {
+                                return null; // Opcional
+                              }
+                              if (v.length != 10) {
+                                return 'Data incompleta.';
+                              }
+                              try {
+                                DateFormat('dd/MM/yyyy').parseStrict(v);
+                                return null;
+                              } catch (e) {
+                                return 'Data inválida.';
+                              }
+                            },
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
@@ -737,14 +809,10 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
 
 class SettingsPage extends StatelessWidget {
   final UserModel user;
-  final VoidCallback onGoToChangePassword;
-  final VoidCallback onGoToChangeEmail;
 
   const SettingsPage({
     super.key,
     required this.user,
-    required this.onGoToChangePassword,
-    required this.onGoToChangeEmail,
   });
 
   @override
@@ -759,29 +827,30 @@ class SettingsPage extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(8.0),
             children: [
-              if (user.role == UserRole.student ||
-                  user.role == UserRole.teacher ||
-                  user.role == UserRole.manager)
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.person_outline_rounded),
-                    title: const Text("Meu Perfil"),
-                    trailing:
-                        const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                    onTap: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => UserProfilePage(user: user),
-                      ));
-                    },
-                  ),
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.person_outline_rounded),
+                  title: const Text("Meu Perfil"),
+                  trailing:
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => UserProfilePage(user: user),
+                    ));
+                  },
                 ),
+              ),
               Card(
                 child: ListTile(
                   leading: const Icon(Icons.lock_reset_rounded),
                   title: const Text("Alterar Senha"),
                   trailing:
                       const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: onGoToChangePassword,
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const ChangePasswordPage(),
+                    ));
+                  },
                 ),
               ),
               Card(
@@ -790,7 +859,11 @@ class SettingsPage extends StatelessWidget {
                   title: const Text("Alterar E-mail"),
                   trailing:
                       const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: onGoToChangeEmail,
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const ChangeEmailPage(),
+                    ));
+                  },
                 ),
               ),
               const SizedBox(height: 20),
@@ -820,6 +893,12 @@ class SettingsPage extends StatelessWidget {
                     );
                     if (confirm == true) {
                       await FirebaseAuth.instance.signOut();
+                      Navigator.of(context, rootNavigator: true)
+                          .pushAndRemoveUntil(
+                        MaterialPageRoute(
+                            builder: (context) => const AuthGate()),
+                        (route) => false,
+                      );
                     }
                   },
                 ),
@@ -841,6 +920,7 @@ class UserProfilePage extends StatefulWidget {
 }
 
 class _UserProfilePageState extends State<UserProfilePage> {
+  UserModel? _currentUser;
   Aluno? _aluno;
   MonthlyFee? _currentMonthFee;
   bool _isLoading = true;
@@ -855,63 +935,81 @@ class _UserProfilePageState extends State<UserProfilePage> {
     if (!mounted) return;
     setState(() => _isLoading = true);
 
-    if (widget.user.role == UserRole.student &&
-        widget.user.studentRecordId != null) {
-      try {
-        final firestore = FirebaseFirestore.instance;
-        final academyId = widget.user.academyId;
-        final studentId = widget.user.studentRecordId!;
-        final now = DateTime.now();
+    try {
+      final firestore = FirebaseFirestore.instance;
+      // [CORREÇÃO] Busca sempre os dados mais recentes do usuário logado.
+      final userDoc =
+          await firestore.collection('users').doc(widget.user.uid).get();
 
-        final doc = await firestore
+      if (!userDoc.exists && mounted) {
+        showBjjSnackBar(context, "Usuário não encontrado.", type: 'error');
+        FirebaseAuth.instance.signOut();
+        return;
+      }
+
+      final freshUser = UserModel.fromFirestore(userDoc);
+      Aluno? freshAluno;
+      MonthlyFee? fee;
+
+      // Se for um aluno, busca também os dados específicos do aluno.
+      if (freshUser.role == UserRole.student &&
+          freshUser.studentRecordId != null) {
+        final studentDoc = await firestore
             .collection('academies')
-            .doc(academyId)
+            .doc(freshUser.academyId)
             .collection('students')
-            .doc(studentId)
+            .doc(freshUser.studentRecordId!)
             .get();
 
-        if (doc.exists) {
-          _aluno = Aluno.fromJson(doc.id, doc.data()!);
+        if (studentDoc.exists) {
+          freshAluno = Aluno.fromJson(studentDoc.id, studentDoc.data()!);
         }
 
+        final now = DateTime.now();
         final paymentSnapshot = await firestore
             .collection('academies')
-            .doc(academyId)
+            .doc(freshUser.academyId)
             .collection('monthly_fees')
-            .where('studentId', isEqualTo: studentId)
+            .where('studentId', isEqualTo: freshUser.studentRecordId)
             .where('paymentYear', isEqualTo: now.year)
             .where('paymentMonth', isEqualTo: now.month)
             .limit(1)
             .get();
 
         if (paymentSnapshot.docs.isNotEmpty) {
-          _currentMonthFee =
-              MonthlyFee.fromFirestore(paymentSnapshot.docs.first);
-        }
-      } catch (e) {
-        if (mounted) {
-          showBjjSnackBar(context, "Erro ao carregar dados do perfil.",
-              type: 'error');
+          fee = MonthlyFee.fromFirestore(paymentSnapshot.docs.first);
         }
       }
-    }
 
-    if (mounted) {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _currentUser = freshUser;
+          _aluno = freshAluno;
+          _currentMonthFee = fee;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, "Erro ao carregar dados do perfil: $e",
+            type: 'error');
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   void _navigateToEditPage() {
-    if (widget.user.role == UserRole.student) {
+    // Navega para a página de edição correta dependendo do perfil.
+    if (_currentUser!.role == UserRole.student) {
       Navigator.of(context)
           .push(MaterialPageRoute(
-            builder: (_) => EditStudentProfilePage(user: widget.user),
+            builder: (_) => EditStudentProfilePage(user: _currentUser!),
           ))
           .then((_) => _loadProfileData());
     } else {
       Navigator.of(context)
           .push(MaterialPageRoute(
-            builder: (_) => EditUserProfilePage(user: widget.user),
+            builder: (_) => EditUserProfilePage(user: _currentUser!),
           ))
           .then((_) => _loadProfileData());
     }
@@ -931,6 +1029,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   String _formatGraduation(UserModel user, Aluno? aluno) {
+    if (user.role == UserRole.manager) return 'N/A';
+
     String belt = "";
     int? degrees;
 
@@ -949,6 +1049,8 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 
   String _formatWeight(UserModel user, Aluno? aluno) {
+    if (user.role == UserRole.manager) return 'N/A';
+
     double? weight;
     if (user.role == UserRole.student && aluno != null) {
       weight = aluno.peso;
@@ -962,6 +1064,19 @@ class _UserProfilePageState extends State<UserProfilePage> {
     return 'Não informado';
   }
 
+  String _formatAge(UserModel user, Aluno? aluno) {
+    int? age;
+    if (user.role == UserRole.student && aluno != null) {
+      age = aluno.idade;
+    } else {
+      age = user.idade;
+    }
+    if (age != null) {
+      return '$age anos';
+    }
+    return 'Não informada';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -971,45 +1086,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
       ),
       body: AppBackground(
         child: SafeArea(
-          child: _isLoading
+          child: _isLoading || _currentUser == null
               ? const Center(child: CircularProgressIndicator())
               : RefreshIndicator(
                   onRefresh: _loadProfileData,
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
                     children: [
-                      Center(
-                        child: CircleAvatar(
-                          radius: 50,
-                          backgroundColor: primaryAccent.withOpacity(0.2),
-                          backgroundImage: widget.user.profileImagePath !=
-                                      null &&
-                                  widget.user.profileImagePath!.isNotEmpty
-                              ? FileImage(File(widget.user.profileImagePath!))
-                              : null,
-                          child: widget.user.profileImagePath == null ||
-                                  widget.user.profileImagePath!.isEmpty
-                              ? const Icon(Icons.account_circle,
-                                  size: 100, color: primaryAccent)
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      Center(
-                        child: Text(
-                          widget.user.name,
-                          style: Theme.of(context).textTheme.headlineSmall,
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Center(
-                        child: Chip(
-                          avatar: const Icon(Icons.verified_user_outlined,
-                              size: 18),
-                          label: Text(_formatRole(widget.user.role)),
-                        ),
-                      ),
+                      UserProfileHeader(
+                          user: _currentUser!, studentData: _aluno),
                       const SizedBox(height: 24),
                       Card(
                         child: ListTile(
@@ -1018,7 +1103,23 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           title: const Text("E-mail de Login",
                               style: TextStyle(color: textHint)),
                           subtitle: Text(
-                            widget.user.email,
+                            _currentUser!.email,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(color: textPrimary),
+                          ),
+                        ),
+                      ),
+                      // [MELHORIA] Adicionada exibição da idade
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.cake_rounded,
+                              color: primaryAccent, size: 30),
+                          title: const Text("Idade",
+                              style: TextStyle(color: textHint)),
+                          subtitle: Text(
+                            _formatAge(_currentUser!, _aluno),
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -1033,7 +1134,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           title: const Text("Graduação",
                               style: TextStyle(color: textHint)),
                           subtitle: Text(
-                            _formatGraduation(widget.user, _aluno),
+                            _formatGraduation(_currentUser!, _aluno),
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -1048,7 +1149,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           title: const Text("Peso",
                               style: TextStyle(color: textHint)),
                           subtitle: Text(
-                            _formatWeight(widget.user, _aluno),
+                            _formatWeight(_currentUser!, _aluno),
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium
@@ -1056,7 +1157,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           ),
                         ),
                       ),
-                      if (widget.user.role == UserRole.student)
+                      if (_currentUser!.role == UserRole.student)
                         Card(
                           child: ListTile(
                             leading: Icon(
@@ -1107,6 +1208,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _weightController = TextEditingController();
+  final _dateController = TextEditingController();
   String? _faixa;
   int? _graus;
   bool _isSaving = false;
@@ -1140,6 +1242,10 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
     _weightController.text = widget.user.peso?.toString() ?? '';
     _faixa = widget.user.faixa;
     _graus = widget.user.graus;
+    if (widget.user.dataNascimento != null) {
+      _dateController.text =
+          DateFormat('dd/MM/yyyy').format(widget.user.dataNascimento!);
+    }
     _grausList = _getGrausForFaixa(_faixa);
   }
 
@@ -1147,6 +1253,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
   void dispose() {
     _nameController.dispose();
     _weightController.dispose();
+    _dateController.dispose();
     super.dispose();
   }
 
@@ -1179,6 +1286,20 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
 
+    DateTime? dataNascimento;
+    if (_dateController.text.isNotEmpty) {
+      try {
+        dataNascimento =
+            DateFormat('dd/MM/yyyy').parseStrict(_dateController.text);
+      } catch (e) {
+        if (mounted) {
+          showBjjSnackBar(context, "Formato de data inválido.", type: 'error');
+          setState(() => _isSaving = false);
+        }
+        return;
+      }
+    }
+
     try {
       final userRef =
           FirebaseFirestore.instance.collection('users').doc(widget.user.uid);
@@ -1189,6 +1310,8 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
             widget.user.peso,
         'faixa': _faixa,
         'graus': _graus,
+        'dataNascimento':
+            dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
       };
 
       if (_newProfileImagePath != null) {
@@ -1213,6 +1336,8 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isManager = widget.user.role == UserRole.manager;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text("Editar Perfil")),
@@ -1272,48 +1397,82 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      controller: _weightController,
-                      decoration: const InputDecoration(labelText: 'Peso (kg)'),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
+                      controller: _dateController,
+                      decoration: const InputDecoration(
+                        labelText: 'Data de Nascimento',
+                        hintText: 'DD/MM/AAAA',
+                        prefixIcon: Icon(Icons.cake_rounded),
+                        counterText: '',
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        DateInputFormatter(),
+                      ],
+                      maxLength: 10,
                       validator: (v) {
-                        if (v == null || v.isEmpty) return 'Peso inválido';
-                        final x = double.tryParse(v.replaceAll(',', '.'));
-                        return (x == null || x <= 0)
-                            ? 'Peso inválido (deve ser > 0)'
-                            : null;
+                        if (v == null || v.trim().isEmpty) {
+                          return null; // Opcional
+                        }
+                        if (v.length != 10) {
+                          return 'Data incompleta.';
+                        }
+                        try {
+                          DateFormat('dd/MM/yyyy').parseStrict(v);
+                          return null;
+                        } catch (e) {
+                          return 'Data inválida.';
+                        }
                       },
                     ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: _faixa,
-                      decoration: const InputDecoration(labelText: 'Faixa'),
-                      items: _faixasList
-                          .map((faixa) => DropdownMenuItem(
-                              value: faixa, child: Text(faixa)))
-                          .toList(),
-                      onChanged: (value) => setState(() {
-                        _faixa = value;
-                        _grausList = _getGrausForFaixa(_faixa);
-                        _graus = null;
-                      }),
-                      validator: (value) =>
-                          value == null ? 'Selecione sua faixa' : null,
-                    ),
-                    if (_faixa != null) ...[
+                    if (!isManager) ...[
+                      // Esconde campos para gerente
                       const SizedBox(height: 16),
-                      DropdownButtonFormField<int>(
-                        value: _graus,
-                        decoration: const InputDecoration(
-                            labelText: 'Graus (opcional)'),
-                        items: [
-                          const DropdownMenuItem<int>(
-                              value: null, child: Text("Nenhum")),
-                          ..._grausList.map((g) => DropdownMenuItem(
-                              value: g, child: Text("$gº Grau"))),
-                        ],
-                        onChanged: (value) => setState(() => _graus = value),
+                      TextFormField(
+                        controller: _weightController,
+                        decoration:
+                            const InputDecoration(labelText: 'Peso (kg)'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Peso inválido';
+                          final x = double.tryParse(v.replaceAll(',', '.'));
+                          return (x == null || x <= 0)
+                              ? 'Peso inválido (deve ser > 0)'
+                              : null;
+                        },
                       ),
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        value: _faixa,
+                        decoration: const InputDecoration(labelText: 'Faixa'),
+                        items: _faixasList
+                            .map((faixa) => DropdownMenuItem(
+                                value: faixa, child: Text(faixa)))
+                            .toList(),
+                        onChanged: (value) => setState(() {
+                          _faixa = value;
+                          _grausList = _getGrausForFaixa(_faixa);
+                          _graus = null;
+                        }),
+                        validator: (value) =>
+                            value == null ? 'Selecione sua faixa' : null,
+                      ),
+                      if (_faixa != null) ...[
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<int>(
+                          value: _graus,
+                          decoration: const InputDecoration(
+                              labelText: 'Graus (opcional)'),
+                          items: [
+                            const DropdownMenuItem<int>(
+                                value: null, child: Text("Nenhum")),
+                            ..._grausList.map((g) => DropdownMenuItem(
+                                value: g, child: Text("$gº Grau"))),
+                          ],
+                          onChanged: (value) => setState(() => _graus = value),
+                        ),
+                      ],
                     ],
                     const SizedBox(height: 24),
                     _isSaving

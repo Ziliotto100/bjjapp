@@ -33,6 +33,15 @@ class UserModel {
   final int? graus;
   final double? peso;
   final String? profileImagePath;
+  final DateTime? dataNascimento; // NOVO CAMPO
+
+  // [MELHORIA] Campos de Auditoria
+  final Timestamp? createdAt;
+  final Timestamp? updatedAt;
+  final String? createdByUid;
+  final String? createdByName;
+  final String? lastUpdatedByUid;
+  final String? lastUpdatedByName;
 
   UserModel({
     required this.uid,
@@ -47,7 +56,27 @@ class UserModel {
     this.graus,
     this.peso,
     this.profileImagePath,
+    this.dataNascimento, // NOVO CAMPO
+    this.createdAt,
+    this.updatedAt,
+    this.createdByUid,
+    this.createdByName,
+    this.lastUpdatedByUid,
+    this.lastUpdatedByName,
   });
+
+  // GETTER PARA CALCULAR A IDADE
+  int? get idade {
+    if (dataNascimento == null) return null;
+    final hoje = DateTime.now();
+    int idade = hoje.year - dataNascimento!.year;
+    if (hoje.month < dataNascimento!.month ||
+        (hoje.month == dataNascimento!.month &&
+            hoje.day < dataNascimento!.day)) {
+      idade--;
+    }
+    return idade;
+  }
 
   factory UserModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -79,6 +108,15 @@ class UserModel {
       graus: data['graus'],
       peso: (data['peso'] as num?)?.toDouble(),
       profileImagePath: data['profileImagePath'],
+      dataNascimento:
+          (data['dataNascimento'] as Timestamp?)?.toDate(), // NOVO CAMPO
+      // [MELHORIA] Lendo campos de auditoria
+      createdAt: data['createdAt'],
+      updatedAt: data['updatedAt'],
+      createdByUid: data['createdByUid'],
+      createdByName: data['createdByName'],
+      lastUpdatedByUid: data['lastUpdatedByUid'],
+      lastUpdatedByName: data['lastUpdatedByName'],
     );
   }
 }
@@ -91,10 +129,17 @@ class Aluno {
   String faixa;
   double peso;
   int? graus;
+  final DateTime? dataNascimento; // CAMPO EXISTENTE
   String? userId; // ID do usuário no Auth, se tiver acesso
   PaymentStatus paymentStatus; // Usado na tela de mensalidades
-  final String? registeredByUid; // [MELHORIA] UID de quem cadastrou
-  final String? registeredByName; // [MELHORIA] Nome de quem cadastrou
+
+  // [MELHORIA] Campos de Auditoria
+  final Timestamp? createdAt;
+  final Timestamp? updatedAt;
+  final String? createdByUid;
+  final String? createdByName;
+  final String? lastUpdatedByUid;
+  final String? lastUpdatedByName;
 
   Aluno({
     required this.id,
@@ -102,11 +147,29 @@ class Aluno {
     required this.faixa,
     required this.peso,
     this.graus,
+    this.dataNascimento,
     this.userId,
     this.paymentStatus = PaymentStatus.pendente,
-    this.registeredByUid,
-    this.registeredByName,
+    this.createdAt,
+    this.updatedAt,
+    this.createdByUid,
+    this.createdByName,
+    this.lastUpdatedByUid,
+    this.lastUpdatedByName,
   });
+
+  // GETTER PARA CALCULAR A IDADE
+  int? get idade {
+    if (dataNascimento == null) return null;
+    final hoje = DateTime.now();
+    int idade = hoje.year - dataNascimento!.year;
+    if (hoje.month < dataNascimento!.month ||
+        (hoje.month == dataNascimento!.month &&
+            hoje.day < dataNascimento!.day)) {
+      idade--;
+    }
+    return idade;
+  }
 
   // Construtor para criar um Aluno sem ID ainda (antes de salvar no Firestore)
   Aluno.novo({
@@ -114,11 +177,16 @@ class Aluno {
     required this.faixa,
     required this.peso,
     this.graus,
+    this.dataNascimento,
     this.userId,
+    this.createdByUid,
+    this.createdByName,
   })  : id = '',
         paymentStatus = PaymentStatus.pendente,
-        registeredByUid = null,
-        registeredByName = null;
+        createdAt = null, // Será definido no servidor
+        updatedAt = null, // Será definido no servidor
+        lastUpdatedByUid = createdByUid,
+        lastUpdatedByName = createdByName;
 
   // Converte um objeto Aluno para um Map JSON para salvar no Firestore.
   Map<String, dynamic> toJson() {
@@ -127,9 +195,16 @@ class Aluno {
       'faixa': faixa,
       'peso': peso,
       'graus': graus,
+      'dataNascimento':
+          dataNascimento != null ? Timestamp.fromDate(dataNascimento!) : null,
       'userId': userId,
-      'registeredByUid': registeredByUid,
-      'registeredByName': registeredByName,
+      // [MELHORIA] Salvando campos de auditoria
+      'createdAt': createdAt ?? FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'createdByUid': createdByUid,
+      'createdByName': createdByName,
+      'lastUpdatedByUid': lastUpdatedByUid,
+      'lastUpdatedByName': lastUpdatedByName,
     };
   }
 
@@ -141,9 +216,15 @@ class Aluno {
       faixa: json['faixa'] ?? 'Branca',
       peso: (json['peso'] as num?)?.toDouble() ?? 0.0,
       graus: json['graus'],
+      dataNascimento: (json['dataNascimento'] as Timestamp?)?.toDate(),
       userId: json['userId'],
-      registeredByUid: json['registeredByUid'],
-      registeredByName: json['registeredByName'],
+      // [MELHORIA] Lendo campos de auditoria
+      createdAt: json['createdAt'],
+      updatedAt: json['updatedAt'],
+      createdByUid: json['createdByUid'],
+      createdByName: json['createdByName'],
+      lastUpdatedByUid: json['lastUpdatedByUid'],
+      lastUpdatedByName: json['lastUpdatedByName'],
     );
   }
 
@@ -156,6 +237,7 @@ class Aluno {
       peso: user.peso ?? 80.0, // Um peso padrão
       graus: user.graus,
       userId: user.uid,
+      dataNascimento: user.dataNascimento, // Passa a data de nascimento
     );
   }
 

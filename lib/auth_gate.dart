@@ -295,6 +295,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
       final academyRef = firestore.collection('academies').doc();
       final userRef = firestore.collection('users').doc(newUser.uid);
       final batch = firestore.batch();
+      final managerName = _managerNameController.text.trim();
 
       batch.set(academyRef, {
         'name': _academyNameController.text.trim(),
@@ -304,16 +305,22 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
       });
 
       batch.set(userRef, {
-        'name': _managerNameController.text.trim(),
+        'name': managerName,
         'email': newUser.email,
         'academyId': academyRef.id,
         'role': 'manager',
         'faixa': _faixa,
         'graus': _graus,
         'peso': null, // Gerente pode preencher depois
-        'createdAt': FieldValue.serverTimestamp(),
         'mustChangePassword': false,
         'isActive': true,
+        // [MELHORIA] Adicionando dados de auditoria na criação
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'createdByUid': newUser.uid,
+        'createdByName': managerName,
+        'lastUpdatedByUid': newUser.uid,
+        'lastUpdatedByName': managerName,
       });
 
       await batch.commit();

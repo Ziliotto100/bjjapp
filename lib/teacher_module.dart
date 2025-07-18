@@ -1,5 +1,5 @@
 // lib/teacher_module.dart
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, library_private_types_in_public_api, unused_import
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -15,6 +15,7 @@ import 'scoreboard_module.dart';
 import 'student_module.dart';
 import 'study_notebook_module.dart';
 import 'auth_gate.dart';
+import 'schedule_module.dart'; // Import do novo módulo
 
 // --- TELAS DO PROFESSOR ---
 class TeacherHomePage extends StatefulWidget {
@@ -28,14 +29,16 @@ class TeacherHomePage extends StatefulWidget {
 class _TeacherHomePageState extends State<TeacherHomePage> {
   int _paginaAtual = 0;
   List<Widget> _telas = [];
-  bool _isLoadingAlunos = true;
+  bool _isLoading = true;
   List<Aluno> _todosParticipantesDaAcademia = [];
+  List<UserModel> _teachers = [];
   Map<String, dynamic> _sparringState = {};
   StreamSubscription? _sparringStateSubscription;
   bool get _isSparringMode => _sparringState['isSparringMode'] ?? false;
 
   final List<String> _titulos = const [
     'Painel do Professor',
+    'Grade de Horários',
     'Gerenciar Alunos',
     'Check-in',
     'Sorteio',
@@ -46,7 +49,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   @override
   void initState() {
     super.initState();
-    _fetchParticipantsAndBuildScreens();
+    _fetchDataAndBuildScreens();
     _listenToSparringState();
   }
 
@@ -56,13 +59,14 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     super.dispose();
   }
 
-  Future<void> _fetchParticipantsAndBuildScreens() async {
+  Future<void> _fetchDataAndBuildScreens() async {
     if (!mounted) return;
-    setState(() => _isLoadingAlunos = true);
+    setState(() => _isLoading = true);
     try {
       final firestore = FirebaseFirestore.instance;
       final academyId = widget.user.academyId;
 
+      // Fetch all participants (students and teachers) as Aluno objects for sparring/matchmaking
       final studentsSnapshot = await firestore
           .collection('academies')
           .doc(academyId)
@@ -76,10 +80,14 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       final usersSnapshot = await firestore
           .collection('users')
           .where('academyId', isEqualTo: academyId)
-          .where('role', isEqualTo: 'teacher')
-          .get();
-      final userParticipants = usersSnapshot.docs
-          .map((doc) => Aluno.fromUserModel(UserModel.fromFirestore(doc)))
+          .where('role', whereIn: ['teacher', 'manager']).get();
+
+      final teacherAndManagerUsers = usersSnapshot.docs
+          .map((doc) => UserModel.fromFirestore(doc))
+          .toList();
+
+      final userParticipants = teacherAndManagerUsers
+          .map((user) => Aluno.fromUserModel(user))
           .toList();
 
       final allParticipants = [...studentParticipants, ...userParticipants];
@@ -87,15 +95,16 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
 
       if (mounted) {
         _todosParticipantesDaAcademia = allParticipants;
+        _teachers = teacherAndManagerUsers; // Use this for the schedule page
         _buildScreens();
-        setState(() => _isLoadingAlunos = false);
+        setState(() => _isLoading = false);
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoadingAlunos = false);
-        showBjjSnackBar(context, 'Erro ao carregar lista de participantes.',
+        setState(() => _isLoading = false);
+        showBjjSnackBar(context, 'Erro ao carregar dados da academia.',
             type: 'error');
-        _buildScreens();
+        _buildScreens(); // Build with empty data to avoid crash
       }
     }
   }
@@ -112,7 +121,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                   todosAlunos: _todosParticipantesDaAcademia)));
         },
       ),
-      AlunosTeacherPage(academyId: widget.user.academyId),
+      SchedulePage(user: widget.user, teachers: _teachers),
+      AlunosTeacherPage(academyId: widget.user.academyId, teacher: widget.user),
       CheckinTeacherPage(
           academyId: widget.user.academyId,
           todosParticipantesDaAcademia: _todosParticipantesDaAcademia),
@@ -194,28 +204,34 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   void _onAdicionarAluno() {
     showDialog(
       context: context,
-      builder: (_) =>
-          AdicionarAlunoDialog(onAlunoAdicionado: (novoAluno) async {
-        try {
-          await FirebaseFirestore.instance
-              .collection('academies')
-              .doc(widget.user.academyId)
-              .collection('students')
-              .add(novoAluno.toJson());
+      builder: (_) => AdicionarAlunoDialog(
+          currentUser: widget.user,
+          onAlunoAdicionado: (novoAluno) async {
+            try {
+              final data = novoAluno.toJson();
+              data.removeWhere((key, value) => value == null);
+              data['createdAt'] = FieldValue.serverTimestamp();
+              data['updatedAt'] = FieldValue.serverTimestamp();
 
-          if (mounted) {
-            showBjjSnackBar(
-                context, '${novoAluno.nome} adicionado com sucesso!',
-                type: 'success');
-            _fetchParticipantsAndBuildScreens();
-          }
-        } catch (e) {
-          if (mounted) {
-            showBjjSnackBar(context, 'Erro ao adicionar aluno: $e',
-                type: 'error');
-          }
-        }
-      }),
+              await FirebaseFirestore.instance
+                  .collection('academies')
+                  .doc(widget.user.academyId)
+                  .collection('students')
+                  .add(data);
+
+              if (mounted) {
+                showBjjSnackBar(
+                    context, '${novoAluno.nome} adicionado com sucesso!',
+                    type: 'success');
+                _fetchDataAndBuildScreens();
+              }
+            } catch (e) {
+              if (mounted) {
+                showBjjSnackBar(context, 'Erro ao adicionar aluno: $e',
+                    type: 'error');
+              }
+            }
+          }),
     );
   }
 
@@ -233,23 +249,13 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                 Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => SettingsPage(
                     user: widget.user,
-                    onGoToChangePassword: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const ChangePasswordPage(),
-                      ));
-                    },
-                    onGoToChangeEmail: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => const ChangeEmailPage(),
-                      ));
-                    },
                   ),
                 ));
               }),
         ],
       ),
       body: AppBackground(
-        child: _isLoadingAlunos
+        child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : SafeArea(
                 child: IndexedStack(index: _paginaAtual, children: _telas),
@@ -262,6 +268,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_rounded),
             label: 'Início',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.calendar_month_rounded),
+            label: 'Grade',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.people_alt_rounded),
@@ -285,7 +295,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           ),
         ],
       ),
-      floatingActionButton: _paginaAtual == 1
+      floatingActionButton: _paginaAtual == 2
           ? FloatingActionButton(
               onPressed: _onAdicionarAluno,
               tooltip: 'Adicionar Aluno',
@@ -296,9 +306,14 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   }
 }
 
+// O restante do arquivo teacher_module.dart permanece o mesmo...
+// (AlunosTeacherPage, TeacherDashboardPage, etc.)
+// --- Restante do arquivo inalterado ---
 class AlunosTeacherPage extends StatefulWidget {
   final String academyId;
-  const AlunosTeacherPage({super.key, required this.academyId});
+  final UserModel teacher;
+  const AlunosTeacherPage(
+      {super.key, required this.academyId, required this.teacher});
 
   @override
   State<AlunosTeacherPage> createState() => _AlunosTeacherPageState();
@@ -329,14 +344,27 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
       context: context,
       builder: (_) => AdicionarAlunoDialog(
         alunoParaEditar: aluno,
+        academyId: widget.academyId,
+        currentUser: widget.teacher,
         onAlunoAdicionado: (alunoEditado) async {
           try {
+            final dataToUpdate = {
+              'nome': alunoEditado.nome,
+              'faixa': alunoEditado.faixa,
+              'peso': alunoEditado.peso,
+              'graus': alunoEditado.graus,
+              'lastUpdatedByUid': widget.teacher.uid,
+              'lastUpdatedByName': widget.teacher.name,
+              'updatedAt': FieldValue.serverTimestamp(),
+            };
+
             await FirebaseFirestore.instance
                 .collection('academies')
                 .doc(widget.academyId)
                 .collection('students')
                 .doc(alunoEditado.id)
-                .update(alunoEditado.toJson());
+                .update(dataToUpdate);
+
             if (mounted) {
               showBjjSnackBar(
                   context, '${alunoEditado.nome} atualizado com sucesso!',
@@ -514,7 +542,6 @@ class TeacherDashboardPage extends StatelessWidget {
   }
 }
 
-// --- PÁGINA DE CHECK-IN (LAYOUT DE LISTA) ---
 class CheckinTeacherPage extends StatelessWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
@@ -623,7 +650,6 @@ class CheckinTeacherPage extends StatelessWidget {
   }
 }
 
-// --- TELA DE HISTÓRICO DE CHECK-IN (COM SELETOR DE DATA SIMPLES) ---
 class CheckinHistoryPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> allParticipants;

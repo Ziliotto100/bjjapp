@@ -3,6 +3,7 @@
 
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'app_theme.dart';
 import 'models.dart';
 
@@ -180,6 +181,9 @@ class UserProfileHeader extends StatelessWidget {
 
     final beltImagePath = getBeltImagePath(beltName);
 
+    // [MELHORIA] Gerente não tem faixa, então não mostra a imagem.
+    final bool showBelt = user.role != UserRole.manager;
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 24.0, horizontal: 16.0),
@@ -202,27 +206,29 @@ class UserProfileHeader extends StatelessWidget {
                       ? const Icon(Icons.person, size: 80, color: primaryAccent)
                       : null,
                 ),
-                // 2. Imagem da Faixa
-                Positioned(
-                  bottom: -57, // Move a faixa para baixo para não ser cortada
-                  child: SizedBox(
-                    width: 90, // Largura maior para exibir a faixa completa
-                    height: 100,
-                    child: Image.asset(
-                      beltImagePath,
-                      fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) {
-                        return const Tooltip(
-                          message: 'Imagem da faixa não encontrada',
-                          child: Icon(Icons.error_outline, color: textHint),
-                        );
-                      },
+                // 2. Imagem da Faixa (se não for gerente)
+                if (showBelt)
+                  Positioned(
+                    bottom: -57, // Move a faixa para baixo para não ser cortada
+                    child: SizedBox(
+                      width: 90, // Largura maior para exibir a faixa completa
+                      height: 100,
+                      child: Image.asset(
+                        beltImagePath,
+                        fit: BoxFit.contain,
+                        errorBuilder: (context, error, stackTrace) {
+                          return const Tooltip(
+                            message: 'Imagem da faixa não encontrada',
+                            child: Icon(Icons.error_outline, color: textHint),
+                          );
+                        },
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
-            const SizedBox(height: 50), // Aumenta o espaço para o texto
+            SizedBox(
+                height: showBelt ? 50 : 16), // Aumenta o espaço para o texto
             // Nome e saudação
             Text(
               'Bem-vindo(a),',
@@ -238,6 +244,43 @@ class UserProfileHeader extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// [NOVO] Formatador de texto para datas no formato DD/MM/AAAA.
+class DateInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    // Se o novo valor estiver vazio, não faz nada
+    if (newValue.text.isEmpty) {
+      return newValue.copyWith(text: '');
+    }
+
+    // Pega apenas os dígitos do novo valor
+    String newText = newValue.text.replaceAll(RegExp(r'\D'), '');
+    String formattedText = '';
+
+    // Limita a 8 dígitos (DDMMAAAA)
+    if (newText.length > 8) {
+      newText = newText.substring(0, 8);
+    }
+
+    // Adiciona as barras
+    if (newText.length > 4) {
+      formattedText =
+          '${newText.substring(0, 2)}/${newText.substring(2, 4)}/${newText.substring(4)}';
+    } else if (newText.length > 2) {
+      formattedText = '${newText.substring(0, 2)}/${newText.substring(2)}';
+    } else {
+      formattedText = newText;
+    }
+
+    // Retorna o valor formatado com a posição do cursor no final
+    return newValue.copyWith(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: formattedText.length),
     );
   }
 }
