@@ -46,8 +46,8 @@ android {
         applicationId = "com.ziliottosmartdev.matchbjj"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1 // Pode ser gerenciado pelo Flutter
-        versionName = "1.0" // Pode ser gerenciado pelo Flutter
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     // --- BLOCO DE FLAVORS ATUALIZADO PARA KOTLIN DSL ---
