@@ -101,7 +101,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   void _buildScreens() {
     _telas = [
-      // CORREÇÃO: Passa o parâmetro 'hasScaffold: false' para não criar uma AppBar duplicada.
       UserProfilePage(user: widget.user, hasScaffold: false),
       SchedulePage(user: widget.user, teachers: _teachers),
       MyCheckinsPage(user: widget.user),
@@ -672,8 +671,6 @@ class SettingsPage extends StatelessWidget {
                       const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: () {
                     Navigator.of(context).push(MaterialPageRoute(
-                      // CORREÇÃO: Ao navegar para a página de perfil a partir daqui,
-                      // ela construirá seu próprio Scaffold, então a duplicação não ocorrerá.
                       builder: (_) => UserProfilePage(user: user),
                     ));
                   },
@@ -750,7 +747,6 @@ class SettingsPage extends StatelessWidget {
   }
 }
 
-// CORREÇÃO: A classe UserProfilePage foi modificada para aceitar um booleano `hasScaffold`.
 class UserProfilePage extends StatefulWidget {
   final UserModel user;
   final bool hasScaffold;
@@ -758,7 +754,7 @@ class UserProfilePage extends StatefulWidget {
   const UserProfilePage({
     super.key,
     required this.user,
-    this.hasScaffold = true, // Por padrão, ela terá um Scaffold.
+    this.hasScaffold = true,
   });
 
   @override
@@ -867,6 +863,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
     return belt;
   }
 
+  // Essas funções não são mais usadas na UI, mas podem ser mantidas para uso futuro.
   String _formatWeight(UserModel user, Aluno? aluno) {
     if (user.role == UserRole.manager) return 'N/A';
     double? weight;
@@ -892,7 +889,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    // CORREÇÃO: O conteúdo da página é definido em uma variável separada.
     final pageBody = AppBackground(
       child: SafeArea(
         child: _isLoading || _currentUser == null
@@ -904,36 +900,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   children: [
                     UserProfileHeader(user: _currentUser!, studentData: _aluno),
                     const SizedBox(height: 24),
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.email_outlined,
-                            color: primaryAccent, size: 30),
-                        title: const Text("E-mail de Login",
-                            style: TextStyle(color: textHint)),
-                        subtitle: Text(
-                          _currentUser!.email,
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(color: textPrimary),
-                        ),
-                      ),
-                    ),
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.cake_rounded,
-                            color: primaryAccent, size: 30),
-                        title: const Text("Idade",
-                            style: TextStyle(color: textHint)),
-                        subtitle: Text(
-                          _formatAge(_currentUser!, _aluno),
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(color: textPrimary),
-                        ),
-                      ),
-                    ),
+                    //
+                    // --- INÍCIO DA MODIFICAÇÃO ---
+                    // Apenas os cards de Graduação e Mensalidade são exibidos.
+                    //
                     Card(
                       child: ListTile(
                         leading: const Icon(Icons.shield_outlined,
@@ -942,21 +912,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
                             style: TextStyle(color: textHint)),
                         subtitle: Text(
                           _formatGraduation(_currentUser!, _aluno),
-                          style: Theme.of(context)
-                              .textTheme
-                              .titleMedium
-                              ?.copyWith(color: textPrimary),
-                        ),
-                      ),
-                    ),
-                    Card(
-                      child: ListTile(
-                        leading: const Icon(Icons.fitness_center_rounded,
-                            color: primaryAccent, size: 30),
-                        title: const Text("Peso",
-                            style: TextStyle(color: textHint)),
-                        subtitle: Text(
-                          _formatWeight(_currentUser!, _aluno),
                           style: Theme.of(context)
                               .textTheme
                               .titleMedium
@@ -989,13 +944,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           ),
                         ),
                       ),
+                    //
+                    // --- FIM DA MODIFICAÇÃO ---
+                    //
                   ],
                 ),
               ),
       ),
     );
 
-    // CORREÇÃO: Retorna o Scaffold apenas se `hasScaffold` for verdadeiro.
     if (widget.hasScaffold) {
       return Scaffold(
         backgroundColor: Colors.transparent,
@@ -1010,7 +967,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
         ),
       );
     } else {
-      // Se não, retorna apenas o conteúdo para ser usado dentro de outra tela.
       return pageBody;
     }
   }

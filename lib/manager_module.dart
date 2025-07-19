@@ -118,17 +118,21 @@ class UserManagementService {
   }
 }
 
-// --- NOVO WIDGET DE CARD DE USUÁRIO ---
+// --- WIDGET DE CARD DE USUÁRIO MODIFICADO ---
 class UserCard extends StatelessWidget {
   final dynamic user; // Pode ser Aluno ou UserModel
   final String academyId;
   final UserModel currentUser;
+  // MODIFICAÇÃO: Adicionado para receber a URL da imagem de perfil.
+  final String? profileImageUrl;
 
-  const UserCard(
-      {super.key,
-      required this.user,
-      required this.academyId,
-      required this.currentUser});
+  const UserCard({
+    super.key,
+    required this.user,
+    required this.academyId,
+    required this.currentUser,
+    this.profileImageUrl, // MODIFICAÇÃO
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -170,10 +174,18 @@ class UserCard extends StatelessWidget {
       }
     }
 
+    // MODIFICAÇÃO: Lógica para decidir o que exibir no CircleAvatar
+    final bool hasImage =
+        profileImageUrl != null && profileImageUrl!.isNotEmpty;
+    final backgroundImage = hasImage ? NetworkImage(profileImageUrl!) : null;
+    final childText =
+        hasImage ? null : Text(name.isNotEmpty ? name[0].toUpperCase() : 'U');
+
     return Card(
       child: ListTile(
         leading: CircleAvatar(
-          child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'U'),
+          backgroundImage: backgroundImage,
+          child: childText,
         ),
         title: Text(name, style: Theme.of(context).textTheme.titleMedium),
         subtitle: Text('$roleText\n$subtitle'),
@@ -432,9 +444,6 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   }
 }
 
-// O restante do arquivo manager_module.dart permanece o mesmo...
-// (ManagerDashboardPage, AlunosManagerPage, ProfessoresManagerPage, etc.)
-// --- Restante do arquivo inalterado ---
 class ManagerDashboardPage extends StatelessWidget {
   final UserModel user;
   const ManagerDashboardPage({super.key, required this.user});
@@ -460,6 +469,7 @@ class ManagerDashboardPage extends StatelessWidget {
   }
 }
 
+// MODIFICAÇÃO: Convertido para StatefulWidget para buscar os dados dos usuários com fotos.
 class AlunosManagerPage extends StatefulWidget {
   final String academyId;
   final UserModel manager;
@@ -473,15 +483,29 @@ class AlunosManagerPage extends StatefulWidget {
 class _AlunosManagerPageState extends State<AlunosManagerPage> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  // MODIFICAÇÃO: Futuro para carregar o mapa de usuários (com fotos) uma vez.
+  late Future<Map<String, UserModel>> _usersMapFuture;
 
   @override
   void initState() {
     super.initState();
+    _usersMapFuture = _fetchUsersMap();
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text;
       });
     });
+  }
+
+  // MODIFICAÇÃO: Nova função para buscar todos os usuários e mapeá-los por UID.
+  Future<Map<String, UserModel>> _fetchUsersMap() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('academyId', isEqualTo: widget.academyId)
+        .get();
+    return {
+      for (var doc in snapshot.docs) doc.id: UserModel.fromFirestore(doc)
+    };
   }
 
   @override
@@ -511,58 +535,81 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
           ),
         ),
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('academies')
-                .doc(widget.academyId)
-                .collection('students')
-                .orderBy('nome')
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
+          // MODIFICAÇÃO: FutureBuilder para garantir que o mapa de usuários seja carregado antes da lista.
+          child: FutureBuilder<Map<String, UserModel>>(
+            future: _usersMapFuture,
+            builder: (context, usersSnapshot) {
+              if (usersSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-              if (snapshot.hasError) {
-                return Center(child: Text("Erro: ${snapshot.error}"));
-              }
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const EmptyStateWidget(
-                  icon: Icons.no_accounts_rounded,
-                  title: 'Nenhum Aluno Cadastrado',
-                  message:
-                      'Clique no botão "+" para adicionar o primeiro aluno.',
-                );
+              if (usersSnapshot.hasError) {
+                return Center(
+                    child: Text(
+                        "Erro ao carregar usuários: ${usersSnapshot.error}"));
               }
 
-              final allAlunos = snapshot.data!.docs.map((doc) {
-                return Aluno.fromJson(
-                    doc.id, doc.data() as Map<String, dynamic>);
-              }).toList();
+              final usersMap = usersSnapshot.data ?? {};
 
-              final filteredAlunos = allAlunos.where((aluno) {
-                return aluno.nome
-                    .toLowerCase()
-                    .contains(_searchQuery.toLowerCase());
-              }).toList();
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('academies')
+                    .doc(widget.academyId)
+                    .collection('students')
+                    .orderBy('nome')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(child: Text("Erro: ${snapshot.error}"));
+                  }
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const EmptyStateWidget(
+                      icon: Icons.no_accounts_rounded,
+                      title: 'Nenhum Aluno Cadastrado',
+                      message:
+                          'Clique no botão "+" para adicionar o primeiro aluno.',
+                    );
+                  }
 
-              if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
-                return EmptyStateWidget(
-                  icon: Icons.person_search,
-                  title: "Nenhum Aluno Encontrado",
-                  message:
-                      "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
-                );
-              }
+                  final allAlunos = snapshot.data!.docs.map((doc) {
+                    return Aluno.fromJson(
+                        doc.id, doc.data() as Map<String, dynamic>);
+                  }).toList();
 
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(8, 8.0, 8, 80.0),
-                itemCount: filteredAlunos.length,
-                itemBuilder: (context, index) {
-                  final aluno = filteredAlunos[index];
-                  return UserCard(
-                      user: aluno,
-                      academyId: widget.academyId,
-                      currentUser: widget.manager);
+                  final filteredAlunos = allAlunos.where((aluno) {
+                    return aluno.nome
+                        .toLowerCase()
+                        .contains(_searchQuery.toLowerCase());
+                  }).toList();
+
+                  if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
+                    return EmptyStateWidget(
+                      icon: Icons.person_search,
+                      title: "Nenhum Aluno Encontrado",
+                      message:
+                          "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(8, 8.0, 8, 80.0),
+                    itemCount: filteredAlunos.length,
+                    itemBuilder: (context, index) {
+                      final aluno = filteredAlunos[index];
+                      // MODIFICAÇÃO: Busca a URL da imagem no mapa de usuários.
+                      final userModel = usersMap[aluno.userId];
+                      final imageUrl = userModel?.profileImagePath;
+
+                      return UserCard(
+                        user: aluno,
+                        academyId: widget.academyId,
+                        currentUser: widget.manager,
+                        profileImageUrl: imageUrl, // Passa a URL para o card
+                      );
+                    },
+                  );
                 },
               );
             },
@@ -628,8 +675,10 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
             stream: FirebaseFirestore.instance
                 .collection('users')
                 .where('academyId', isEqualTo: widget.academyId)
-                // [MELHORIA] Alterado para buscar apenas professores
-                .where('role', isEqualTo: 'teacher')
+                .where('role', whereIn: [
+                  'teacher',
+                  'manager'
+                ]) // MODIFICAÇÃO: Busca gerentes também
                 .orderBy('name')
                 .snapshots(),
             builder: (context, snapshot) {
@@ -673,9 +722,12 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
                 itemBuilder: (context, index) {
                   final professor = filteredProfessores[index];
                   return UserCard(
-                      user: professor,
-                      academyId: widget.academyId,
-                      currentUser: widget.manager);
+                    user: professor,
+                    academyId: widget.academyId,
+                    currentUser: widget.manager,
+                    // MODIFICAÇÃO: Professores já são UserModel, então a imagem está disponível diretamente.
+                    profileImageUrl: professor.profileImagePath,
+                  );
                 },
               );
             },
@@ -686,6 +738,8 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
   }
 }
 
+// O restante do arquivo (diálogos, etc.) permanece o mesmo.
+// ... (código inalterado)
 void _showEditAlunoDialog(
     BuildContext context, Aluno aluno, String academyId, UserModel manager) {
   showDialog(
@@ -897,14 +951,13 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                         ? 'Nome inválido'
                         : null),
                 const SizedBox(height: 16),
-                // [MELHORIA] CAMPO DE DATA DE NASCIMENTO COM FORMATAÇÃO AUTOMÁTICA
                 TextFormField(
                   controller: dNascC,
                   decoration: const InputDecoration(
                     labelText: 'Data de Nascimento',
                     hintText: 'DD/MM/AAAA',
                     prefixIcon: Icon(Icons.cake_rounded),
-                    counterText: '', // Esconde o contador de caracteres
+                    counterText: '',
                   ),
                   keyboardType: TextInputType.number,
                   inputFormatters: [
@@ -914,7 +967,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                   maxLength: 10,
                   validator: (v) {
                     if (v == null || v.trim().isEmpty) {
-                      return null; // Campo opcional
+                      return null;
                     }
                     if (v.length != 10) {
                       return 'Data incompleta.';
@@ -1052,7 +1105,6 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                     dataNascimento =
                         DateFormat('dd/MM/yyyy').parseStrict(dNascC.text);
                   } catch (e) {
-                    // O validador já deve ter pego isso, mas é uma segurança extra.
                     showBjjSnackBar(context, 'Formato de data inválido.',
                         type: 'error');
                     return;
@@ -1258,7 +1310,6 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Nome inválido' : null,
               ),
-              // [MELHORIA] Esconde campos de faixa e peso para o gerente
               if (!isSelf) ...[
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
@@ -2246,9 +2297,6 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     _checkinsFuture = _fetchAndGroupCheckins();
   }
 
-  // [MELHORIA] CORREÇÃO DE CRASH
-  // Adicionado try-catch para evitar que um documento malformado no Firestore
-  // cause o travamento do aplicativo.
   Future<Map<String, List<CheckinEntry>>> _fetchAndGroupCheckins() async {
     final snapshot = await FirebaseFirestore.instance
         .collection('academies')
@@ -2261,11 +2309,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     final List<CheckinEntry> checkins = [];
     for (final doc in snapshot.docs) {
       try {
-        // Tenta converter o documento. Se falhar, o erro é capturado e o loop continua.
         checkins.add(CheckinEntry.fromJson(doc.id, doc.data()));
       } catch (e, s) {
-        // Imprime o erro no console para depuração.
-        // Em um app de produção, isso poderia ser enviado para um serviço de log.
         debugPrint('Error parsing check-in document ${doc.id}: $e');
         debugPrintStack(stackTrace: s);
       }
@@ -2313,7 +2358,6 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                             "Graus", '${widget.student.graus}º Grau'),
                       _buildInfoRow(context, Icons.fitness_center_rounded,
                           "Peso", '${widget.student.peso} kg'),
-                      // [MELHORIA] Exibe a idade do aluno se a data de nascimento existir
                       if (widget.student.dataNascimento != null)
                         _buildInfoRow(context, Icons.cake_rounded, "Idade",
                             '${widget.student.idade} anos'),
@@ -2468,7 +2512,6 @@ class ProfessorDetailPage extends StatelessWidget {
                       ],
                       _buildInfoRow(context, Icons.email_outlined,
                           "E-mail de Login", professor.email),
-                      // [MELHORIA] Exibe a idade do professor se a data de nascimento existir
                       if (professor.dataNascimento != null &&
                           professor.idade != null)
                         _buildInfoRow(context, Icons.cake_rounded, "Idade",
@@ -2522,7 +2565,6 @@ class ProfessorDetailPage extends StatelessWidget {
   }
 }
 
-// NOVA PÁGINA DE CONFIGURAÇÕES DO GERENTE
 class ManagerSettingsPage extends StatelessWidget {
   final UserModel user;
   const ManagerSettingsPage({super.key, required this.user});
