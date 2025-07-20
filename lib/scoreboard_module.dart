@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import 'models.dart';
 import 'app_theme.dart';
+import 'common_widgets.dart'; // Import necessário para showBjjSnackBar
 
 class MatchSetupPage extends StatefulWidget {
   final String academyId;
@@ -33,6 +34,15 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
   final List<int> _matchTimes = List.generate(10, (index) => index + 1);
 
   void _startMatch() {
+    if (_athlete1?.id == _athlete2?.id && _athlete1 != null) {
+      showBjjSnackBar(
+        context,
+        'Os atletas não podem ser os mesmos.',
+        type: 'error',
+      );
+      return;
+    }
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -53,8 +63,9 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
   }
 
   Future<void> _selectAthlete(int playerNumber) async {
-    final List<Aluno> availableAthletes =
-        List.from(widget.todosAlunosDaAcademia);
+    final List<Aluno> availableAthletes = List.from(
+      widget.todosAlunosDaAcademia,
+    );
     if (playerNumber == 1 && _athlete2 != null) {
       availableAthletes.removeWhere((a) => a.id == _athlete2!.id);
     } else if (playerNumber == 2 && _athlete1 != null) {
@@ -76,15 +87,13 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
         } else {
           _athlete2 = selectedAthlete;
         }
+        _formKey.currentState?.validate();
       });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // AJUSTE EDGE-TO-EDGE: O Scaffold agora está implícito, pois esta
-    // página é renderizada dentro do IndexedStack da HomePage.
-    // O SafeArea já é aplicado no pai (Student/Teacher HomePage).
     return Form(
       key: _formKey,
       child: ListView(
@@ -96,23 +105,33 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Atleta 1",
-                      style: Theme.of(context).textTheme.titleLarge),
+                  Text(
+                    "Atleta 1",
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                   const SizedBox(height: 16),
                   _buildAthleteSelector(
+                    context: context,
                     athlete: _athlete1,
                     onTap: () => _selectAthlete(1),
-                    validator: (value) =>
-                        value == null ? 'Selecione o atleta 1' : null,
+                    validator: (value) {
+                      if (_athlete1 == null) return 'Selecione o atleta 1';
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: _kimonoColor1,
-                    decoration:
-                        const InputDecoration(labelText: 'Cor do Kimono'),
+                    decoration: const InputDecoration(
+                      labelText: 'Cor do Kimono',
+                    ),
                     items: _kimonoColors
-                        .map((color) => DropdownMenuItem<String>(
-                            value: color, child: Text(color)))
+                        .map(
+                          (color) => DropdownMenuItem<String>(
+                            value: color,
+                            child: Text(color),
+                          ),
+                        )
                         .toList(),
                     onChanged: (color) =>
                         setState(() => _kimonoColor1 = color!),
@@ -121,30 +140,40 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text("Atleta 2",
-                      style: Theme.of(context).textTheme.titleLarge),
+                  Text(
+                    "Atleta 2",
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
                   const SizedBox(height: 16),
                   _buildAthleteSelector(
+                    context: context,
                     athlete: _athlete2,
                     onTap: () => _selectAthlete(2),
-                    validator: (value) =>
-                        value == null ? 'Selecione o atleta 2' : null,
+                    validator: (value) {
+                      if (_athlete2 == null) return 'Selecione o atleta 2';
+                      return null;
+                    },
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
                     value: _kimonoColor2,
-                    decoration:
-                        const InputDecoration(labelText: 'Cor do Kimono'),
+                    decoration: const InputDecoration(
+                      labelText: 'Cor do Kimono',
+                    ),
                     items: _kimonoColors
-                        .map((color) => DropdownMenuItem<String>(
-                            value: color, child: Text(color)))
+                        .map(
+                          (color) => DropdownMenuItem<String>(
+                            value: color,
+                            child: Text(color),
+                          ),
+                        )
                         .toList(),
                     onChanged: (color) =>
                         setState(() => _kimonoColor2 = color!),
@@ -153,7 +182,7 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -161,8 +190,12 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
                 value: _matchTimeInMinutes,
                 decoration: const InputDecoration(labelText: 'Tempo de Luta'),
                 items: _matchTimes
-                    .map((time) => DropdownMenuItem<int>(
-                        value: time, child: Text('$time minutos')))
+                    .map(
+                      (time) => DropdownMenuItem<int>(
+                        value: time,
+                        child: Text('$time minutos'),
+                      ),
+                    )
                     .toList(),
                 onChanged: (time) =>
                     setState(() => _matchTimeInMinutes = time!),
@@ -175,48 +208,49 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
             label: const Text('INICIAR LUTA'),
             onPressed: _startMatch,
             style: ElevatedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 16),
+              padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
             ),
-          )
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildAthleteSelector({
-    required Aluno? athlete,
-    required VoidCallback onTap,
-    required FormFieldValidator<Aluno?> validator,
-  }) {
-    return FormField<Aluno?>(
-      initialValue: athlete,
-      validator: validator,
-      builder: (field) {
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            InkWell(
-              onTap: onTap,
-              child: InputDecorator(
-                decoration: InputDecoration(
-                  labelText: athlete == null
-                      ? 'Clique para selecionar'
-                      : 'Atleta Selecionado',
-                  errorText: field.errorText,
-                ),
-                child: athlete == null
-                    ? null
-                    : Text(
-                        athlete.nome,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
+Widget _buildAthleteSelector({
+  required BuildContext context,
+  required Aluno? athlete,
+  required VoidCallback onTap,
+  required FormFieldValidator<Aluno?> validator,
+}) {
+  return FormField<Aluno?>(
+    initialValue: athlete,
+    validator: validator,
+    builder: (field) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: onTap,
+            child: InputDecorator(
+              decoration: InputDecoration(
+                labelText: athlete == null
+                    ? 'Clique para selecionar'
+                    : 'Atleta Selecionado',
+                errorText: field.errorText,
               ),
+              child: athlete == null
+                  ? const SizedBox(height: 16)
+                  : Text(
+                      athlete.nome,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
             ),
-          ],
-        );
-      },
-    );
-  }
+          ),
+        ],
+      );
+    },
+  );
 }
 
 class _AthleteSelectionDialog extends StatefulWidget {
@@ -331,10 +365,7 @@ class _PlayerScore {
 class ScoreboardPage extends StatefulWidget {
   final MatchSettings settings;
 
-  const ScoreboardPage({
-    super.key,
-    required this.settings,
-  });
+  const ScoreboardPage({super.key, required this.settings});
 
   @override
   State<ScoreboardPage> createState() => _ScoreboardPageState();
@@ -408,7 +439,11 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
   }
 
   void _updateScore(
-      int playerIndex, int points, Function(int) updateCounter, int increment) {
+    int playerIndex,
+    int points,
+    Function(int) updateCounter,
+    int increment,
+  ) {
     if (_isMatchOver) return;
 
     final score = playerIndex == 1 ? _player1Score : _player2Score;
@@ -547,8 +582,10 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
               ],
             ),
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(vertical: 16.0, horizontal: 16.0),
+              padding: const EdgeInsets.symmetric(
+                vertical: 16.0,
+                horizontal: 16.0,
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.center,
@@ -571,9 +608,11 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
                   IconButton(
                     iconSize: 50,
                     color: _isRunning ? warningColor : successColor,
-                    icon: Icon(_isRunning
-                        ? Icons.pause_circle_filled_rounded
-                        : Icons.play_circle_filled_rounded),
+                    icon: Icon(
+                      _isRunning
+                          ? Icons.pause_circle_filled_rounded
+                          : Icons.play_circle_filled_rounded,
+                    ),
                     onPressed: _isMatchOver ? null : _toggleTimer,
                   ),
                 ],
@@ -586,20 +625,17 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildScoreControl(
-                      playerIndex: 1,
-                      score: _player1Score,
-                    ),
+                    _buildScoreControl(playerIndex: 1, score: _player1Score),
                     const VerticalDivider(
-                        color: borderNormal, thickness: 1, width: 1),
-                    _buildScoreControl(
-                      playerIndex: 2,
-                      score: _player2Score,
+                      color: borderNormal,
+                      thickness: 1,
+                      width: 1,
                     ),
+                    _buildScoreControl(playerIndex: 2, score: _player2Score),
                   ],
                 ),
               ),
-            )
+            ),
           ],
         ),
       ),
@@ -612,7 +648,8 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
     required Color color,
     required bool isPlayer2,
   }) {
-    bool useGradient = isPlayer2 &&
+    bool useGradient =
+        isPlayer2 &&
         widget.settings.kimonoColor1 == widget.settings.kimonoColor2;
     final displayColor = (color == Colors.grey.shade800) ? Colors.white : color;
 
@@ -620,9 +657,7 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
       child: Container(
         padding: const EdgeInsets.all(8.0),
         decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: borderNormal, width: 2),
-          ),
+          border: Border(bottom: BorderSide(color: borderNormal, width: 2)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -632,10 +667,13 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                    color: useGradient ? primaryAccent : color, width: 2),
+                  color: useGradient ? primaryAccent : color,
+                  width: 2,
+                ),
                 gradient: useGradient
                     ? LinearGradient(
-                        colors: [primaryAccent, Colors.yellow.shade800])
+                        colors: [primaryAccent, Colors.yellow.shade800],
+                      )
                     : null,
               ),
               child: Text(
@@ -664,10 +702,14 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                Text("V: ${score.advantages}",
-                    style: const TextStyle(fontSize: 16, color: textSecondary)),
-                Text("P: ${score.penalties}",
-                    style: const TextStyle(fontSize: 16, color: textSecondary)),
+                Text(
+                  "V: ${score.advantages}",
+                  style: const TextStyle(fontSize: 16, color: textSecondary),
+                ),
+                Text(
+                  "P: ${score.penalties}",
+                  style: const TextStyle(fontSize: 16, color: textSecondary),
+                ),
               ],
             ),
           ],
@@ -676,8 +718,10 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
     );
   }
 
-  Widget _buildScoreControl(
-      {required int playerIndex, required _PlayerScore score}) {
+  Widget _buildScoreControl({
+    required int playerIndex,
+    required _PlayerScore score,
+  }) {
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -688,9 +732,17 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
               label: 'Montada / Costas (+4)',
               count: score.mountsOrBack,
               onAdd: () => _updateScore(
-                  playerIndex, 4, (inc) => score.mountsOrBack += inc, 1),
+                playerIndex,
+                4,
+                (inc) => score.mountsOrBack += inc,
+                1,
+              ),
               onRemove: () => _updateScore(
-                  playerIndex, 4, (inc) => score.mountsOrBack += inc, -1),
+                playerIndex,
+                4,
+                (inc) => score.mountsOrBack += inc,
+                -1,
+              ),
             ),
             _buildScoreButton(
               label: 'Passagem (+3)',
@@ -698,15 +750,27 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
               onAdd: () =>
                   _updateScore(playerIndex, 3, (inc) => score.passes += inc, 1),
               onRemove: () => _updateScore(
-                  playerIndex, 3, (inc) => score.passes += inc, -1),
+                playerIndex,
+                3,
+                (inc) => score.passes += inc,
+                -1,
+              ),
             ),
             _buildScoreButton(
               label: 'Queda / Raspagem (+2)',
               count: score.takedowns,
               onAdd: () => _updateScore(
-                  playerIndex, 2, (inc) => score.takedowns += inc, 1),
+                playerIndex,
+                2,
+                (inc) => score.takedowns += inc,
+                1,
+              ),
               onRemove: () => _updateScore(
-                  playerIndex, 2, (inc) => score.takedowns += inc, -1),
+                playerIndex,
+                2,
+                (inc) => score.takedowns += inc,
+                -1,
+              ),
             ),
             _buildScoreButton(
               label: 'Vantagens (+1)',
@@ -747,13 +811,18 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
             width: 150,
             child: Column(
               children: [
-                Text(label,
-                    style: const TextStyle(color: textSecondary, fontSize: 12)),
-                Text('$count',
-                    style: const TextStyle(
-                        color: textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold)),
+                Text(
+                  label,
+                  style: const TextStyle(color: textSecondary, fontSize: 12),
+                ),
+                Text(
+                  '$count',
+                  style: const TextStyle(
+                    color: textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ),

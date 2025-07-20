@@ -1042,7 +1042,14 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                     },
                   )
                 ],
-                if (isEditing && widget.alunoParaEditar?.userId != null) ...[
+                // =======================================================================
+                // AQUI ESTÁ A CORREÇÃO:
+                // Adicionada a condição "&& widget.currentUser.role == UserRole.manager"
+                // para garantir que o botão de promover só apareça para o gerente.
+                // =======================================================================
+                if (isEditing &&
+                    widget.alunoParaEditar?.userId != null &&
+                    widget.currentUser.role == UserRole.manager) ...[
                   const SizedBox(height: 16),
                   OutlinedButton.icon(
                     icon:
