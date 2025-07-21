@@ -1,62 +1,124 @@
 // lib/study_notebook_module.dart
-
 // ignore_for_file: use_build_context_synchronously
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
-
-// ADIÇÕES: Imports para o Firebase
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 import 'models.dart';
 import 'common_widgets.dart';
 import 'app_theme.dart';
 
-// --- SERVICE ---
+// --- SERVICE (Refatorado para suportar a nova estrutura) ---
 class StudyNoteService {
   final String userId;
-  // CORREÇÃO: A coleção agora é do tipo genérico, pois faremos a conversão manualmente.
-  late final CollectionReference _notesCollection;
 
-  StudyNoteService({required this.userId}) {
-    _notesCollection = FirebaseFirestore.instance
-        .collection('users')
-        .doc(userId)
-        .collection('study_notes');
+  StudyNoteService({required this.userId});
+
+  // Caminhos das coleções
+  CollectionReference get _subjectsCollection => FirebaseFirestore.instance
+      .collection('users')
+      .doc(userId)
+      .collection('study_subjects');
+  CollectionReference get _volumesCollection => FirebaseFirestore.instance
+      .collection('users')
+      .doc(userId)
+      .collection('study_volumes');
+  CollectionReference get _notesCollection => FirebaseFirestore.instance
+      .collection('users')
+      .doc(userId)
+      .collection('study_notes');
+
+  // --- MÉTODOS PARA ASSUNTOS (SUBJECTS) ---
+  Stream<QuerySnapshot> getSubjectsStream() {
+    return _subjectsCollection
+        .orderBy('createdAt', descending: true)
+        .snapshots();
   }
 
-  // Retorna um Stream para ouvir as anotações em tempo real.
-  Stream<QuerySnapshot> getNotesStream() {
-    return _notesCollection.orderBy('updatedAt', descending: true).snapshots();
-  }
-
-  // CORREÇÃO: Converte manualmente o objeto StudyNote para um Map antes de salvar.
-  Future<void> saveNote(StudyNote note) {
-    final data = {
-      'title': note.title,
-      'content': note.content,
-      'tags': note.tags,
-      'videoUrl': note.videoUrl,
-      'imagePath': note.imagePath,
-      'updatedAt': Timestamp.fromDate(note.updatedAt),
-      'createdAt': Timestamp.fromDate(note.createdAt),
-    };
-
-    if (note.id.isEmpty) {
-      return _notesCollection.add(data);
+  Future<void> saveSubject(StudySubject subject) {
+    final data = subject.toJson();
+    if (subject.id.isEmpty) {
+      return _subjectsCollection.add(data);
     } else {
-      return _notesCollection.doc(note.id).set(data, SetOptions(merge: true));
+      return _subjectsCollection.doc(subject.id).update(data);
     }
   }
 
-  // Deleta uma anotação.
+  Future<void> deleteSubject(String subjectId) async {
+    final batch = FirebaseFirestore.instance.batch();
+    // Deleta o assunto
+    batch.delete(_subjectsCollection.doc(subjectId));
+    // Deleta volumes e anotações associados (requer múltiplas leituras)
+    final volumesSnapshot =
+        await _volumesCollection.where('subjectId', isEqualTo: subjectId).get();
+    for (var volDoc in volumesSnapshot.docs) {
+      batch.delete(volDoc.reference);
+      final notesSnapshot =
+          await _notesCollection.where('volumeId', isEqualTo: volDoc.id).get();
+      for (var noteDoc in notesSnapshot.docs) {
+        batch.delete(noteDoc.reference);
+      }
+    }
+    return batch.commit();
+  }
+
+  // --- MÉTODOS PARA VOLUMES ---
+  Stream<QuerySnapshot> getVolumesStream(String subjectId) {
+    // CORREÇÃO: Removida a ordenação do Firestore para evitar problemas de índice.
+    // A ordenação será feita no lado do cliente (no widget).
+    return _volumesCollection
+        .where('subjectId', isEqualTo: subjectId)
+        .snapshots();
+  }
+
+  Future<void> saveVolume(StudyVolume volume) {
+    final data = volume.toJson();
+    if (volume.id.isEmpty) {
+      return _volumesCollection.add(data);
+    } else {
+      return _volumesCollection.doc(volume.id).update(data);
+    }
+  }
+
+  Future<void> deleteVolume(String volumeId) async {
+    final batch = FirebaseFirestore.instance.batch();
+    // Deleta o volume
+    batch.delete(_volumesCollection.doc(volumeId));
+    // Deleta anotações associadas
+    final notesSnapshot =
+        await _notesCollection.where('volumeId', isEqualTo: volumeId).get();
+    for (var doc in notesSnapshot.docs) {
+      batch.delete(doc.reference);
+    }
+    return batch.commit();
+  }
+
+  // --- MÉTODOS PARA ANOTAÇÕES (NOTES) ---
+  Stream<QuerySnapshot> getNotesStream(String volumeId) {
+    return _notesCollection
+        .where('volumeId', isEqualTo: volumeId)
+        .orderBy('updatedAt', descending: true)
+        .snapshots();
+  }
+
+  Future<void> saveNote(StudyNote note) {
+    final data = note.toJson();
+    if (note.id.isEmpty) {
+      return _notesCollection.add(data);
+    } else {
+      return _notesCollection.doc(note.id).update(data);
+    }
+  }
+
   Future<void> deleteNote(String noteId) {
     return _notesCollection.doc(noteId).delete();
   }
 
-  // O upload da imagem continua o mesmo, funcionando corretamente.
+  // --- UPLOAD DE IMAGEM (Inalterado) ---
   Future<String?> saveImage(XFile image) async {
     try {
       final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -65,7 +127,6 @@ class StudyNoteService {
           .child('study_notes_images')
           .child(userId)
           .child(fileName);
-
       await ref.putData(await image.readAsBytes());
       return await ref.getDownloadURL();
     } catch (e) {
@@ -75,7 +136,7 @@ class StudyNoteService {
   }
 }
 
-// --- TELA PRINCIPAL DO CADERNO ---
+// --- TELA PRINCIPAL (AGORA LISTA ASSUNTOS) ---
 class StudyNotebookPage extends StatefulWidget {
   final String userId;
   const StudyNotebookPage({super.key, required this.userId});
@@ -85,6 +146,313 @@ class StudyNotebookPage extends StatefulWidget {
 }
 
 class _StudyNotebookPageState extends State<StudyNotebookPage> {
+  late final StudyNoteService _noteService;
+
+  @override
+  void initState() {
+    super.initState();
+    _noteService = StudyNoteService(userId: widget.userId);
+  }
+
+  void _showSubjectDialog({StudySubject? subject}) {
+    final controller = TextEditingController(text: subject?.title ?? '');
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(subject == null ? 'Novo Assunto' : 'Editar Assunto'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration:
+                const InputDecoration(labelText: 'Nome do Assunto/Curso'),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () {
+                if (controller.text.trim().isNotEmpty) {
+                  final newSubject = StudySubject(
+                    id: subject?.id ?? '',
+                    title: controller.text.trim(),
+                    createdAt: subject?.createdAt ?? DateTime.now(),
+                  );
+                  _noteService.saveSubject(newSubject);
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _confirmDeleteSubject(StudySubject subject) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir Assunto?'),
+        content: Text(
+            'Isso excluirá "${subject.title}" e todos os seus volumes e anotações permanentemente. Deseja continuar?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () {
+              _noteService.deleteSubject(subject.id);
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text('Excluir Tudo'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _noteService.getSubjectsStream(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const EmptyStateWidget(
+              icon: Icons.folder_copy_outlined,
+              title: 'Nenhum Assunto',
+              message: 'Crie seu primeiro assunto de estudo no botão "+".',
+            );
+          }
+          final subjects = snapshot.data!.docs
+              .map((doc) => StudySubject.fromFirestore(doc))
+              .toList();
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(8),
+            itemCount: subjects.length,
+            itemBuilder: (context, index) {
+              final subject = subjects[index];
+              return Card(
+                child: ListTile(
+                  leading:
+                      const Icon(Icons.folder_outlined, color: primaryAccent),
+                  title: Text(subject.title),
+                  onTap: () {
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => StudyVolumesPage(
+                                userId: widget.userId, subject: subject)));
+                  },
+                  trailing: PopupMenuButton(
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(
+                          value: 'edit', child: Text('Renomear')),
+                      const PopupMenuItem(
+                          value: 'delete', child: Text('Excluir')),
+                    ],
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        _showSubjectDialog(subject: subject);
+                      } else if (value == 'delete') {
+                        _confirmDeleteSubject(subject);
+                      }
+                    },
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showSubjectDialog(),
+        tooltip: 'Novo Assunto',
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+// --- NOVA TELA PARA LISTAR VOLUMES ---
+class StudyVolumesPage extends StatefulWidget {
+  final String userId;
+  final StudySubject subject;
+
+  const StudyVolumesPage(
+      {super.key, required this.userId, required this.subject});
+
+  @override
+  State<StudyVolumesPage> createState() => _StudyVolumesPageState();
+}
+
+class _StudyVolumesPageState extends State<StudyVolumesPage> {
+  late final StudyNoteService _noteService;
+
+  @override
+  void initState() {
+    super.initState();
+    _noteService = StudyNoteService(userId: widget.userId);
+  }
+
+  void _showVolumeDialog({StudyVolume? volume}) {
+    final controller = TextEditingController(text: volume?.title ?? '');
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text(volume == null ? 'Novo Volume' : 'Editar Volume'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            decoration: const InputDecoration(labelText: 'Nome do Volume'),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancelar')),
+            ElevatedButton(
+              onPressed: () {
+                if (controller.text.trim().isNotEmpty) {
+                  final newVolume = StudyVolume(
+                    id: volume?.id ?? '',
+                    title: controller.text.trim(),
+                    subjectId: widget.subject.id,
+                    createdAt: volume?.createdAt ?? DateTime.now(),
+                  );
+                  _noteService.saveVolume(newVolume);
+                  Navigator.pop(context);
+                }
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _confirmDeleteVolume(StudyVolume volume) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir Volume?'),
+        content: Text(
+            'Isso excluirá "${volume.title}" e todas as suas anotações permanentemente. Deseja continuar?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () {
+              _noteService.deleteVolume(volume.id);
+              Navigator.pop(context);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text('Excluir Tudo'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: Text(widget.subject.title)),
+      body: AppBackground(
+        child: SafeArea(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: _noteService.getVolumesStream(widget.subject.id),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.create_new_folder_outlined,
+                  title: 'Nenhum Volume',
+                  message:
+                      'Crie o primeiro volume para este assunto no botão "+".',
+                );
+              }
+              // CORREÇÃO: Mapeia e ordena a lista de volumes aqui no widget.
+              final volumes = snapshot.data!.docs
+                  .map((doc) => StudyVolume.fromFirestore(doc))
+                  .toList()
+                ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(8),
+                itemCount: volumes.length,
+                itemBuilder: (context, index) {
+                  final volume = volumes[index];
+                  return Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.folder_open_outlined,
+                          color: primaryAccent),
+                      title: Text(volume.title),
+                      onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => NoteListPage(
+                                    userId: widget.userId, volume: volume)));
+                      },
+                      trailing: PopupMenuButton(
+                        itemBuilder: (context) => [
+                          const PopupMenuItem(
+                              value: 'edit', child: Text('Renomear')),
+                          const PopupMenuItem(
+                              value: 'delete', child: Text('Excluir')),
+                        ],
+                        onSelected: (value) {
+                          if (value == 'edit') {
+                            _showVolumeDialog(volume: volume);
+                          } else if (value == 'delete') {
+                            _confirmDeleteVolume(volume);
+                          }
+                        },
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showVolumeDialog(),
+        tooltip: 'Novo Volume',
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+// --- TELA DE LISTA DE ANOTAÇÕES (ANTIGA StudyNotebookPage) ---
+class NoteListPage extends StatefulWidget {
+  final String userId;
+  final StudyVolume volume;
+
+  const NoteListPage({super.key, required this.userId, required this.volume});
+
+  @override
+  State<NoteListPage> createState() => _NoteListPageState();
+}
+
+class _NoteListPageState extends State<NoteListPage> {
   late final StudyNoteService _noteService;
   final _searchController = TextEditingController();
 
@@ -128,132 +496,135 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
     );
   }
 
-  void _navigateAndReload(Widget page) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => page));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-            child: TextField(
-              controller: _searchController,
-              decoration: InputDecoration(
-                labelText: 'Buscar por título, conteúdo ou tag...',
-                prefixIcon: const Icon(Icons.search),
-                suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(
-                        icon: const Icon(Icons.clear),
-                        onPressed: () => _searchController.clear(),
-                      )
-                    : null,
+      appBar: AppBar(title: Text(widget.volume.title)),
+      body: AppBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    labelText: 'Buscar por título, conteúdo ou tag...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () => _searchController.clear(),
+                          )
+                        : null,
+                  ),
+                ),
               ),
-            ),
-          ),
-          Expanded(
-            // CORREÇÃO: O StreamBuilder agora espera um QuerySnapshot genérico.
-            child: StreamBuilder<QuerySnapshot>(
-              stream: _noteService.getNotesStream(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return const EmptyStateWidget(
-                      icon: Icons.error_outline,
-                      title: 'Erro ao carregar',
-                      message: 'Não foi possível buscar suas anotações.');
-                }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const EmptyStateWidget(
-                    icon: Icons.note_add_rounded,
-                    title: 'Nenhuma Anotação',
-                    message:
-                        'Clique no botão "+" para criar sua primeira anotação de estudo.',
-                  );
-                }
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: _noteService.getNotesStream(widget.volume.id),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return const EmptyStateWidget(
+                          icon: Icons.error_outline,
+                          title: 'Erro ao carregar',
+                          message: 'Não foi possível buscar suas anotações.');
+                    }
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return const EmptyStateWidget(
+                        icon: Icons.note_add_rounded,
+                        title: 'Nenhuma Anotação',
+                        message:
+                            'Clique no botão "+" para criar sua primeira anotação.',
+                      );
+                    }
 
-                // CORREÇÃO: Converte manualmente cada documento do Firestore em um objeto StudyNote.
-                final allNotes = snapshot.data!.docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return StudyNote(
-                    id: doc.id,
-                    title: data['title'] ?? '',
-                    content: data['content'] ?? '',
-                    tags: List<String>.from(data['tags'] ?? []),
-                    videoUrl: data['videoUrl'],
-                    imagePath: data['imagePath'],
-                    // Converte o Timestamp do Firebase para DateTime do Dart.
-                    updatedAt: (data['updatedAt'] as Timestamp).toDate(),
-                    createdAt: (data['createdAt'] as Timestamp).toDate(),
-                  );
-                }).toList();
+                    final allNotes = snapshot.data!.docs
+                        .map((doc) => StudyNote.fromFirestore(doc))
+                        .toList();
 
-                final searchQuery = _searchController.text.toLowerCase();
-                final filteredNotes = searchQuery.isEmpty
-                    ? allNotes
-                    : allNotes.where((note) {
-                        return note.title.toLowerCase().contains(searchQuery) ||
-                            note.content.toLowerCase().contains(searchQuery) ||
-                            note.tags.any((tag) =>
-                                tag.toLowerCase().contains(searchQuery));
-                      }).toList();
+                    final searchQuery = _searchController.text.toLowerCase();
+                    final filteredNotes = searchQuery.isEmpty
+                        ? allNotes
+                        : allNotes.where((note) {
+                            return note.title
+                                    .toLowerCase()
+                                    .contains(searchQuery) ||
+                                note.content
+                                    .toLowerCase()
+                                    .contains(searchQuery) ||
+                                note.tags.any((tag) =>
+                                    tag.toLowerCase().contains(searchQuery));
+                          }).toList();
 
-                if (filteredNotes.isEmpty) {
-                  return EmptyStateWidget(
-                      icon: Icons.search_off_rounded,
-                      title: 'Nenhum resultado',
-                      message:
-                          "Sua busca por '${_searchController.text}' não retornou resultados.");
-                }
+                    if (filteredNotes.isEmpty) {
+                      return EmptyStateWidget(
+                          icon: Icons.search_off_rounded,
+                          title: 'Nenhum resultado',
+                          message:
+                              "Sua busca por '${_searchController.text}' não retornou resultados.");
+                    }
 
-                return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
-                  itemCount: filteredNotes.length,
-                  itemBuilder: (context, index) {
-                    final note = filteredNotes[index];
-                    return Card(
-                      child: ListTile(
-                        title: Text(note.title),
-                        subtitle: Text(
-                          note.content,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        trailing: PopupMenuButton<String>(
-                          onSelected: (value) {
-                            if (value == 'edit') {
-                              _navigateAndReload(EditStudyNotePage(
-                                  note: note, userId: widget.userId));
-                            } else if (value == 'delete') {
-                              _confirmDelete(note.id);
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            const PopupMenuItem(
-                                value: 'edit', child: Text('Editar')),
-                            const PopupMenuItem(
-                                value: 'delete', child: Text('Excluir')),
-                          ],
-                        ),
-                        onTap: () =>
-                            _navigateAndReload(NoteDetailPage(note: note)),
-                      ),
+                    return ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
+                      itemCount: filteredNotes.length,
+                      itemBuilder: (context, index) {
+                        final note = filteredNotes[index];
+                        return Card(
+                          child: ListTile(
+                            title: Text(note.title),
+                            subtitle: Text(
+                              note.content,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              onSelected: (value) {
+                                if (value == 'edit') {
+                                  Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                          builder: (_) => EditStudyNotePage(
+                                              note: note,
+                                              userId: widget.userId,
+                                              volumeId: widget.volume.id)));
+                                } else if (value == 'delete') {
+                                  _confirmDelete(note.id);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem(
+                                    value: 'edit', child: Text('Editar')),
+                                const PopupMenuItem(
+                                    value: 'delete', child: Text('Excluir')),
+                              ],
+                            ),
+                            onTap: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        NoteDetailPage(note: note))),
+                          ),
+                        );
+                      },
                     );
                   },
-                );
-              },
-            ),
-          )
-        ],
+                ),
+              )
+            ],
+          ),
+        ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () =>
-            _navigateAndReload(EditStudyNotePage(userId: widget.userId)),
+        onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+                builder: (_) => EditStudyNotePage(
+                    userId: widget.userId, volumeId: widget.volume.id))),
         tooltip: 'Nova Anotação',
         child: const Icon(Icons.add),
       ),
@@ -261,7 +632,7 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
   }
 }
 
-// --- TELA DE DETALHES ---
+// --- TELA DE DETALHES (Inalterada) ---
 class NoteDetailPage extends StatelessWidget {
   final StudyNote note;
   const NoteDetailPage({super.key, required this.note});
@@ -291,6 +662,14 @@ class NoteDetailPage extends StatelessWidget {
             children: [
               Text(note.title,
                   style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 8),
+              Text(
+                'Atualizado em: ${DateFormat.yMd('pt_BR').add_Hm().format(note.updatedAt)}',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: textHint),
+              ),
               const SizedBox(height: 16),
               if (note.tags.isNotEmpty)
                 Wrap(
@@ -347,12 +726,14 @@ class NoteDetailPage extends StatelessWidget {
   }
 }
 
-// --- TELA DE EDIÇÃO ---
+// --- TELA DE EDIÇÃO (MODIFICADA) ---
 class EditStudyNotePage extends StatefulWidget {
   final StudyNote? note;
   final String userId;
+  final String volumeId;
 
-  const EditStudyNotePage({super.key, this.note, required this.userId});
+  const EditStudyNotePage(
+      {super.key, this.note, required this.userId, required this.volumeId});
 
   @override
   State<EditStudyNotePage> createState() => _EditStudyNotePageState();
@@ -446,6 +827,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
       imagePath: _imagePath,
       updatedAt: DateTime.now(),
       createdAt: _isEditing ? widget.note!.createdAt : DateTime.now(),
+      volumeId: widget.volumeId, // Associa a nota ao volume atual
     );
 
     try {

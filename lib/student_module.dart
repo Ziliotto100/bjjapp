@@ -14,10 +14,9 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'models.dart';
 import 'common_widgets.dart';
 import 'app_theme.dart';
-import 'scoreboard_module.dart';
-import 'study_notebook_module.dart';
 import 'auth_gate.dart';
-import 'schedule_module.dart';
+import 'navigation_service.dart';
+import 'app_drawer.dart';
 
 // --- TELAS DO ALUNO ---
 class StudentHomePage extends StatefulWidget {
@@ -30,128 +29,168 @@ class StudentHomePage extends StatefulWidget {
 
 class _StudentHomePageState extends State<StudentHomePage> {
   int _paginaAtual = 0;
-  late List<Widget> _telas;
-  List<Aluno> _todosOsAlunosDaAcademia = [];
-  List<UserModel> _teachers = [];
   bool _isLoading = true;
 
-  final List<String> _titulos = const [
-    'Meu Perfil',
-    'Grade de Horários',
-    'Histórico',
-    'Caderno de Estudos',
-    'Placar Individual'
-  ];
+  late final NavigationService _navService;
+  List<AppModule> _allModules = [];
+  List<AppModule> _visibleModules = [];
+  List<Widget> _telas = [];
+
+  List<UserModel> _teachers = [];
+  List<Aluno> _students = [];
 
   @override
   void initState() {
     super.initState();
-    _fetchData();
+    _navService =
+        NavigationService(userId: widget.user.uid, userRole: widget.user.role);
+    _loadInitialData();
   }
 
-  Future<void> _fetchData() async {
-    if (!mounted) return;
+  Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     try {
       final firestore = FirebaseFirestore.instance;
       final academyId = widget.user.academyId;
 
-      final studentsSnapshot = await firestore
-          .collection('academies')
-          .doc(academyId)
-          .collection('students')
-          .orderBy('nome')
-          .get();
-      final studentParticipants = studentsSnapshot.docs
-          .map((doc) => Aluno.fromJson(doc.id, doc.data()))
-          .toList();
-
+      // Carrega dados que as telas podem precisar
       final usersSnapshot = await firestore
           .collection('users')
           .where('academyId', isEqualTo: academyId)
           .where('role', whereIn: ['teacher', 'manager']).get();
-      final teacherAndManagerUsers = usersSnapshot.docs
+      _teachers = usersSnapshot.docs
           .map((doc) => UserModel.fromFirestore(doc))
           .toList();
 
-      final teacherParticipants = teacherAndManagerUsers
-          .map((user) => Aluno.fromUserModel(user))
+      final studentsSnapshot = await firestore
+          .collection('academies')
+          .doc(academyId)
+          .collection('students')
+          .get();
+      final studentParticipants = studentsSnapshot.docs
+          .map((doc) => Aluno.fromJson(doc.id, doc.data()))
           .toList();
+      final teacherParticipants =
+          _teachers.map((user) => Aluno.fromUserModel(user)).toList();
+      _students = [...studentParticipants, ...teacherParticipants]
+        ..sort((a, b) => a.nome.compareTo(b.nome));
 
-      final allParticipants = [...studentParticipants, ...teacherParticipants];
-      allParticipants.sort((a, b) => a.nome.compareTo(b.nome));
-
-      if (mounted) {
-        setState(() {
-          _todosOsAlunosDaAcademia = allParticipants;
-          _teachers = teacherAndManagerUsers;
-          _buildScreens();
-          _isLoading = false;
-        });
-      }
+      // Escuta as configurações de abas
+      _navService.getTabSettingsStream().listen((settingsDoc) {
+        _configureNavigation(settingsDoc);
+      });
     } catch (e) {
       if (mounted) {
+        showBjjSnackBar(context, "Erro ao carregar dados.", type: 'error');
         setState(() => _isLoading = false);
-        showBjjSnackBar(context, 'Erro ao carregar dados da academia.',
-            type: 'error');
-        _buildScreens();
       }
     }
   }
 
-  void _buildScreens() {
-    _telas = [
-      UserProfilePage(user: widget.user, hasScaffold: false),
-      SchedulePage(user: widget.user, teachers: _teachers),
-      MyCheckinsPage(user: widget.user),
-      StudyNotebookPage(userId: widget.user.uid),
-      MatchSetupPage(
-          academyId: widget.user.academyId,
-          todosAlunosDaAcademia: _todosOsAlunosDaAcademia),
-    ];
+  void _configureNavigation(DocumentSnapshot? settingsDoc) {
+    Map<String, dynamic> settings;
+    if (settingsDoc != null && settingsDoc.exists) {
+      settings = settingsDoc.data() as Map<String, dynamic>;
+    } else {
+      settings = _navService.getDefaultTabSettings();
+    }
+
+    final allUserModules = _navService.getModulesForCurrentUser();
+    final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
+    final List<String> visibleIds =
+        List<String>.from(settings['visible'] ?? []);
+
+    for (var module in allUserModules) {
+      if (!savedOrder.contains(module.id)) {
+        savedOrder.add(module.id);
+      }
+    }
+    savedOrder.removeWhere((id) => !allUserModules.any((m) => m.id == id));
+
+    if (mounted) {
+      setState(() {
+        _allModules = savedOrder
+            .map((id) => allUserModules.firstWhere((m) => m.id == id,
+                orElse: () => allUserModules.first))
+            .toList();
+
+        _visibleModules =
+            _allModules.where((m) => visibleIds.contains(m.id)).toList();
+
+        if (_paginaAtual >= _allModules.length) {
+          _paginaAtual = 0;
+        }
+
+        _telas = _allModules
+            .map((module) =>
+                module.pageBuilder(widget.user, _teachers, _students))
+            .toList();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _onItemTapped(int index) {
+    final selectedModuleId = _visibleModules[index].id;
+    final globalIndex = _allModules.indexWhere((m) => m.id == selectedModuleId);
+
+    setState(() {
+      _paginaAtual = globalIndex;
+    });
+  }
+
+  void _onDrawerItemTapped(int index) {
+    setState(() {
+      _paginaAtual = index;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: AppBackground(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    final currentModule = _allModules[_paginaAtual];
+    final currentVisibleIndex =
+        _visibleModules.indexWhere((m) => m.id == currentModule.id);
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_titulos[_paginaAtual]),
+        title: Text(currentModule.title),
         actions: [
           IconButton(
               icon: const Icon(Icons.settings),
               tooltip: 'Configurações',
               onPressed: () {
                 Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => SettingsPage(
-                    user: widget.user,
-                  ),
+                  builder: (_) => SettingsPage(user: widget.user),
                 ));
               }),
         ],
       ),
+      drawer: AppDrawer(
+        user: widget.user,
+        allModules: _allModules,
+        onSelectItem: _onDrawerItemTapped,
+      ),
       body: AppBackground(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SafeArea(
-                child: IndexedStack(index: _paginaAtual, children: _telas),
-              ),
+        child: SafeArea(
+          child: IndexedStack(index: _paginaAtual, children: _telas),
+        ),
       ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _paginaAtual,
-        onTap: (index) => setState(() => _paginaAtual = index),
-        items: const [
-          BottomNavigationBarItem(
-              icon: Icon(Icons.person_rounded), label: 'Meu Perfil'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_month_rounded), label: 'Grade'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.calendar_today_rounded), label: 'Histórico'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.book_rounded), label: 'Estudos'),
-          BottomNavigationBarItem(
-              icon: Icon(Icons.scoreboard_rounded), label: 'Placar'),
-        ],
+        currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
+        onTap: _onItemTapped,
+        items: _visibleModules.map((module) {
+          return BottomNavigationBarItem(
+            icon: Icon(module.icon),
+            label: module.title,
+          );
+        }).toList(),
       ),
     );
   }
@@ -765,6 +804,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
   UserModel? _currentUser;
   Aluno? _aluno;
   MonthlyFee? _currentMonthFee;
+  int _monthlyCheckins = 0;
   bool _isLoading = true;
 
   @override
@@ -791,6 +831,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
       final freshUser = UserModel.fromFirestore(userDoc);
       Aluno? freshAluno;
       MonthlyFee? fee;
+      int checkins = 0;
 
       if (freshUser.role == UserRole.student &&
           freshUser.studentRecordId != null) {
@@ -806,6 +847,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
         }
 
         final now = DateTime.now();
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
+
+        // Busca pagamentos
         final paymentSnapshot = await firestore
             .collection('academies')
             .doc(freshUser.academyId)
@@ -819,6 +864,18 @@ class _UserProfilePageState extends State<UserProfilePage> {
         if (paymentSnapshot.docs.isNotEmpty) {
           fee = MonthlyFee.fromFirestore(paymentSnapshot.docs.first);
         }
+
+        // Busca check-ins do mês
+        final checkinsSnapshot = await firestore
+            .collection('academies')
+            .doc(freshUser.academyId)
+            .collection('checkins')
+            .where('studentId', isEqualTo: freshUser.studentRecordId)
+            .where('date', isGreaterThanOrEqualTo: startOfMonth)
+            .where('date', isLessThanOrEqualTo: endOfMonth)
+            .get();
+
+        checkins = checkinsSnapshot.docs.length;
       }
 
       if (mounted) {
@@ -826,6 +883,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
           _currentUser = freshUser;
           _aluno = freshAluno;
           _currentMonthFee = fee;
+          _monthlyCheckins = checkins;
           _isLoading = false;
         });
       }
@@ -848,43 +906,51 @@ class _UserProfilePageState extends State<UserProfilePage> {
         .then((_) => _loadProfileData());
   }
 
-  String _formatGraduation(UserModel user, Aluno? aluno) {
-    if (user.role == UserRole.manager) return 'N/A';
-    String belt = "";
-    int? degrees;
-    if (user.role == UserRole.student && aluno != null) {
-      belt = aluno.faixa;
-      degrees = aluno.graus;
-    } else {
-      belt = user.faixa ?? "Não informada";
-      degrees = user.graus;
-    }
-    if (degrees != null && degrees > 0) return '$belt - $degreesº Grau';
-    return belt;
-  }
+  void _showSetGoalDialog() {
+    final now = DateTime.now();
+    final goalKey = DateFormat('yyyy-MM').format(now);
+    final currentGoal = _currentUser?.monthlyTrainingGoals[goalKey] ?? 0;
+    final controller = TextEditingController(
+        text: currentGoal > 0 ? currentGoal.toString() : '');
 
-  // Essas funções não são mais usadas na UI, mas podem ser mantidas para uso futuro.
-  String _formatWeight(UserModel user, Aluno? aluno) {
-    if (user.role == UserRole.manager) return 'N/A';
-    double? weight;
-    if (user.role == UserRole.student && aluno != null) {
-      weight = aluno.peso;
-    } else {
-      weight = user.peso;
-    }
-    if (weight != null) return '${weight.toStringAsFixed(1)} kg';
-    return 'Não informado';
-  }
-
-  String _formatAge(UserModel user, Aluno? aluno) {
-    int? age;
-    if (user.role == UserRole.student && aluno != null) {
-      age = aluno.idade;
-    } else {
-      age = user.idade;
-    }
-    if (age != null) return '$age anos';
-    return 'Não informada';
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Meta de Treinos Mensal'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(
+              labelText: 'Quantos treinos no mês?',
+              hintText: 'Ex: 12',
+            ),
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final newGoal = int.tryParse(controller.text) ?? 0;
+                if (newGoal > 0) {
+                  await FirebaseFirestore.instance
+                      .collection('users')
+                      .doc(_currentUser!.uid)
+                      .update({'monthlyTrainingGoals.$goalKey': newGoal});
+                }
+                Navigator.of(context).pop();
+                _loadProfileData(); // Recarrega os dados
+              },
+              child: const Text('Salvar Meta'),
+            )
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -899,12 +965,11 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
                   children: [
                     UserProfileHeader(user: _currentUser!, studentData: _aluno),
-                    const SizedBox(height: 24),
-                    //
-                    // --- INÍCIO DA MODIFICAÇÃO ---
-                    // Apenas os cards de Graduação e Mensalidade são exibidos.
-                    //
+                    const SizedBox(
+                        height: 8), // MODIFICAÇÃO: Espaçamento reduzido
+
                     Card(
+                      margin: const EdgeInsets.symmetric(vertical: 4.0),
                       child: ListTile(
                         leading: const Icon(Icons.shield_outlined,
                             color: primaryAccent, size: 30),
@@ -920,7 +985,14 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       ),
                     ),
                     if (_currentUser!.role == UserRole.student)
+                      _TrainingGoalCard(
+                        currentUser: _currentUser!,
+                        monthlyCheckins: _monthlyCheckins,
+                        onTap: _showSetGoalDialog,
+                      ),
+                    if (_currentUser!.role == UserRole.student)
                       Card(
+                        margin: const EdgeInsets.symmetric(vertical: 4.0),
                         child: ListTile(
                           leading: Icon(
                             _currentMonthFee != null
@@ -944,9 +1016,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           ),
                         ),
                       ),
-                    //
-                    // --- FIM DA MODIFICAÇÃO ---
-                    //
                   ],
                 ),
               ),
@@ -969,6 +1038,107 @@ class _UserProfilePageState extends State<UserProfilePage> {
     } else {
       return pageBody;
     }
+  }
+
+  String _formatGraduation(UserModel user, Aluno? aluno) {
+    if (user.role == UserRole.manager) return 'N/A';
+    String belt = "";
+    int? degrees;
+    if (user.role == UserRole.student && aluno != null) {
+      belt = aluno.faixa;
+      degrees = aluno.graus;
+    } else {
+      belt = user.faixa ?? "Não informada";
+      degrees = user.graus;
+    }
+    if (degrees != null && degrees > 0) return '$belt - $degreesº Grau';
+    return belt;
+  }
+}
+
+// NOVO WIDGET PARA O CARD DE METAS
+class _TrainingGoalCard extends StatelessWidget {
+  final UserModel currentUser;
+  final int monthlyCheckins;
+  final VoidCallback onTap;
+
+  const _TrainingGoalCard({
+    required this.currentUser,
+    required this.monthlyCheckins,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final goalKey = DateFormat('yyyy-MM').format(now);
+    final goal = currentUser.monthlyTrainingGoals[goalKey] ?? 0;
+    final progress =
+        (goal > 0) ? (monthlyCheckins / goal).clamp(0.0, 1.0) : 0.0;
+
+    String title;
+    if (goal == 0) {
+      title = 'Definir meta de treinos';
+    } else if (monthlyCheckins >= goal) {
+      title = 'Meta alcançada!';
+    } else {
+      title = 'Meta de Treinos do Mês';
+    }
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4.0), // Margem ajustada
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12.0),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    monthlyCheckins >= goal && goal > 0
+                        ? Icons.star_rounded
+                        : Icons.flag_rounded,
+                    color: primaryAccent,
+                    size: 30,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(title,
+                            style: Theme.of(context).textTheme.titleMedium),
+                        if (goal > 0)
+                          Text(
+                            '$monthlyCheckins de $goal treinos',
+                            style:
+                                const TextStyle(color: textHint, fontSize: 14),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.edit_note_rounded, color: textHint),
+                ],
+              ),
+              if (goal > 0) ...[
+                const SizedBox(height: 16),
+                LinearProgressIndicator(
+                  value: progress,
+                  minHeight: 8,
+                  borderRadius: BorderRadius.circular(4),
+                  backgroundColor: darkSurface,
+                  valueColor:
+                      const AlwaysStoppedAnimation<Color>(primaryAccent),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

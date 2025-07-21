@@ -15,7 +15,9 @@ import 'scoreboard_module.dart';
 import 'student_module.dart';
 import 'study_notebook_module.dart';
 import 'auth_gate.dart';
-import 'schedule_module.dart'; // Import do novo módulo
+import 'schedule_module.dart';
+import 'navigation_service.dart';
+import 'app_drawer.dart';
 
 // --- TELAS DO PROFESSOR ---
 class TeacherHomePage extends StatefulWidget {
@@ -28,115 +30,73 @@ class TeacherHomePage extends StatefulWidget {
 
 class _TeacherHomePageState extends State<TeacherHomePage> {
   int _paginaAtual = 0;
-  List<Widget> _telas = [];
   bool _isLoading = true;
-  List<Aluno> _todosParticipantesDaAcademia = [];
-  List<UserModel> _teachers = [];
-  Map<String, dynamic> _sparringState = {};
-  StreamSubscription? _sparringStateSubscription;
-  bool get _isSparringMode => _sparringState['isSparringMode'] ?? false;
 
-  final List<String> _titulos = const [
-    'Painel do Professor',
-    'Grade de Horários',
-    'Gerenciar Alunos',
-    'Check-in',
-    'Sorteio',
-    'Caderno de Estudos',
-    'Placar'
-  ];
+  late final NavigationService _navService;
+  List<AppModule> _allModules = [];
+  List<AppModule> _visibleModules = [];
+  List<Widget> _telas = [];
+
+  List<UserModel> _teachers = [];
+  List<Aluno> _students = [];
+
+  bool _isSparringMode = false;
+  StreamSubscription? _sparringStateSubscription;
+  StreamSubscription? _settingsSubscription;
 
   @override
   void initState() {
     super.initState();
-    _fetchDataAndBuildScreens();
+    _navService =
+        NavigationService(userId: widget.user.uid, userRole: widget.user.role);
+    _loadInitialData();
     _listenToSparringState();
   }
 
   @override
   void dispose() {
     _sparringStateSubscription?.cancel();
+    _settingsSubscription?.cancel();
     super.dispose();
   }
 
-  Future<void> _fetchDataAndBuildScreens() async {
-    if (!mounted) return;
+  Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
     try {
       final firestore = FirebaseFirestore.instance;
       final academyId = widget.user.academyId;
 
-      // Fetch all participants (students and teachers) as Aluno objects for sparring/matchmaking
-      final studentsSnapshot = await firestore
-          .collection('academies')
-          .doc(academyId)
-          .collection('students')
-          .orderBy('nome')
-          .get();
-      final studentParticipants = studentsSnapshot.docs
-          .map((doc) => Aluno.fromJson(doc.id, doc.data()))
-          .toList();
-
       final usersSnapshot = await firestore
           .collection('users')
           .where('academyId', isEqualTo: academyId)
           .where('role', whereIn: ['teacher', 'manager']).get();
-
-      final teacherAndManagerUsers = usersSnapshot.docs
+      _teachers = usersSnapshot.docs
           .map((doc) => UserModel.fromFirestore(doc))
           .toList();
 
-      final userParticipants = teacherAndManagerUsers
-          .map((user) => Aluno.fromUserModel(user))
+      final studentsSnapshot = await firestore
+          .collection('academies')
+          .doc(academyId)
+          .collection('students')
+          .get();
+      final studentParticipants = studentsSnapshot.docs
+          .map((doc) => Aluno.fromJson(doc.id, doc.data()))
           .toList();
+      final teacherParticipants =
+          _teachers.map((user) => Aluno.fromUserModel(user)).toList();
+      _students = [...studentParticipants, ...teacherParticipants]
+        ..sort((a, b) => a.nome.compareTo(b.nome));
 
-      final allParticipants = [...studentParticipants, ...userParticipants];
-      allParticipants.sort((a, b) => a.nome.compareTo(b.nome));
-
-      if (mounted) {
-        _todosParticipantesDaAcademia = allParticipants;
-        _teachers = teacherAndManagerUsers; // Use this for the schedule page
-        _buildScreens();
-        setState(() => _isLoading = false);
-      }
+      _settingsSubscription =
+          _navService.getTabSettingsStream().listen((settingsDoc) {
+        _configureNavigation(settingsDoc);
+      });
     } catch (e) {
       if (mounted) {
+        showBjjSnackBar(context, "Erro ao carregar dados.", type: 'error');
         setState(() => _isLoading = false);
-        showBjjSnackBar(context, 'Erro ao carregar dados da academia.',
-            type: 'error');
-        _buildScreens(); // Build with empty data to avoid crash
       }
     }
-  }
-
-  void _buildScreens() {
-    _telas = [
-      TeacherDashboardPage(
-        user: widget.user,
-        isSparringMode: _isSparringMode,
-        onNavigateToSparring: () {
-          Navigator.of(context).push(MaterialPageRoute(
-              builder: (_) => SparringTeacherPage(
-                  academyId: widget.user.academyId,
-                  todosAlunos: _todosParticipantesDaAcademia)));
-        },
-      ),
-      SchedulePage(user: widget.user, teachers: _teachers),
-      AlunosTeacherPage(academyId: widget.user.academyId, teacher: widget.user),
-      CheckinTeacherPage(
-          academyId: widget.user.academyId,
-          todosParticipantesDaAcademia: _todosParticipantesDaAcademia),
-      SorteioTeacherPage(
-          academyId: widget.user.academyId,
-          todosParticipantesDaAcademia: _todosParticipantesDaAcademia,
-          isSparringMode: _isSparringMode,
-          onIniciarSparring: _startSparring,
-          onCheckinAlunos: _checkinStudents),
-      StudyNotebookPage(userId: widget.user.uid),
-      MatchSetupPage(
-          academyId: widget.user.academyId,
-          todosAlunosDaAcademia: _todosParticipantesDaAcademia),
-    ];
   }
 
   void _listenToSparringState() {
@@ -149,98 +109,207 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         .listen((doc) {
       if (mounted) {
         setState(() {
-          _sparringState = doc.exists ? doc.data()! : {};
-          _buildScreens();
+          _isSparringMode =
+              doc.exists && (doc.data()?['isSparringMode'] ?? false);
+          if (!_isLoading) _rebuildScreens();
         });
       }
     });
   }
 
-  Future<void> _startSparring(List<List<String>> rounds, String generationType,
+  Future<void> _iniciarSparring(List<List<String>> rounds, String tipoGeracao,
       List<Aluno> participants) async {
-    final newState = {
-      'isSparringMode': true,
-      'currentRoundIndex': 1,
-      'allRounds': rounds.map((round) => {'fights': round}).toList(),
-      'generationType': generationType,
-      'participantIds': participants.map((p) => p.id).toList(),
-    };
-    await FirebaseFirestore.instance
-        .collection('academies')
-        .doc(widget.user.academyId)
-        .collection('state')
-        .doc('sparring')
-        .set(newState);
+    if (participants.isEmpty) {
+      showBjjSnackBar(context, 'Selecione participantes para o treino.',
+          type: 'error');
+      return;
+    }
 
-    Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => SparringTeacherPage(
-            academyId: widget.user.academyId,
-            todosAlunos: _todosParticipantesDaAcademia)));
+    await _checkinAlunos(participants);
+
+    // --- INÍCIO DA CORREÇÃO 1: ESTRUTURA DE DADOS DAS RODADAS ---
+    // Transforma a lista de listas em uma lista de mapas para ser compatível com o Firestore.
+    final roundsForFirestore =
+        rounds.map((round) => {'fights': round}).toList();
+    // --- FIM DA CORREÇÃO 1 ---
+
+    final stateData = {
+      'isSparringMode': true,
+      'allRounds': roundsForFirestore, // Salva a nova estrutura
+      'participants': participants.map((p) => p.id).toList(),
+      'generationType': tipoGeracao,
+      'currentRoundIndex': 1,
+      'startedAt': FieldValue.serverTimestamp(),
+    };
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .collection('state')
+          .doc('sparring')
+          .set(stateData);
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao iniciar o treino: $e', type: 'error');
+      }
+    }
   }
 
-  Future<void> _checkinStudents(List<Aluno> studentsToCheckin) async {
+  Future<void> _checkinAlunos(List<Aluno> participants) async {
     final now = DateTime.now();
     final dateOnly = DateTime(now.year, now.month, now.day);
     final checkinRef = FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.user.academyId)
         .collection('checkins');
+
+    final participantIds = participants.map((p) => p.id).toList();
+    if (participantIds.isEmpty) return;
+
+    final querySnapshot = await checkinRef
+        .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
+        .where('studentId', whereIn: participantIds)
+        .get();
+
+    final existingCheckinsMap = {
+      for (var doc in querySnapshot.docs) doc['studentId'] as String: doc
+    };
+
     final batch = FirebaseFirestore.instance.batch();
-    int count = 0;
-    for (var student in studentsToCheckin) {
-      batch.set(checkinRef.doc(), {
-        'studentId': student.id,
-        'date': Timestamp.fromDate(dateOnly),
-      });
-      count++;
+    int newCheckins = 0;
+    for (final student in participants) {
+      if (!existingCheckinsMap.containsKey(student.id)) {
+        final newDocRef = checkinRef.doc();
+        batch.set(newDocRef, {
+          'studentId': student.id,
+          'studentName': student.nome,
+          'date': Timestamp.fromDate(dateOnly),
+          'createdAt': FieldValue.serverTimestamp(),
+          'status': checkinStatusToString(CheckinStatus.approved),
+        });
+        newCheckins++;
+      }
     }
-    await batch.commit();
-    if (mounted) {
-      showBjjSnackBar(context, '$count check-ins confirmados!',
-          type: 'success');
+    if (newCheckins > 0) {
+      await batch.commit();
+      if (mounted) {
+        showBjjSnackBar(context, '$newCheckins presenças confirmadas!',
+            type: 'success');
+      }
     }
   }
 
-  void _onAdicionarAluno() {
-    showDialog(
-      context: context,
-      builder: (_) => AdicionarAlunoDialog(
-          currentUser: widget.user,
-          onAlunoAdicionado: (novoAluno) async {
-            try {
-              final data = novoAluno.toJson();
-              data.removeWhere((key, value) => value == null);
-              data['createdAt'] = FieldValue.serverTimestamp();
-              data['updatedAt'] = FieldValue.serverTimestamp();
+  void _rebuildScreens() {
+    if (_allModules.isEmpty) return;
+    setState(() {
+      _telas =
+          _allModules.map((module) => _buildPageForModule(module)).toList();
+    });
+  }
 
-              await FirebaseFirestore.instance
-                  .collection('academies')
-                  .doc(widget.user.academyId)
-                  .collection('students')
-                  .add(data);
-
-              if (mounted) {
-                showBjjSnackBar(
-                    context, '${novoAluno.nome} adicionado com sucesso!',
-                    type: 'success');
-                _fetchDataAndBuildScreens();
-              }
-            } catch (e) {
-              if (mounted) {
-                showBjjSnackBar(context, 'Erro ao adicionar aluno: $e',
-                    type: 'error');
-              }
+  Widget _buildPageForModule(AppModule module) {
+    switch (module.id) {
+      case 'teacher_dashboard':
+        return TeacherDashboardPage(
+          user: widget.user,
+          isSparringMode: _isSparringMode,
+          onNavigateToSparring: () {
+            final sparringIndex =
+                _allModules.indexWhere((m) => m.id == 'teacher_sparring');
+            if (sparringIndex != -1) {
+              setState(() => _paginaAtual = sparringIndex);
             }
-          }),
-    );
+          },
+        );
+      case 'teacher_sparring':
+        if (_isSparringMode) {
+          return SparringTeacherPage(
+            academyId: widget.user.academyId,
+            todosAlunos: _students,
+          );
+        }
+        return SorteioTeacherPage(
+          academyId: widget.user.academyId,
+          todosParticipantesDaAcademia: _students,
+          isSparringMode: _isSparringMode,
+          onIniciarSparring: _iniciarSparring,
+          onCheckinAlunos: _checkinAlunos,
+        );
+      default:
+        return module.pageBuilder(widget.user, _teachers, _students);
+    }
+  }
+
+  void _configureNavigation(DocumentSnapshot? settingsDoc) {
+    Map<String, dynamic> settings;
+    if (settingsDoc != null && settingsDoc.exists) {
+      settings = settingsDoc.data() as Map<String, dynamic>;
+    } else {
+      settings = _navService.getDefaultTabSettings();
+    }
+
+    final allUserModules = _navService.getModulesForCurrentUser();
+    final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
+    final List<String> visibleIds =
+        List<String>.from(settings['visible'] ?? []);
+
+    for (var module in allUserModules) {
+      if (!savedOrder.contains(module.id)) {
+        savedOrder.add(module.id);
+      }
+    }
+    savedOrder.removeWhere((id) => !allUserModules.any((m) => m.id == id));
+
+    if (mounted) {
+      setState(() {
+        _allModules = savedOrder
+            .map((id) => allUserModules.firstWhere((m) => m.id == id,
+                orElse: () => allUserModules.first))
+            .toList();
+
+        _visibleModules =
+            _allModules.where((m) => visibleIds.contains(m.id)).toList();
+
+        if (_paginaAtual >= _allModules.length) {
+          _paginaAtual = 0;
+        }
+        _rebuildScreens();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _onItemTapped(int index) {
+    final selectedModuleId = _visibleModules[index].id;
+    final globalIndex = _allModules.indexWhere((m) => m.id == selectedModuleId);
+    setState(() {
+      _paginaAtual = globalIndex;
+    });
+  }
+
+  void _onDrawerItemTapped(int index) {
+    setState(() {
+      _paginaAtual = index;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: AppBackground(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    final currentModule = _allModules[_paginaAtual];
+    final currentVisibleIndex =
+        _visibleModules.indexWhere((m) => m.id == currentModule.id);
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_titulos[_paginaAtual]),
+        title: Text(currentModule.title),
         actions: [
           IconButton(
               icon: const Icon(Icons.settings),
@@ -254,61 +323,75 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
               }),
         ],
       ),
+      drawer: AppDrawer(
+        user: widget.user,
+        allModules: _allModules,
+        onSelectItem: _onDrawerItemTapped,
+      ),
       body: AppBackground(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator())
-            : SafeArea(
-                child: IndexedStack(index: _paginaAtual, children: _telas),
-              ),
+        child: SafeArea(
+          child: IndexedStack(index: _paginaAtual, children: _telas),
+        ),
       ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _paginaAtual,
-        onTap: (index) => setState(() => _paginaAtual = index),
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_rounded),
-            label: 'Início',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month_rounded),
-            label: 'Grade',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people_alt_rounded),
-            label: 'Alunos',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.check_circle_outline_rounded),
-            label: 'Check-in',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shuffle_rounded),
-            label: 'Sorteio',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.book_rounded),
-            label: 'Estudos',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.scoreboard_rounded),
-            label: 'Placar',
-          ),
-        ],
+        currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
+        onTap: _onItemTapped,
+        items: _visibleModules.map((module) {
+          return BottomNavigationBarItem(
+            icon: Icon(module.icon),
+            label: module.title,
+          );
+        }).toList(),
       ),
-      floatingActionButton: _paginaAtual == 2
-          ? FloatingActionButton(
-              onPressed: _onAdicionarAluno,
-              tooltip: 'Adicionar Aluno',
-              child: const Icon(Icons.add),
-            )
-          : null,
+      floatingActionButton: _buildFloatingActionButton(),
     );
+  }
+
+  Widget? _buildFloatingActionButton() {
+    final currentModuleId = _allModules[_paginaAtual].id;
+    if (currentModuleId == 'teacher_students') {
+      return FloatingActionButton(
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (_) => AdicionarAlunoDialog(
+                currentUser: widget.user,
+                onAlunoAdicionado: (novoAluno) async {
+                  try {
+                    final data = novoAluno.toJson();
+                    data.removeWhere((key, value) => value == null);
+                    data['createdAt'] = FieldValue.serverTimestamp();
+                    data['updatedAt'] = FieldValue.serverTimestamp();
+
+                    await FirebaseFirestore.instance
+                        .collection('academies')
+                        .doc(widget.user.academyId)
+                        .collection('students')
+                        .add(data);
+
+                    if (mounted) {
+                      showBjjSnackBar(
+                          context, '${novoAluno.nome} adicionado com sucesso!',
+                          type: 'success');
+                      _loadInitialData();
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      showBjjSnackBar(context, 'Erro ao adicionar aluno: $e',
+                          type: 'error');
+                    }
+                  }
+                }),
+          );
+        },
+        tooltip: 'Adicionar Aluno',
+        child: const Icon(Icons.add),
+      );
+    }
+    return null;
   }
 }
 
-// O restante do arquivo teacher_module.dart permanece o mesmo...
-// (AlunosTeacherPage, TeacherDashboardPage, etc.)
-// --- Restante do arquivo inalterado ---
 class AlunosTeacherPage extends StatefulWidget {
   final String academyId;
   final UserModel teacher;
@@ -558,8 +641,8 @@ class CheckinTeacherPage extends StatelessWidget {
         Card(
           child: ListTile(
             leading:
-                const Icon(Icons.checklist_rtl_rounded, color: primaryAccent),
-            title: const Text("Fazer Chamada"),
+                const Icon(Icons.checklist_rtl_rounded, color: successColor),
+            title: const Text("Fazer Chamada (Presencial)"),
             trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
             onTap: () async {
               final checkedInCount = await Navigator.of(context).push<int>(
@@ -578,6 +661,20 @@ class CheckinTeacherPage extends StatelessWidget {
                     context, '$checkedInCount presenças confirmadas!',
                     type: 'success');
               }
+            },
+          ),
+        ),
+        Card(
+          child: ListTile(
+            leading:
+                const Icon(Icons.fact_check_outlined, color: primaryAccent),
+            title: const Text("Aprovar Check-ins"),
+            subtitle: const Text("Ver e aprovar solicitações de hoje"),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            onTap: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ApproveCheckinsPage(academyId: academyId),
+              ));
             },
           ),
         ),
@@ -613,6 +710,21 @@ class CheckinTeacherPage extends StatelessWidget {
         ),
         Card(
           child: ListTile(
+            leading: const Icon(Icons.history_rounded, color: textHint),
+            title: const Text("Histórico de Check-in"),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            onTap: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => CheckinHistoryPage(
+                  academyId: academyId,
+                  allParticipants: todosParticipantesDaAcademia,
+                ),
+              ));
+            },
+          ),
+        ),
+        Card(
+          child: ListTile(
             leading: const Icon(Icons.leaderboard_rounded, color: infoColor),
             title: const Text("Ranking de Presença"),
             trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
@@ -630,22 +742,143 @@ class CheckinTeacherPage extends StatelessWidget {
             },
           ),
         ),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.history_rounded, color: successColor),
-            title: const Text("Histórico de Check-in"),
-            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-            onTap: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => CheckinHistoryPage(
-                  academyId: academyId,
-                  allParticipants: todosParticipantesDaAcademia,
-                ),
-              ));
+      ],
+    );
+  }
+}
+
+class ApproveCheckinsPage extends StatefulWidget {
+  final String academyId;
+  const ApproveCheckinsPage({super.key, required this.academyId});
+
+  @override
+  State<ApproveCheckinsPage> createState() => _ApproveCheckinsPageState();
+}
+
+class _ApproveCheckinsPageState extends State<ApproveCheckinsPage> {
+  Stream<QuerySnapshot> _getPendingCheckinsStream() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+
+    return FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('checkins')
+        .where('date', isEqualTo: Timestamp.fromDate(today))
+        .where('status',
+            isEqualTo: checkinStatusToString(CheckinStatus.pending))
+        .snapshots();
+  }
+
+  Future<void> _approveCheckin(String checkinId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('checkins')
+          .doc(checkinId)
+          .update({'status': checkinStatusToString(CheckinStatus.approved)});
+
+      if (mounted) {
+        showBjjSnackBar(context, 'Check-in aprovado!', type: 'success');
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao aprovar check-in.', type: 'error');
+      }
+    }
+  }
+
+  Future<void> _denyCheckin(String checkinId) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('checkins')
+          .doc(checkinId)
+          .delete();
+
+      if (mounted) {
+        showBjjSnackBar(context, 'Solicitação recusada.', type: 'info');
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao recusar solicitação.', type: 'error');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Aprovar Check-ins de Hoje'),
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: _getPendingCheckinsStream(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                debugPrint(
+                    "Erro ao carregar check-ins pendentes: ${snapshot.error}");
+                return const Center(
+                    child: Text('Erro ao carregar solicitações.'));
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.check_circle_outline,
+                  title: 'Nenhuma Solicitação',
+                  message: 'Não há check-ins pendentes para hoje.',
+                );
+              }
+
+              final requests = snapshot.data!.docs;
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(8.0),
+                itemCount: requests.length,
+                itemBuilder: (context, index) {
+                  final request = requests[index];
+                  final data = request.data() as Map<String, dynamic>;
+                  final studentName =
+                      data['studentName'] ?? 'Aluno desconhecido';
+                  final className =
+                      data['className'] ?? 'Aula não especificada';
+
+                  return Card(
+                    child: ListTile(
+                      title: Text(studentName),
+                      subtitle: Text(className),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.close_rounded,
+                                color: errorColor),
+                            tooltip: 'Recusar',
+                            onPressed: () => _denyCheckin(request.id),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.check_rounded,
+                                color: successColor),
+                            tooltip: 'Aprovar',
+                            onPressed: () => _approveCheckin(request.id),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
             },
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -667,7 +900,7 @@ class CheckinHistoryPage extends StatefulWidget {
 class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
   late final Map<String, Aluno> _participantsMap;
   DateTime _selectedDay = DateTime.now();
-  List<Aluno> _checkedInStudents = [];
+  List<CheckinEntry> _checkedInEntries = [];
   bool _isLoading = true;
 
   @override
@@ -687,19 +920,23 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
           .doc(widget.academyId)
           .collection('checkins')
           .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
+          .where('status',
+              isEqualTo: checkinStatusToString(CheckinStatus.approved))
           .get();
 
-      final studentIds =
-          snapshot.docs.map((doc) => doc['studentId'] as String).toList();
-      final students = studentIds
-          .map((id) => _participantsMap[id])
-          .whereType<Aluno>()
+      final entries = snapshot.docs
+          .map((doc) => CheckinEntry.fromJson(doc.id, doc.data()))
           .toList();
-      students.sort((a, b) => a.nome.compareTo(b.nome));
+
+      entries.sort((a, b) {
+        final nameA = _participantsMap[a.studentId]?.nome ?? '';
+        final nameB = _participantsMap[b.studentId]?.nome ?? '';
+        return nameA.compareTo(nameB);
+      });
 
       if (mounted) {
         setState(() {
-          _checkedInStudents = students;
+          _checkedInEntries = entries;
           _isLoading = false;
         });
       }
@@ -707,6 +944,47 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
       if (mounted) {
         setState(() => _isLoading = false);
         showBjjSnackBar(context, "Erro ao buscar presenças.", type: 'error');
+      }
+    }
+  }
+
+  Future<void> _deleteCheckin(String checkinId, String studentName) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remover Check-in?'),
+        content: Text(
+            'Tem certeza que deseja remover a presença de $studentName para este dia?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text('Remover'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await FirebaseFirestore.instance
+            .collection('academies')
+            .doc(widget.academyId)
+            .collection('checkins')
+            .doc(checkinId)
+            .delete();
+        if (mounted) {
+          showBjjSnackBar(context, 'Check-in removido.', type: 'success');
+          _fetchCheckinsForDay(_selectedDay);
+        }
+      } catch (e) {
+        if (mounted) {
+          showBjjSnackBar(context, 'Erro ao remover check-in.', type: 'error');
+        }
       }
     }
   }
@@ -755,14 +1033,14 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                 child: Text(
-                  "Presentes na data selecionada (${_checkedInStudents.length})",
+                  "Presentes na data selecionada (${_checkedInEntries.length})",
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
               ),
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
-                    : _checkedInStudents.isEmpty
+                    : _checkedInEntries.isEmpty
                         ? const EmptyStateWidget(
                             icon: Icons.group_off_rounded,
                             title: "Nenhum check-in",
@@ -770,15 +1048,27 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
                           )
                         : ListView.builder(
                             padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-                            itemCount: _checkedInStudents.length,
+                            itemCount: _checkedInEntries.length,
                             itemBuilder: (context, index) {
-                              final student = _checkedInStudents[index];
+                              final entry = _checkedInEntries[index];
+                              final student = _participantsMap[entry.studentId];
+                              if (student == null) {
+                                return const SizedBox.shrink();
+                              }
+
                               return Card(
                                 child: ListTile(
                                   leading: const Icon(Icons.check_circle,
                                       color: successColor),
                                   title: Text(student.nome),
                                   subtitle: Text(student.faixa),
+                                  trailing: IconButton(
+                                    icon: const Icon(Icons.delete_outline,
+                                        color: errorColor),
+                                    tooltip: 'Remover check-in',
+                                    onPressed: () =>
+                                        _deleteCheckin(entry.id, student.nome),
+                                  ),
                                 ),
                               );
                             },
@@ -855,27 +1145,50 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
           .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
           .where('studentId', whereIn: _selectedStudentIds.toList())
           .get();
-      final alreadyCheckedInIds =
-          querySnapshot.docs.map((doc) => doc['studentId'] as String).toSet();
+
+      final existingCheckinsMap = {
+        for (var doc in querySnapshot.docs) doc['studentId'] as String: doc
+      };
+
       final batch = FirebaseFirestore.instance.batch();
-      int newCheckinsCount = 0;
+      int confirmedCount = 0;
+
       for (final studentId in _selectedStudentIds) {
-        if (!alreadyCheckedInIds.contains(studentId)) {
-          final newDoc = checkinRef.doc();
-          batch.set(newDoc, {
+        final existingDoc = existingCheckinsMap[studentId];
+        final studentName = widget.todosParticipantesDaAcademia
+            .firstWhere((p) => p.id == studentId)
+            .nome;
+
+        if (existingDoc != null) {
+          // --- INÍCIO DA CORREÇÃO 2: ACESSO SEGURO AO CAMPO 'STATUS' ---
+          final data = existingDoc.data() as Map<String, dynamic>?;
+          if (data != null &&
+              data['status'] == checkinStatusToString(CheckinStatus.pending)) {
+            batch.update(existingDoc.reference, {
+              'status': checkinStatusToString(CheckinStatus.approved),
+              'studentName': studentName,
+            });
+            confirmedCount++;
+          }
+          // --- FIM DA CORREÇÃO 2 ---
+        } else {
+          final newDocRef = checkinRef.doc();
+          batch.set(newDocRef, {
             'studentId': studentId,
+            'studentName': studentName,
             'date': Timestamp.fromDate(dateOnly),
             'createdAt': FieldValue.serverTimestamp(),
+            'status': checkinStatusToString(CheckinStatus.approved),
           });
-          newCheckinsCount++;
+          confirmedCount++;
         }
       }
 
-      if (newCheckinsCount > 0) {
+      if (confirmedCount > 0) {
         await batch.commit();
       }
       if (mounted) {
-        Navigator.of(context).pop(newCheckinsCount);
+        Navigator.of(context).pop(confirmedCount);
       }
     } catch (e) {
       if (mounted) {
@@ -1053,30 +1366,48 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
           .where('studentId', whereIn: _selectedStudentIds.toList())
           .get();
 
-      final alreadyCheckedInIds =
-          querySnapshot.docs.map((doc) => doc['studentId'] as String).toSet();
+      final existingCheckinsMap = {
+        for (var doc in querySnapshot.docs) doc['studentId'] as String: doc
+      };
 
       final batch = FirebaseFirestore.instance.batch();
-      int newCheckinsCount = 0;
+      int confirmedCount = 0;
 
       for (final studentId in _selectedStudentIds) {
-        if (!alreadyCheckedInIds.contains(studentId)) {
-          final newDoc = checkinRef.doc();
-          batch.set(newDoc, {
+        final existingDoc = existingCheckinsMap[studentId];
+        final studentName = widget.todosParticipantesDaAcademia
+            .firstWhere((p) => p.id == studentId)
+            .nome;
+
+        if (existingDoc != null) {
+          // --- INÍCIO DA CORREÇÃO 2: ACESSO SEGURO AO CAMPO 'STATUS' ---
+          final data = existingDoc.data() as Map<String, dynamic>?;
+          if (data != null &&
+              data['status'] == checkinStatusToString(CheckinStatus.pending)) {
+            batch.update(existingDoc.reference,
+                {'status': checkinStatusToString(CheckinStatus.approved)});
+            confirmedCount++;
+          }
+          // --- FIM DA CORREÇÃO 2 ---
+        } else {
+          final newDocRef = checkinRef.doc();
+          batch.set(newDocRef, {
             'studentId': studentId,
+            'studentName': studentName,
             'date': Timestamp.fromDate(dateOnly),
             'createdAt': FieldValue.serverTimestamp(),
+            'status': checkinStatusToString(CheckinStatus.approved),
           });
-          newCheckinsCount++;
+          confirmedCount++;
         }
       }
 
-      if (newCheckinsCount > 0) {
+      if (confirmedCount > 0) {
         await batch.commit();
       }
 
       if (mounted) {
-        Navigator.of(context).pop(newCheckinsCount);
+        Navigator.of(context).pop(confirmedCount);
       }
     } catch (e) {
       if (mounted) {
@@ -1231,6 +1562,9 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
           .collection('academies')
           .doc(academyId)
           .collection('checkins')
+          .where('status',
+              isEqualTo: checkinStatusToString(
+                  CheckinStatus.approved)) // Apenas aprovados
           .get();
       final allCheckins = checkinsSnapshot.docs
           .map((doc) => CheckinEntry.fromJson(doc.id, doc.data()))
@@ -1674,14 +2008,16 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
   StreamSubscription? _sparringStateSubscription;
 
   int get _currentRoundIndex => _sparringState['currentRoundIndex'] ?? 0;
+
   List<List<String>> get _allRounds {
     final dynamic roundsData = _sparringState['allRounds'];
     if (roundsData is List) {
-      return roundsData.map<List<String>>((item) {
-        if (item is Map &&
-            item.containsKey('fights') &&
-            item['fights'] is List) {
-          return List<String>.from(item['fights']);
+      // Lida com a nova estrutura: List<Map<String, dynamic>>
+      return roundsData.map<List<String>>((round) {
+        if (round is Map &&
+            round.containsKey('fights') &&
+            round['fights'] is List) {
+          return List<String>.from(round['fights']);
         }
         return <String>[];
       }).toList();
@@ -1716,10 +2052,10 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
           _isLoading = false;
         });
       } else {
-        if (Navigator.canPop(context)) {
-          Navigator.of(context).pop();
-        }
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _sparringState = {};
+        });
       }
     });
   }
@@ -1771,18 +2107,19 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
       );
     }
 
+    final allRounds = _allRounds;
     List<String> currentRoundFights = [];
     String roundTitle = '';
-    bool isLastRound = _currentRoundIndex > _allRounds.length;
+    bool isLastRound = _currentRoundIndex >= allRounds.length;
 
-    if (_allRounds.isNotEmpty) {
-      if (isLastRound) {
-        currentRoundFights = _allRounds.last;
+    if (allRounds.isNotEmpty) {
+      if (_currentRoundIndex > allRounds.length) {
+        currentRoundFights = allRounds.last;
         roundTitle =
-            'FIM - Última Rodada (${_allRounds.length}/${_allRounds.length})';
+            'FIM - Última Rodada (${allRounds.length}/${allRounds.length})';
       } else {
-        currentRoundFights = _allRounds[_currentRoundIndex - 1];
-        roundTitle = 'Rodada $_currentRoundIndex / ${_allRounds.length}';
+        currentRoundFights = allRounds[_currentRoundIndex - 1];
+        roundTitle = 'Rodada $_currentRoundIndex / ${allRounds.length}';
       }
     }
 

@@ -17,8 +17,30 @@ enum PaymentStatus {
   atrasado, // Pagamento não realizado (após o vencimento)
 }
 
+// NOVO ENUM para o status do check-in
+enum CheckinStatus {
+  pending,
+  approved,
+}
+
+// Helper para converter o enum de status do check-in para String e vice-versa
+String checkinStatusToString(CheckinStatus status) {
+  switch (status) {
+    case CheckinStatus.pending:
+      return 'pending';
+    case CheckinStatus.approved:
+      return 'approved';
+  }
+}
+
+CheckinStatus checkinStatusFromString(String? statusString) {
+  if (statusString == 'approved') {
+    return CheckinStatus.approved;
+  }
+  return CheckinStatus.pending; // Padrão é pendente
+}
+
 /// Modelo para representar um Usuário do sistema (login via FirebaseAuth).
-/// Pode ser um gerente, professor ou aluno com acesso ao app.
 class UserModel {
   final String uid;
   final String name;
@@ -33,7 +55,8 @@ class UserModel {
   final int? graus;
   final double? peso;
   final String? profileImagePath;
-  final DateTime? dataNascimento; // NOVO CAMPO
+  final DateTime? dataNascimento;
+  final Map<String, int> monthlyTrainingGoals;
 
   // [MELHORIA] Campos de Auditoria
   final Timestamp? createdAt;
@@ -56,7 +79,8 @@ class UserModel {
     this.graus,
     this.peso,
     this.profileImagePath,
-    this.dataNascimento, // NOVO CAMPO
+    this.dataNascimento,
+    this.monthlyTrainingGoals = const {},
     this.createdAt,
     this.updatedAt,
     this.createdByUid,
@@ -65,7 +89,6 @@ class UserModel {
     this.lastUpdatedByName,
   });
 
-  // GETTER PARA CALCULAR A IDADE
   int? get idade {
     if (dataNascimento == null) return null;
     final hoje = DateTime.now();
@@ -95,6 +118,12 @@ class UserModel {
         role = UserRole.unknown;
     }
 
+    final goalsData =
+        data['monthlyTrainingGoals'] as Map<String, dynamic>? ?? {};
+    final Map<String, int> goals = goalsData.map((key, value) {
+      return MapEntry(key, (value as num).toInt());
+    });
+
     return UserModel(
       uid: doc.id,
       name: data['name'] ?? 'Nome não definido',
@@ -108,9 +137,8 @@ class UserModel {
       graus: data['graus'],
       peso: (data['peso'] as num?)?.toDouble(),
       profileImagePath: data['profileImagePath'],
-      dataNascimento:
-          (data['dataNascimento'] as Timestamp?)?.toDate(), // NOVO CAMPO
-      // [MELHORIA] Lendo campos de auditoria
+      dataNascimento: (data['dataNascimento'] as Timestamp?)?.toDate(),
+      monthlyTrainingGoals: goals,
       createdAt: data['createdAt'],
       updatedAt: data['updatedAt'],
       createdByUid: data['createdByUid'],
@@ -121,19 +149,16 @@ class UserModel {
   }
 }
 
-/// Modelo para representar um Aluno na academia.
-/// Pode ou não ter um `userId` associado (se tiver acesso de login).
 class Aluno {
-  final String id; // ID do documento na subcoleção 'students'
+  final String id;
   String nome;
   String faixa;
   double peso;
   int? graus;
-  final DateTime? dataNascimento; // CAMPO EXISTENTE
-  String? userId; // ID do usuário no Auth, se tiver acesso
-  PaymentStatus paymentStatus; // Usado na tela de mensalidades
+  final DateTime? dataNascimento;
+  String? userId;
+  PaymentStatus paymentStatus;
 
-  // [MELHORIA] Campos de Auditoria
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
   final String? createdByUid;
@@ -158,7 +183,6 @@ class Aluno {
     this.lastUpdatedByName,
   });
 
-  // GETTER PARA CALCULAR A IDADE
   int? get idade {
     if (dataNascimento == null) return null;
     final hoje = DateTime.now();
@@ -171,7 +195,6 @@ class Aluno {
     return idade;
   }
 
-  // Construtor para criar um Aluno sem ID ainda (antes de salvar no Firestore)
   Aluno.novo({
     required this.nome,
     required this.faixa,
@@ -183,12 +206,11 @@ class Aluno {
     this.createdByName,
   })  : id = '',
         paymentStatus = PaymentStatus.pendente,
-        createdAt = null, // Será definido no servidor
-        updatedAt = null, // Será definido no servidor
+        createdAt = null,
+        updatedAt = null,
         lastUpdatedByUid = createdByUid,
         lastUpdatedByName = createdByName;
 
-  // Converte um objeto Aluno para um Map JSON para salvar no Firestore.
   Map<String, dynamic> toJson() {
     return {
       'nome': nome,
@@ -198,7 +220,6 @@ class Aluno {
       'dataNascimento':
           dataNascimento != null ? Timestamp.fromDate(dataNascimento!) : null,
       'userId': userId,
-      // [MELHORIA] Salvando campos de auditoria
       'createdAt': createdAt ?? FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'createdByUid': createdByUid,
@@ -208,7 +229,6 @@ class Aluno {
     };
   }
 
-  // Cria um objeto Aluno a partir de um documento do Firestore.
   factory Aluno.fromJson(String id, Map<String, dynamic> json) {
     return Aluno(
       id: id,
@@ -218,7 +238,6 @@ class Aluno {
       graus: json['graus'],
       dataNascimento: (json['dataNascimento'] as Timestamp?)?.toDate(),
       userId: json['userId'],
-      // [MELHORIA] Lendo campos de auditoria
       createdAt: json['createdAt'],
       updatedAt: json['updatedAt'],
       createdByUid: json['createdByUid'],
@@ -228,16 +247,15 @@ class Aluno {
     );
   }
 
-  // Converte um UserModel (professor) em um objeto Aluno para participar de sorteios/lutas.
   factory Aluno.fromUserModel(UserModel user) {
     return Aluno(
-      id: user.uid, // Usa o UID do usuário como ID único do participante
+      id: user.uid,
       nome: user.name,
-      faixa: user.faixa ?? 'Preta', // Padrão para professores
-      peso: user.peso ?? 80.0, // Um peso padrão
+      faixa: user.faixa ?? 'Preta',
+      peso: user.peso ?? 80.0,
       graus: user.graus,
       userId: user.uid,
-      dataNascimento: user.dataNascimento, // Passa a data de nascimento
+      dataNascimento: user.dataNascimento,
     );
   }
 
@@ -250,7 +268,6 @@ class Aluno {
   int get hashCode => id.hashCode;
 }
 
-/// Modelo para armazenar as configurações de uma luta no placar.
 class MatchSettings {
   final Aluno athlete1;
   final Aluno athlete2;
@@ -282,7 +299,6 @@ class MatchSettings {
   }
 }
 
-/// Modelo para representar um registro de pagamento de mensalidade.
 class MonthlyFee {
   final String id;
   final String studentId;
@@ -327,13 +343,17 @@ class MonthlyFee {
   }
 }
 
-/// Modelo para um registro de check-in (presença).
+// MODIFICAÇÃO: Modelo de Check-in atualizado com status
 class CheckinEntry {
   final String id;
   final String studentId;
   final DateTime date;
   final String? creatorId;
   final String? creatorName;
+  final CheckinStatus status; // NOVO CAMPO
+  final String? classId;
+  final String? className;
+  final String? studentName;
 
   CheckinEntry({
     required this.id,
@@ -341,15 +361,23 @@ class CheckinEntry {
     required this.date,
     this.creatorId,
     this.creatorName,
+    this.status = CheckinStatus.pending,
+    this.classId,
+    this.className,
+    this.studentName,
   });
 
   factory CheckinEntry.fromJson(String id, Map<String, dynamic> json) {
     return CheckinEntry(
       id: id,
-      studentId: json['studentId'],
+      studentId: json['studentId'] ?? '',
       date: (json['date'] as Timestamp).toDate(),
       creatorId: json['creatorId'],
       creatorName: json['creatorName'],
+      status: checkinStatusFromString(json['status']),
+      classId: json['classId'],
+      className: json['className'],
+      studentName: json['studentName'],
     );
   }
 
@@ -359,20 +387,82 @@ class CheckinEntry {
       'date': Timestamp.fromDate(date),
       'creatorId': creatorId,
       'creatorName': creatorName,
+      'status': checkinStatusToString(status),
+      'classId': classId,
+      'className': className,
+      'studentName': studentName,
     };
   }
 }
 
-/// Modelo auxiliar para a geração de lutas nos sorteios.
 class Luta {
   final Aluno aluno1;
   final Aluno aluno2;
-  final double custo; // Diferença de peso ou faixa
+  final double custo;
 
   Luta(this.aluno1, this.aluno2, this.custo);
 }
 
-/// Modelo para uma anotação no caderno de estudos pessoal de cada usuário.
+class StudySubject {
+  final String id;
+  String title;
+  final DateTime createdAt;
+
+  StudySubject({
+    required this.id,
+    required this.title,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'createdAt': Timestamp.fromDate(createdAt),
+    };
+  }
+
+  factory StudySubject.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return StudySubject(
+      id: doc.id,
+      title: data['title'] ?? 'Sem Título',
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+    );
+  }
+}
+
+class StudyVolume {
+  final String id;
+  String title;
+  final String subjectId;
+  final DateTime createdAt;
+
+  StudyVolume({
+    required this.id,
+    required this.title,
+    required this.subjectId,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'subjectId': subjectId,
+      'createdAt': Timestamp.fromDate(createdAt),
+    };
+  }
+
+  factory StudyVolume.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return StudyVolume(
+      id: doc.id,
+      title: data['title'] ?? 'Sem Título',
+      subjectId: data['subjectId'] ?? '',
+      createdAt: (data['createdAt'] as Timestamp).toDate(),
+    );
+  }
+}
+
 class StudyNote {
   final String id;
   String title;
@@ -382,6 +472,7 @@ class StudyNote {
   String? imagePath;
   final DateTime createdAt;
   DateTime updatedAt;
+  final String volumeId;
 
   StudyNote({
     required this.id,
@@ -392,18 +483,20 @@ class StudyNote {
     this.imagePath,
     required this.createdAt,
     required this.updatedAt,
+    required this.volumeId,
   });
 
   factory StudyNote.create({
     required String title,
     required String content,
+    required String volumeId,
     List<String>? tags,
     String? videoUrl,
     String? imagePath,
   }) {
     final now = DateTime.now();
     return StudyNote(
-      id: now.millisecondsSinceEpoch.toString(),
+      id: '',
       title: title,
       content: content,
       tags: tags ?? [],
@@ -411,32 +504,35 @@ class StudyNote {
       imagePath: imagePath,
       createdAt: now,
       updatedAt: now,
+      volumeId: volumeId,
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'id': id,
       'title': title,
       'content': content,
       'tags': tags,
       'videoUrl': videoUrl,
       'imagePath': imagePath,
-      'createdAt': createdAt.toIso8601String(),
-      'updatedAt': updatedAt.toIso8601String(),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
+      'volumeId': volumeId,
     };
   }
 
-  factory StudyNote.fromJson(Map<String, dynamic> json) {
+  factory StudyNote.fromFirestore(DocumentSnapshot doc) {
+    final json = doc.data() as Map<String, dynamic>;
     return StudyNote(
-      id: json['id'],
-      title: json['title'],
-      content: json['content'],
-      tags: List<String>.from(json['tags']),
+      id: doc.id,
+      title: json['title'] ?? 'Sem título',
+      content: json['content'] ?? '',
+      tags: List<String>.from(json['tags'] ?? []),
       videoUrl: json['videoUrl'],
       imagePath: json['imagePath'],
-      createdAt: DateTime.parse(json['createdAt']),
-      updatedAt: DateTime.parse(json['updatedAt']),
+      createdAt: (json['createdAt'] as Timestamp).toDate(),
+      updatedAt: (json['updatedAt'] as Timestamp).toDate(),
+      volumeId: json['volumeId'] ?? '',
     );
   }
 }

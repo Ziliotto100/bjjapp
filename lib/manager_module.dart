@@ -1,6 +1,7 @@
 // lib/manager_module.dart
 // ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps, deprecated_member_use
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -13,11 +14,11 @@ import 'common_widgets.dart';
 import 'app_theme.dart';
 import 'student_module.dart';
 import 'auth_gate.dart';
-import 'schedule_module.dart'; // Import do novo módulo
+import 'navigation_service.dart';
+import 'app_drawer.dart';
 
-// --- LÓGICA DE GERENCIAMENTO DE USUÁRIOS (NOVA) ---
+// --- LÓGICA DE GERENCIAMENTO DE USUÁRIOS ---
 class UserManagementService {
-  /// Promove um aluno para o papel de professor.
   static Future<void> promoteToTeacher(BuildContext context,
       {required String academyId,
       required Aluno aluno,
@@ -32,14 +33,12 @@ class UserManagementService {
     final firestore = FirebaseFirestore.instance;
     final batch = firestore.batch();
 
-    // 1. Atualiza o documento do usuário na coleção 'users'
     final userRef = firestore.collection('users').doc(aluno.userId!);
     batch.update(userRef, {
       'role': 'teacher',
       'faixa': aluno.faixa,
       'graus': aluno.graus,
       'peso': aluno.peso,
-      // [CORREÇÃO] Adiciona a data de nascimento ao promover
       'dataNascimento': aluno.dataNascimento != null
           ? Timestamp.fromDate(aluno.dataNascimento!)
           : null,
@@ -49,7 +48,6 @@ class UserManagementService {
       'lastUpdatedByName': manager.name,
     });
 
-    // 2. Deleta o registro antigo da subcoleção 'students'
     final studentDocRef = firestore
         .collection('academies')
         .doc(academyId)
@@ -66,7 +64,6 @@ class UserManagementService {
     }
   }
 
-  /// Reverte um professor para o papel de aluno.
   static Future<void> demoteToStudent(BuildContext context,
       {required String academyId,
       required UserModel teacher,
@@ -74,7 +71,6 @@ class UserManagementService {
     final firestore = FirebaseFirestore.instance;
     final batch = firestore.batch();
 
-    // 1. Cria um novo registro de aluno na subcoleção 'students'
     final newStudentRef = firestore
         .collection('academies')
         .doc(academyId)
@@ -86,7 +82,6 @@ class UserManagementService {
       'graus': teacher.graus,
       'peso': teacher.peso ?? 0.0,
       'userId': teacher.uid,
-      // [CORREÇÃO] Adiciona a data de nascimento ao reverter
       'dataNascimento': teacher.dataNascimento != null
           ? Timestamp.fromDate(teacher.dataNascimento!)
           : null,
@@ -98,7 +93,6 @@ class UserManagementService {
       'lastUpdatedByName': manager.name,
     });
 
-    // 2. Atualiza o documento do usuário na coleção 'users'
     final userRef = firestore.collection('users').doc(teacher.uid);
     batch.update(userRef, {
       'role': 'student',
@@ -118,12 +112,11 @@ class UserManagementService {
   }
 }
 
-// --- WIDGET DE CARD DE USUÁRIO MODIFICADO ---
+// --- WIDGET DE CARD DE USUÁRIO ---
 class UserCard extends StatelessWidget {
-  final dynamic user; // Pode ser Aluno ou UserModel
+  final dynamic user;
   final String academyId;
   final UserModel currentUser;
-  // MODIFICAÇÃO: Adicionado para receber a URL da imagem de perfil.
   final String? profileImageUrl;
 
   const UserCard({
@@ -131,7 +124,7 @@ class UserCard extends StatelessWidget {
     required this.user,
     required this.academyId,
     required this.currentUser,
-    this.profileImageUrl, // MODIFICAÇÃO
+    this.profileImageUrl,
   });
 
   @override
@@ -140,32 +133,20 @@ class UserCard extends StatelessWidget {
     final String name = isStudent ? user.nome : user.name;
     final String? belt = isStudent ? user.faixa : user.faixa;
     final int? degrees = isStudent ? user.graus : user.graus;
-    final String roleText;
-
-    if (isStudent) {
-      roleText = 'Aluno';
-    } else {
-      // É UserModel
-      if (user.role == UserRole.manager) {
-        roleText = 'Gerente (Você)';
-      } else {
-        roleText = 'Professor';
-      }
-    }
+    final String roleText = isStudent
+        ? 'Aluno'
+        : (user.role == UserRole.manager ? 'Gerente (Você)' : 'Professor');
 
     String subtitle;
     if (isStudent) {
-      // Lógica para Aluno
       subtitle = belt ?? 'Faixa não definida';
       if (degrees != null && degrees > 0) {
         subtitle += ' - $degreesº Grau';
       }
     } else {
-      // Lógica para UserModel (Professor ou Gerente)
       if (user.role == UserRole.manager) {
         subtitle = user.email;
       } else {
-        // É Professor
         subtitle = belt ?? 'Faixa não definida';
         if (degrees != null && degrees > 0) {
           subtitle += ' - $degreesº Grau';
@@ -174,7 +155,6 @@ class UserCard extends StatelessWidget {
       }
     }
 
-    // MODIFICAÇÃO: Lógica para decidir o que exibir no CircleAvatar
     final bool hasImage =
         profileImageUrl != null && profileImageUrl!.isNotEmpty;
     final backgroundImage = hasImage ? NetworkImage(profileImageUrl!) : null;
@@ -233,8 +213,7 @@ class UserCard extends StatelessWidget {
   }
 }
 
-// --- TELAS DO GERENTE (REFATORADAS) ---
-
+// --- TELA PRINCIPAL DO GERENTE (REFATORADA COM A CORREÇÃO) ---
 class ManagerHomePage extends StatefulWidget {
   final UserModel user;
   const ManagerHomePage({super.key, required this.user});
@@ -246,201 +225,266 @@ class ManagerHomePage extends StatefulWidget {
 class _ManagerHomePageState extends State<ManagerHomePage> {
   int _paginaAtual = 0;
   bool _isLoading = true;
-  late List<Widget> _telas;
-  List<UserModel> _teachers = [];
 
-  final List<String> _titulos = const [
-    'Painel Principal',
-    'Gerenciar Alunos',
-    'Gerenciar Professores',
-    'Grade de Horários',
-    'Mensalidades'
-  ];
+  late final NavigationService _navService;
+  List<AppModule> _allModules = [];
+  List<AppModule> _visibleModules = [];
+  List<Widget> _telas = [];
+
+  List<UserModel> _teachers = [];
+  List<Aluno> _students = [];
+
+  StreamSubscription? _settingsSubscription;
 
   @override
   void initState() {
     super.initState();
-    _fetchDataAndBuildScreens();
+    _navService =
+        NavigationService(userId: widget.user.uid, userRole: widget.user.role);
+    _loadInitialData();
   }
 
-  Future<void> _fetchDataAndBuildScreens() async {
-    if (!mounted) return;
+  @override
+  void dispose() {
+    _settingsSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadInitialData() async {
+    setState(() => _isLoading = true);
     try {
-      final snapshot = await FirebaseFirestore.instance
+      final firestore = FirebaseFirestore.instance;
+      final usersSnapshot = await firestore
           .collection('users')
           .where('academyId', isEqualTo: widget.user.academyId)
           .where('role', whereIn: ['teacher', 'manager']).get();
+      _teachers = usersSnapshot.docs
+          .map((doc) => UserModel.fromFirestore(doc))
+          .toList();
 
-      if (mounted) {
-        setState(() {
-          _teachers =
-              snapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList();
-          _telas = [
-            ManagerDashboardPage(user: widget.user),
-            AlunosManagerPage(
-                academyId: widget.user.academyId, manager: widget.user),
-            ProfessoresManagerPage(
-                academyId: widget.user.academyId, manager: widget.user),
-            SchedulePage(user: widget.user, teachers: _teachers),
-            MonthlyFeeManagerPage(academyId: widget.user.academyId),
-          ];
-          _isLoading = false;
-        });
-      }
+      final studentsSnapshot = await firestore
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .collection('students')
+          .get();
+      _students = studentsSnapshot.docs
+          .map((doc) => Aluno.fromJson(doc.id, doc.data()))
+          .toList();
+
+      _settingsSubscription =
+          _navService.getTabSettingsStream().listen((settingsDoc) {
+        _configureNavigation(settingsDoc);
+      });
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoading = false);
         showBjjSnackBar(context, "Erro ao carregar dados.", type: 'error');
+        setState(() => _isLoading = false);
       }
     }
   }
 
+  void _configureNavigation(DocumentSnapshot? settingsDoc) {
+    Map<String, dynamic> settings;
+    if (settingsDoc != null && settingsDoc.exists) {
+      settings = settingsDoc.data() as Map<String, dynamic>;
+    } else {
+      settings = _navService.getDefaultTabSettings();
+    }
+
+    final allUserModules = _navService.getModulesForCurrentUser();
+    final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
+    final List<String> visibleIds =
+        List<String>.from(settings['visible'] ?? []);
+
+    for (var module in allUserModules) {
+      if (!savedOrder.contains(module.id)) {
+        savedOrder.add(module.id);
+      }
+    }
+    savedOrder.removeWhere((id) => !allUserModules.any((m) => m.id == id));
+
+    final currentOrderIds = _allModules.map((m) => m.id).toList();
+    final orderChanged =
+        !const ListEquality().equals(currentOrderIds, savedOrder);
+
+    if (mounted) {
+      setState(() {
+        if (orderChanged || _telas.isEmpty) {
+          _allModules = savedOrder
+              .map((id) => allUserModules.firstWhere((m) => m.id == id))
+              .toList();
+          _telas = _allModules
+              .map((module) =>
+                  module.pageBuilder(widget.user, _teachers, _students))
+              .toList();
+        }
+
+        _visibleModules =
+            _allModules.where((m) => visibleIds.contains(m.id)).toList();
+
+        if (_paginaAtual >= _allModules.length) {
+          _paginaAtual = 0;
+        }
+
+        _isLoading = false;
+      });
+    }
+  }
+
   void _onItemTapped(int index) {
+    final selectedModuleId = _visibleModules[index].id;
+    final globalIndex = _allModules.indexWhere((m) => m.id == selectedModuleId);
+
+    setState(() {
+      _paginaAtual = globalIndex;
+    });
+  }
+
+  void _onDrawerItemTapped(int index) {
     setState(() {
       _paginaAtual = index;
     });
   }
 
-  void _onAdicionarAluno() {
-    showDialog(
-      context: context,
-      builder: (_) => AdicionarAlunoDialog(
-          currentUser: widget.user,
-          onAlunoAdicionado: (novoAluno) async {
-            try {
-              final data = novoAluno.toJson();
-              data['createdAt'] = FieldValue.serverTimestamp();
-              data['updatedAt'] = FieldValue.serverTimestamp();
-
-              await FirebaseFirestore.instance
-                  .collection('academies')
-                  .doc(widget.user.academyId)
-                  .collection('students')
-                  .add(data);
-
-              if (mounted) {
-                showBjjSnackBar(
-                    context, '${novoAluno.nome} adicionado com sucesso!',
-                    type: 'success');
-              }
-            } catch (e) {
-              if (mounted) {
-                showBjjSnackBar(context, 'Erro ao adicionar aluno: $e',
-                    type: 'error');
-              }
-            }
-          }),
-    );
-  }
-
-  void _onAdicionarProfessor() async {
-    final result = await showDialog<Map<String, String>?>(
-      context: context,
-      builder: (_) => AdicionarProfessorDialog(
-        academyId: widget.user.academyId,
-        manager: widget.user,
-      ),
-    );
-
-    if (result != null && mounted) {
-      final name = result['name']!;
-      final email = result['email']!;
-      final temporaryPassword = result['password']!;
-      showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text("Professor Criado!"),
-          content: SelectableText(
-              "A conta para $name foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text("OK"))
-          ],
-        ),
-      );
-    }
+  void _navigateToSettings() {
+    _settingsSubscription?.pause();
+    // Adia a navegação para o próximo ciclo de eventos para evitar conflitos de build/animação.
+    Future.delayed(Duration.zero, () {
+      if (!mounted) return; // Garante que o widget ainda está na árvore.
+      Navigator.of(context)
+          .push(MaterialPageRoute(
+        builder: (_) => ManagerSettingsPage(user: widget.user),
+      ))
+          .then((_) {
+        if (mounted) {
+          _settingsSubscription?.resume();
+        }
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: AppBackground(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    final currentModule = _allModules[_paginaAtual];
+    final currentVisibleIndex =
+        _visibleModules.indexWhere((m) => m.id == currentModule.id);
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: _paginaAtual == 0
-            ? StreamBuilder<DocumentSnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('academies')
-                    .doc(widget.user.academyId)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.hasData && snapshot.data!.exists) {
-                    final academyData =
-                        snapshot.data!.data() as Map<String, dynamic>;
-                    return Text(academyData['name'] ?? 'Painel Principal');
-                  }
-                  return Text(_titulos[_paginaAtual]);
-                },
-              )
-            : Text(_titulos[_paginaAtual]),
+        title: Text(currentModule.title),
         actions: [
           IconButton(
-              icon: const Icon(Icons.settings),
-              tooltip: 'Configurações da Academia',
-              onPressed: () {
-                Navigator.of(context).push(MaterialPageRoute(
-                  builder: (_) => ManagerSettingsPage(user: widget.user),
-                ));
-              }),
+            icon: const Icon(Icons.settings),
+            tooltip: 'Configurações da Academia',
+            onPressed: _navigateToSettings,
+          ),
         ],
+      ),
+      drawer: AppDrawer(
+        user: widget.user,
+        allModules: _allModules,
+        onSelectItem: _onDrawerItemTapped,
       ),
       body: AppBackground(
         child: SafeArea(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : IndexedStack(index: _paginaAtual, children: _telas),
+          child: IndexedStack(index: _paginaAtual, children: _telas),
         ),
       ),
       bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _paginaAtual,
+        currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
         onTap: _onItemTapped,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_rounded),
-            label: 'Início',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people_alt_rounded),
-            label: 'Alunos',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.school_rounded),
-            label: 'Professores',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month_rounded),
-            label: 'Grade',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.monetization_on_rounded),
-            label: 'Mensalidades',
-          ),
-        ],
+        items: _visibleModules.map((module) {
+          return BottomNavigationBarItem(
+            icon: Icon(module.icon),
+            label: module.title,
+          );
+        }).toList(),
       ),
-      floatingActionButton: _paginaAtual == 1
-          ? FloatingActionButton(
-              onPressed: _onAdicionarAluno,
-              tooltip: 'Adicionar Aluno',
-              child: const Icon(Icons.add_rounded),
-            )
-          : _paginaAtual == 2
-              ? FloatingActionButton(
-                  onPressed: _onAdicionarProfessor,
-                  tooltip: 'Adicionar Professor',
-                  child: const Icon(Icons.add_rounded),
-                )
-              : null,
+      floatingActionButton: _buildFloatingActionButton(),
     );
+  }
+
+  Widget? _buildFloatingActionButton() {
+    final currentModuleId = _allModules[_paginaAtual].id;
+
+    if (currentModuleId == 'manager_students') {
+      return FloatingActionButton(
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (_) => AdicionarAlunoDialog(
+                currentUser: widget.user,
+                onAlunoAdicionado: (novoAluno) async {
+                  try {
+                    final data = novoAluno.toJson();
+                    data['createdAt'] = FieldValue.serverTimestamp();
+                    data['updatedAt'] = FieldValue.serverTimestamp();
+
+                    await FirebaseFirestore.instance
+                        .collection('academies')
+                        .doc(widget.user.academyId)
+                        .collection('students')
+                        .add(data);
+
+                    if (mounted) {
+                      showBjjSnackBar(
+                          context, '${novoAluno.nome} adicionado com sucesso!',
+                          type: 'success');
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      showBjjSnackBar(context, 'Erro ao adicionar aluno: $e',
+                          type: 'error');
+                    }
+                  }
+                }),
+          );
+        },
+        tooltip: 'Adicionar Aluno',
+        child: const Icon(Icons.add_rounded),
+      );
+    } else if (currentModuleId == 'manager_teachers') {
+      return FloatingActionButton(
+        onPressed: () async {
+          final result = await showDialog<Map<String, String>?>(
+            context: context,
+            builder: (_) => AdicionarProfessorDialog(
+              academyId: widget.user.academyId,
+              manager: widget.user,
+            ),
+          );
+
+          if (result != null && mounted) {
+            final name = result['name']!;
+            final email = result['email']!;
+            final temporaryPassword = result['password']!;
+            showDialog(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text("Professor Criado!"),
+                content: SelectableText(
+                    "A conta para $name foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text("OK"))
+                ],
+              ),
+            );
+          }
+        },
+        tooltip: 'Adicionar Professor',
+        child: const Icon(Icons.add_rounded),
+      );
+    }
+    return null;
   }
 }
 
@@ -469,7 +513,6 @@ class ManagerDashboardPage extends StatelessWidget {
   }
 }
 
-// MODIFICAÇÃO: Convertido para StatefulWidget para buscar os dados dos usuários com fotos.
 class AlunosManagerPage extends StatefulWidget {
   final String academyId;
   final UserModel manager;
@@ -483,7 +526,6 @@ class AlunosManagerPage extends StatefulWidget {
 class _AlunosManagerPageState extends State<AlunosManagerPage> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
-  // MODIFICAÇÃO: Futuro para carregar o mapa de usuários (com fotos) uma vez.
   late Future<Map<String, UserModel>> _usersMapFuture;
 
   @override
@@ -497,7 +539,6 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
     });
   }
 
-  // MODIFICAÇÃO: Nova função para buscar todos os usuários e mapeá-los por UID.
   Future<Map<String, UserModel>> _fetchUsersMap() async {
     final snapshot = await FirebaseFirestore.instance
         .collection('users')
@@ -535,7 +576,6 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
           ),
         ),
         Expanded(
-          // MODIFICAÇÃO: FutureBuilder para garantir que o mapa de usuários seja carregado antes da lista.
           child: FutureBuilder<Map<String, UserModel>>(
             future: _usersMapFuture,
             builder: (context, usersSnapshot) {
@@ -598,7 +638,6 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
                     itemCount: filteredAlunos.length,
                     itemBuilder: (context, index) {
                       final aluno = filteredAlunos[index];
-                      // MODIFICAÇÃO: Busca a URL da imagem no mapa de usuários.
                       final userModel = usersMap[aluno.userId];
                       final imageUrl = userModel?.profileImagePath;
 
@@ -606,7 +645,7 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
                         user: aluno,
                         academyId: widget.academyId,
                         currentUser: widget.manager,
-                        profileImageUrl: imageUrl, // Passa a URL para o card
+                        profileImageUrl: imageUrl,
                       );
                     },
                   );
@@ -675,10 +714,7 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
             stream: FirebaseFirestore.instance
                 .collection('users')
                 .where('academyId', isEqualTo: widget.academyId)
-                .where('role', whereIn: [
-                  'teacher',
-                  'manager'
-                ]) // MODIFICAÇÃO: Busca gerentes também
+                .where('role', whereIn: ['teacher', 'manager'])
                 .orderBy('name')
                 .snapshots(),
             builder: (context, snapshot) {
@@ -725,7 +761,6 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
                     user: professor,
                     academyId: widget.academyId,
                     currentUser: widget.manager,
-                    // MODIFICAÇÃO: Professores já são UserModel, então a imagem está disponível diretamente.
                     profileImageUrl: professor.profileImagePath,
                   );
                 },
@@ -738,8 +773,6 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
   }
 }
 
-// O restante do arquivo (diálogos, etc.) permanece o mesmo.
-// ... (código inalterado)
 void _showEditAlunoDialog(
     BuildContext context, Aluno aluno, String academyId, UserModel manager) {
   showDialog(
@@ -798,6 +831,166 @@ void _showEditProfessorDialog(BuildContext context, UserModel professor,
     builder: (_) => EditarProfessorDialog(
         professor: professor, academyId: academyId, manager: manager),
   );
+}
+
+// --- CORREÇÃO: Movendo a função e a classe de diálogo para antes de onde são chamadas ---
+void _showCreateAccessDialog(BuildContext context, Aluno aluno,
+    String academyId, UserModel manager) async {
+  final result = await showDialog<Map<String, dynamic>?>(
+    context: context,
+    builder: (_) => CreateStudentAccessDialog(
+      academyId: academyId,
+      aluno: aluno,
+      manager: manager,
+    ),
+  );
+
+  if (result?['success'] == true && context.mounted) {
+    final email = result!['email'];
+    const temporaryPassword = 'mudar123';
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Acesso Criado!"),
+        content: SelectableText(
+            "A conta para ${aluno.nome} foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text("OK"))
+        ],
+      ),
+    );
+  }
+}
+
+class CreateStudentAccessDialog extends StatefulWidget {
+  final String academyId;
+  final Aluno aluno;
+  final UserModel manager;
+  const CreateStudentAccessDialog(
+      {super.key,
+      required this.academyId,
+      required this.aluno,
+      required this.manager});
+
+  @override
+  State<CreateStudentAccessDialog> createState() =>
+      _CreateStudentAccessDialogState();
+}
+
+class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
+  final _emailController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
+
+  Future<void> _createAccess() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isLoading = true);
+
+    const temporaryPassword = 'mudar123';
+    final email = _emailController.text.trim();
+
+    try {
+      final tempApp = await Firebase.initializeApp(
+        name: 'temp_student_creation_${DateTime.now().millisecondsSinceEpoch}',
+        options: Firebase.app().options,
+      );
+      final tempAuth = FirebaseAuth.instanceFor(app: tempApp);
+
+      final userCredential = await tempAuth.createUserWithEmailAndPassword(
+        email: email,
+        password: temporaryPassword,
+      );
+      final newUser = userCredential.user;
+
+      if (newUser == null) {
+        await tempApp.delete();
+        throw Exception("Falha ao criar a conta de autenticação.");
+      }
+
+      final batch = FirebaseFirestore.instance.batch();
+      final studentRef = FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('students')
+          .doc(widget.aluno.id);
+      batch.update(studentRef, {'userId': newUser.uid});
+
+      final userRef =
+          FirebaseFirestore.instance.collection('users').doc(newUser.uid);
+
+      batch.set(userRef, {
+        'name': widget.aluno.nome,
+        'email': email,
+        'academyId': widget.academyId,
+        'role': 'student',
+        'studentRecordId': widget.aluno.id,
+        'mustChangePassword': true,
+        'isActive': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'createdByUid': widget.manager.uid,
+        'createdByName': widget.manager.name,
+        'lastUpdatedByUid': widget.manager.uid,
+        'lastUpdatedByName': widget.manager.name,
+      });
+
+      await batch.commit();
+      await tempApp.delete();
+
+      if (mounted) {
+        Navigator.of(context).pop({'success': true, 'email': email});
+      }
+    } on FirebaseAuthException catch (e) {
+      String message = 'Erro ao criar acesso.';
+      if (e.code == 'email-already-in-use') {
+        message = 'Este e-mail já está sendo usado por outra conta.';
+      }
+      if (mounted) showBjjSnackBar(context, message, type: 'error');
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Ocorreu um erro inesperado: $e',
+            type: 'error');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Criar Acesso para ${widget.aluno.nome}'),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _emailController,
+          decoration: const InputDecoration(
+            labelText: 'E-mail do Aluno (para login)',
+            prefixIcon: Icon(Icons.email_outlined),
+          ),
+          keyboardType: TextInputType.emailAddress,
+          validator: (v) =>
+              (v == null || !v.contains('@')) ? 'E-mail inválido' : null,
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("Cancelar")),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _createAccess,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text("Criar"),
+        )
+      ],
+    );
+  }
 }
 
 class AdicionarAlunoDialog extends StatefulWidget {
@@ -1042,11 +1235,6 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                     },
                   )
                 ],
-                // =======================================================================
-                // AQUI ESTÁ A CORREÇÃO:
-                // Adicionada a condição "&& widget.currentUser.role == UserRole.manager"
-                // para garantir que o botão de promover só apareça para o gerente.
-                // =======================================================================
                 if (isEditing &&
                     widget.alunoParaEditar?.userId != null &&
                     widget.currentUser.role == UserRole.manager) ...[
@@ -1435,165 +1623,6 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('Salvar'),
         ),
-      ],
-    );
-  }
-}
-
-void _showCreateAccessDialog(BuildContext context, Aluno aluno,
-    String academyId, UserModel manager) async {
-  final result = await showDialog<Map<String, dynamic>?>(
-    context: context,
-    builder: (_) => CreateStudentAccessDialog(
-      academyId: academyId,
-      aluno: aluno,
-      manager: manager,
-    ),
-  );
-
-  if (result?['success'] == true && context.mounted) {
-    final email = result!['email'];
-    const temporaryPassword = 'mudar123';
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Acesso Criado!"),
-        content: SelectableText(
-            "A conta para ${aluno.nome} foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("OK"))
-        ],
-      ),
-    );
-  }
-}
-
-class CreateStudentAccessDialog extends StatefulWidget {
-  final String academyId;
-  final Aluno aluno;
-  final UserModel manager;
-  const CreateStudentAccessDialog(
-      {super.key,
-      required this.academyId,
-      required this.aluno,
-      required this.manager});
-
-  @override
-  State<CreateStudentAccessDialog> createState() =>
-      _CreateStudentAccessDialogState();
-}
-
-class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
-  final _emailController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
-
-  Future<void> _createAccess() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() => _isLoading = true);
-
-    const temporaryPassword = 'mudar123';
-    final email = _emailController.text.trim();
-
-    try {
-      final tempApp = await Firebase.initializeApp(
-        name: 'temp_student_creation_${DateTime.now().millisecondsSinceEpoch}',
-        options: Firebase.app().options,
-      );
-      final tempAuth = FirebaseAuth.instanceFor(app: tempApp);
-
-      final userCredential = await tempAuth.createUserWithEmailAndPassword(
-        email: email,
-        password: temporaryPassword,
-      );
-      final newUser = userCredential.user;
-
-      if (newUser == null) {
-        await tempApp.delete();
-        throw Exception("Falha ao criar la cuenta de autenticação.");
-      }
-
-      final batch = FirebaseFirestore.instance.batch();
-      final studentRef = FirebaseFirestore.instance
-          .collection('academies')
-          .doc(widget.academyId)
-          .collection('students')
-          .doc(widget.aluno.id);
-      batch.update(studentRef, {'userId': newUser.uid});
-
-      final userRef =
-          FirebaseFirestore.instance.collection('users').doc(newUser.uid);
-
-      batch.set(userRef, {
-        'name': widget.aluno.nome,
-        'email': email,
-        'academyId': widget.academyId,
-        'role': 'student',
-        'studentRecordId': widget.aluno.id,
-        'mustChangePassword': true,
-        'isActive': true,
-        'createdAt': FieldValue.serverTimestamp(),
-        'updatedAt': FieldValue.serverTimestamp(),
-        'createdByUid': widget.manager.uid,
-        'createdByName': widget.manager.name,
-        'lastUpdatedByUid': widget.manager.uid,
-        'lastUpdatedByName': widget.manager.name,
-      });
-
-      await batch.commit();
-      await tempApp.delete();
-
-      if (mounted) {
-        Navigator.of(context).pop({'success': true, 'email': email});
-      }
-    } on FirebaseAuthException catch (e) {
-      String message = 'Erro ao criar acesso.';
-      if (e.code == 'email-already-in-use') {
-        message = 'Este e-mail já está sendo usado por outra conta.';
-      }
-      if (mounted) showBjjSnackBar(context, message, type: 'error');
-    } catch (e) {
-      if (mounted) {
-        showBjjSnackBar(context, 'Ocorreu um erro inesperado: $e',
-            type: 'error');
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Criar Acesso para ${widget.aluno.nome}'),
-      content: Form(
-        key: _formKey,
-        child: TextFormField(
-          controller: _emailController,
-          decoration: const InputDecoration(
-            labelText: 'E-mail do Aluno (para login)',
-            prefixIcon: Icon(Icons.email_outlined),
-          ),
-          keyboardType: TextInputType.emailAddress,
-          validator: (v) =>
-              (v == null || !v.contains('@')) ? 'E-mail inválido' : null,
-        ),
-      ),
-      actions: [
-        TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Cancelar")),
-        ElevatedButton(
-          onPressed: _isLoading ? null : _createAccess,
-          child: _isLoading
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text("Criar"),
-        )
       ],
     );
   }
@@ -2316,7 +2345,10 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     final List<CheckinEntry> checkins = [];
     for (final doc in snapshot.docs) {
       try {
-        checkins.add(CheckinEntry.fromJson(doc.id, doc.data()));
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data != null) {
+          checkins.add(CheckinEntry.fromJson(doc.id, data));
+        }
       } catch (e, s) {
         debugPrint('Error parsing check-in document ${doc.id}: $e');
         debugPrintStack(stackTrace: s);
@@ -2427,8 +2459,12 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                           leading: const Icon(Icons.calendar_today_rounded),
                           initiallyExpanded: index == 0,
                           children: checkinsInMonth.map((checkin) {
+                            final titleText =
+                                checkin.className ?? 'Check-in Aprovado';
+
                             return ListTile(
-                              title: Text(DateFormat.yMMMEd('pt_BR')
+                              title: Text(titleText),
+                              subtitle: Text(DateFormat.yMMMEd('pt_BR')
                                   .format(checkin.date)),
                               leading:
                                   const Icon(Icons.check, color: successColor),
@@ -2715,7 +2751,7 @@ class ManagerSettingsPage extends StatelessWidget {
                         ],
                       ),
                     );
-                    if (confirm == true) {
+                    if (confirm == true && context.mounted) {
                       await FirebaseAuth.instance.signOut();
                       Navigator.of(context, rootNavigator: true)
                           .pushAndRemoveUntil(

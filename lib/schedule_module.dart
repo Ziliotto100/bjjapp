@@ -11,13 +11,11 @@ import 'models.dart';
 
 // --- MODELOS DE DADOS (UNIFICADOS NESTE ARQUIVO) ---
 
-// Enum para a modalidade do treino
 enum TrainingModality {
-  gi, // Com Kimono
-  nogi, // Sem Kimono
+  gi,
+  nogi,
 }
 
-// Helper para converter String para Enum e vice-versa
 String modalityToString(TrainingModality modality) {
   return modality == TrainingModality.gi ? 'Gi' : 'No-Gi';
 }
@@ -26,15 +24,14 @@ TrainingModality modalityFromString(String? modalityString) {
   if (modalityString == 'No-Gi') {
     return TrainingModality.nogi;
   }
-  return TrainingModality.gi; // Padrão
+  return TrainingModality.gi;
 }
 
-/// Representa uma única aula na grade de horários.
 class TrainingClass {
   final String id;
-  final String dayOfWeek; // Ex: "Segunda-feira"
-  final String startTime; // Formato "HH:mm"
-  final String endTime; // Formato "HH:mm"
+  final String dayOfWeek;
+  final String startTime;
+  final String endTime;
   final String teacherId;
   final String teacherName;
   final TrainingModality modality;
@@ -49,7 +46,6 @@ class TrainingClass {
     required this.modality,
   });
 
-  // Cria um objeto TrainingClass a partir de um DocumentSnapshot do Firestore
   factory TrainingClass.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return TrainingClass(
@@ -150,7 +146,6 @@ class _ScheduleView extends StatelessWidget {
       minute: int.parse(trainingClass.startTime.split(':')[1]),
     );
 
-    // Permite check-in 15 minutos antes do início da aula
     final checkinWindowStart = startTime.hour * 60 + startTime.minute - 15;
     final nowInMinutes = now.hour * 60 + now.minute;
 
@@ -218,14 +213,42 @@ class _ScheduleView extends StatelessWidget {
         .doc(user.academyId)
         .collection('checkins');
 
-    final existingCheckin = await checkinRef
-        .where('studentId', isEqualTo: studentId)
-        .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
-        .limit(1)
-        .get();
+    try {
+      final checkinSnapshot =
+          await checkinRef.where('studentId', isEqualTo: studentId).get();
 
-    if (existingCheckin.docs.isNotEmpty) {
-      showBjjSnackBar(context, 'Você já fez check-in hoje!', type: 'warning');
+      final todayTimestamp = Timestamp.fromDate(dateOnly);
+
+      // Lógica mais segura para encontrar o check-in do dia
+      QueryDocumentSnapshot? existingCheckinForToday;
+      for (final doc in checkinSnapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>?;
+        if (data != null &&
+            data.containsKey('date') &&
+            data['date'] == todayTimestamp) {
+          existingCheckinForToday = doc;
+          break;
+        }
+      }
+
+      if (existingCheckinForToday != null) {
+        final existingData =
+            existingCheckinForToday.data() as Map<String, dynamic>;
+        // Acessa o status de forma segura, tratando o caso de não existir
+        final status =
+            checkinStatusFromString(existingData['status'] as String?);
+        if (status == CheckinStatus.pending) {
+          showBjjSnackBar(
+              context, 'Você já solicitou check-in hoje. Aguarde a aprovação.',
+              type: 'warning');
+        } else {
+          showBjjSnackBar(context, 'Você já fez check-in hoje!', type: 'info');
+        }
+        return;
+      }
+    } catch (e) {
+      // Se a consulta falhar, exibe o erro e interrompe.
+      showBjjSnackBar(context, 'Erro ao verificar check-in: $e', type: 'error');
       return;
     }
 
@@ -234,12 +257,14 @@ class _ScheduleView extends StatelessWidget {
       'studentName': user.name,
       'date': Timestamp.fromDate(dateOnly),
       'classId': trainingClass.id,
-      'className': '${trainingClass.dayOfWeek} ${trainingClass.startTime}',
+      'className':
+          '${trainingClass.startTime} - Prof. ${trainingClass.teacherName}',
       'creatorId': user.uid,
       'creatorName': user.name,
+      'status': checkinStatusToString(CheckinStatus.pending),
     });
 
-    showBjjSnackBar(context, 'Check-in realizado com sucesso!',
+    showBjjSnackBar(context, 'Solicitação de check-in enviada!',
         type: 'success');
   }
 
@@ -298,7 +323,6 @@ class _ScheduleView extends StatelessWidget {
                       children: [
                         Row(
                           children: [
-                            // Horário
                             Column(
                               children: [
                                 Text(
@@ -316,7 +340,6 @@ class _ScheduleView extends StatelessWidget {
                               ],
                             ),
                             const Spacer(),
-                            // Chips
                             Wrap(
                               spacing: 8.0,
                               crossAxisAlignment: WrapCrossAlignment.center,
@@ -338,8 +361,16 @@ class _ScheduleView extends StatelessWidget {
                                     avatar: const Icon(Icons.check,
                                         size: 16, color: Colors.white),
                                     label: const Text('Check-in'),
-                                    onPressed: () =>
-                                        _showCheckinDialog(context, item),
+                                    onPressed: user.studentRecordId == null
+                                        ? () {
+                                            showBjjSnackBar(
+                                              context,
+                                              'Complete seu perfil na aba "Meu Perfil" para poder fazer check-in.',
+                                              type: 'warning',
+                                            );
+                                          }
+                                        : () =>
+                                            _showCheckinDialog(context, item),
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 8, vertical: 4),
                                     backgroundColor:
@@ -423,7 +454,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
   }
 
   Future<void> _addClass() async {
-    // Adiciona validação para os horários antes de validar o form
     if (_startTime == null || _endTime == null) {
       showBjjSnackBar(context, 'Por favor, selecione horário de início e fim.',
           type: 'error');
@@ -483,7 +513,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
         child: SafeArea(
           child: Column(
             children: [
-              // Formulário para adicionar nova aula
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Form(
@@ -596,7 +625,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
                 ),
               ),
               const Divider(height: 20),
-              // Lista de aulas existentes
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
