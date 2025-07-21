@@ -11,8 +11,99 @@ import 'app_theme.dart';
 import 'manager_module.dart';
 import 'teacher_module.dart';
 import 'student_module.dart';
+import 'update_checker.dart'; // <-- NOVO IMPORT
 
-// --- TELAS DE AUTENTICAÇÃO ---
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  @override
+  void initState() {
+    super.initState();
+    // Inicia a verificação de atualização assim que o widget é construído.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      UpdateChecker(context: context).checkForUpdate();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, authSnapshot) {
+        if (authSnapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+              body: AppBackground(
+                  child: Center(child: CircularProgressIndicator())));
+        }
+
+        if (!authSnapshot.hasData || authSnapshot.data == null) {
+          return const LoginPage();
+        }
+
+        final authUser = authSnapshot.data!;
+
+        return FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance
+              .collection('users')
+              .doc(authUser.uid)
+              .get(),
+          builder: (context, userDocSnapshot) {
+            if (userDocSnapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                  body: AppBackground(
+                      child: Center(child: CircularProgressIndicator())));
+            }
+
+            if (userDocSnapshot.hasError ||
+                !userDocSnapshot.hasData ||
+                !userDocSnapshot.data!.exists) {
+              FirebaseAuth.instance.signOut();
+              return const LoginPage();
+            }
+
+            final userDocData =
+                userDocSnapshot.data!.data() as Map<String, dynamic>;
+
+            if (authUser.email != null &&
+                authUser.email != userDocData['email']) {
+              FirebaseFirestore.instance
+                  .collection('users')
+                  .doc(authUser.uid)
+                  .update({'email': authUser.email});
+
+              userDocData['email'] = authUser.email;
+            }
+
+            final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
+
+            if (userModel.mustChangePassword) {
+              return const ChangePasswordPage(isFirstLogin: true);
+            }
+
+            switch (userModel.role) {
+              case UserRole.manager:
+                return ManagerHomePage(user: userModel);
+              case UserRole.teacher:
+                return TeacherHomePage(user: userModel);
+              case UserRole.student:
+                return StudentHomePage(user: userModel);
+              default:
+                FirebaseAuth.instance.signOut();
+                return const LoginPage();
+            }
+          },
+        );
+      },
+    );
+  }
+}
+
+// --- O RESTANTE DAS TELAS (LoginPage, ChangePasswordPage, etc.) CONTINUA IGUAL ---
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
   @override
@@ -480,93 +571,6 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
   }
 }
 
-class AuthGate extends StatelessWidget {
-  const AuthGate({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, authSnapshot) {
-        if (authSnapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-              body: AppBackground(
-                  child: Center(child: CircularProgressIndicator())));
-        }
-
-        if (!authSnapshot.hasData || authSnapshot.data == null) {
-          return const LoginPage();
-        }
-
-        // >>>>> INÍCIO DA LÓGICA DE SINCRONIZAÇÃO DE E-MAIL <<<<<
-        final authUser = authSnapshot.data!;
-
-        return FutureBuilder<DocumentSnapshot>(
-          future: FirebaseFirestore.instance
-              .collection('users')
-              .doc(authUser.uid)
-              .get(),
-          builder: (context, userDocSnapshot) {
-            if (userDocSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                  body: AppBackground(
-                      child: Center(child: CircularProgressIndicator())));
-            }
-
-            if (userDocSnapshot.hasError ||
-                !userDocSnapshot.hasData ||
-                !userDocSnapshot.data!.exists) {
-              FirebaseAuth.instance.signOut();
-              return const LoginPage();
-            }
-
-            final userDocData =
-                userDocSnapshot.data!.data() as Map<String, dynamic>;
-
-            // Compara o e-mail do Auth com o do Firestore
-            if (authUser.email != null &&
-                authUser.email != userDocData['email']) {
-              // Se forem diferentes, atualiza o Firestore em segundo plano.
-              FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(authUser.uid)
-                  .update({'email': authUser.email});
-
-              // E também atualiza o dado local para que a tela já mostre o e-mail correto.
-              userDocData['email'] = authUser.email;
-            }
-            // >>>>> FIM DA LÓGICA DE SINCRONIZAÇÃO DE E-MAIL <<<<<
-
-            final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
-
-            if (userModel.mustChangePassword) {
-              return const ChangePasswordPage(isFirstLogin: true);
-            }
-
-            if (userModel.role == UserRole.student &&
-                userModel.studentRecordId == null) {
-              return StudentHomePage(user: userModel);
-            }
-
-            switch (userModel.role) {
-              case UserRole.manager:
-                return ManagerHomePage(user: userModel);
-              case UserRole.teacher:
-                return TeacherHomePage(user: userModel);
-              case UserRole.student:
-                return StudentHomePage(user: userModel);
-              default:
-                FirebaseAuth.instance.signOut();
-                return const LoginPage();
-            }
-          },
-        );
-      },
-    );
-  }
-}
-
-// --- TELA DE TROCA DE SENHA ---
 class ChangePasswordPage extends StatefulWidget {
   final bool isFirstLogin;
   const ChangePasswordPage({super.key, this.isFirstLogin = false});
@@ -726,7 +730,6 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
   }
 }
 
-// --- TELA PARA ALTERAR E-MAIL ---
 class ChangeEmailPage extends StatefulWidget {
   const ChangeEmailPage({super.key});
 

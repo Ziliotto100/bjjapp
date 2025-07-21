@@ -343,14 +343,13 @@ class MonthlyFee {
   }
 }
 
-// MODIFICAÇÃO: Modelo de Check-in atualizado com status
 class CheckinEntry {
   final String id;
   final String studentId;
   final DateTime date;
   final String? creatorId;
   final String? creatorName;
-  final CheckinStatus status; // NOVO CAMPO
+  final CheckinStatus status;
   final String? classId;
   final String? className;
   final String? studentName;
@@ -534,5 +533,99 @@ class StudyNote {
       updatedAt: (json['updatedAt'] as Timestamp).toDate(),
       volumeId: json['volumeId'] ?? '',
     );
+  }
+}
+
+// --- MODELO DE PRODUTOS DA LOJA ATUALIZADO ---
+
+enum ProductStatus { disponivel, esgotado, sobEncomenda }
+
+String productStatusToString(ProductStatus status) {
+  switch (status) {
+    case ProductStatus.disponivel:
+      return 'Disponível';
+    case ProductStatus.esgotado:
+      return 'Esgotado';
+    case ProductStatus.sobEncomenda:
+      return 'Sob Encomenda';
+  }
+}
+
+ProductStatus productStatusFromString(String? statusString) {
+  switch (statusString) {
+    case 'Esgotado':
+      return ProductStatus.esgotado;
+    case 'Sob Encomenda':
+      return ProductStatus.sobEncomenda;
+    default:
+      return ProductStatus.disponivel;
+  }
+}
+
+class Product {
+  final String id;
+  final String name;
+  final String description;
+  final double price;
+  final List<String> imageUrls;
+  final String category;
+  final bool isFeatured;
+  final bool isPromo; // NOVO CAMPO
+  final ProductStatus status; // NOVO CAMPO
+  final Timestamp createdAt;
+
+  Product({
+    required this.id,
+    required this.name,
+    required this.description,
+    required this.price,
+    required this.imageUrls,
+    required this.category,
+    this.isFeatured = false,
+    this.isPromo = false, // NOVO
+    required this.status, // NOVO
+    required this.createdAt,
+  });
+
+  bool get isNew {
+    return DateTime.now().difference(createdAt.toDate()).inDays <= 15;
+  }
+
+  factory Product.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+
+    List<String> urls = [];
+    if (data['imageUrls'] is List) {
+      urls = List<String>.from(data['imageUrls']);
+    } else if (data['imageUrl'] is String) {
+      urls.add(data['imageUrl']);
+    }
+
+    return Product(
+      id: doc.id,
+      name: data['name'] ?? '',
+      description: data['description'] ?? '',
+      price: (data['price'] as num?)?.toDouble() ?? 0.0,
+      imageUrls: urls,
+      category: data['category'] ?? 'Geral',
+      isFeatured: data['isFeatured'] ?? false,
+      isPromo: data['isPromo'] ?? false, // NOVO
+      status: productStatusFromString(data['status']), // NOVO
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'name': name,
+      'description': description,
+      'price': price,
+      'imageUrls': imageUrls,
+      'category': category,
+      'isFeatured': isFeatured,
+      'isPromo': isPromo, // NOVO
+      'status': productStatusToString(status), // NOVO
+      'createdAt': createdAt,
+    };
   }
 }

@@ -2665,6 +2665,69 @@ class ManagerSettingsPage extends StatelessWidget {
     );
   }
 
+  // --- NOVO MÉTODO PARA O DIÁLOGO DE TELEFONE ---
+  void _showChangePhoneNumberDialog(
+      BuildContext context, String currentNumber) {
+    final phoneController = TextEditingController(text: currentNumber);
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Alterar Telefone para Vendas'),
+          content: Form(
+            key: formKey,
+            child: TextFormField(
+              controller: phoneController,
+              decoration: const InputDecoration(
+                labelText: 'Nº de Telefone com DDD',
+                hintText: 'Ex: 5511999998888',
+                prefixIcon: Icon(Icons.phone_rounded),
+              ),
+              keyboardType: TextInputType.phone,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              validator: (value) {
+                if (value == null || value.trim().length < 10) {
+                  return 'Número inválido.';
+                }
+                return null;
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  final newNumber = phoneController.text.trim();
+                  try {
+                    // Salva o número no documento da academia
+                    await FirebaseFirestore.instance
+                        .collection('academies')
+                        .doc(user.academyId)
+                        .set({'contactPhoneNumber': newNumber},
+                            SetOptions(merge: true));
+                    Navigator.of(context).pop();
+                    showBjjSnackBar(context, 'Número de telefone atualizado!',
+                        type: 'success');
+                  } catch (e) {
+                    showBjjSnackBar(context, 'Erro ao atualizar o número.',
+                        type: 'error');
+                  }
+                }
+              },
+              child: const Text('Salvar'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -2674,96 +2737,129 @@ class ManagerSettingsPage extends StatelessWidget {
       ),
       body: AppBackground(
         child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(8.0),
-            children: [
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.business_rounded),
-                  title: const Text("Alterar Nome da Academia"),
-                  trailing:
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () => _showChangeAcademyNameDialog(context),
-                ),
-              ),
-              const Divider(),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.person_outline_rounded),
-                  title: const Text("Meu Perfil de Gerente"),
-                  trailing:
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => EditUserProfilePage(user: user),
-                    ));
-                  },
-                ),
-              ),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.lock_reset_rounded),
-                  title: const Text("Alterar Senha"),
-                  trailing:
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const ChangePasswordPage(),
-                    ));
-                  },
-                ),
-              ),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.email_outlined),
-                  title: const Text("Alterar E-mail"),
-                  trailing:
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const ChangeEmailPage(),
-                    ));
-                  },
-                ),
-              ),
-              const SizedBox(height: 20),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.logout, color: errorColor),
-                  title: const Text("Sair (Deslogar)",
-                      style: TextStyle(color: errorColor)),
-                  onTap: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Confirmar Saída'),
-                        content: const Text(
-                            'Tem certeza que deseja sair do aplicativo?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Cancelar'),
+          // --- ATUALIZAÇÃO PARA USAR FUTUREBUILDER ---
+          child: FutureBuilder<DocumentSnapshot>(
+            future: FirebaseFirestore.instance
+                .collection('academies')
+                .doc(user.academyId)
+                .get(),
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final academyData =
+                  snapshot.data!.data() as Map<String, dynamic>?;
+              final currentNumber = academyData?['contactPhoneNumber'] ?? '';
+
+              return ListView(
+                padding: const EdgeInsets.all(8.0),
+                children: [
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.business_rounded),
+                      title: const Text("Alterar Nome da Academia"),
+                      trailing:
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                      onTap: () => _showChangeAcademyNameDialog(context),
+                    ),
+                  ),
+                  // --- NOVO LISTTILE PARA O TELEFONE ---
+                  Card(
+                    child: ListTile(
+                      leading:
+                          const Icon(Icons.phone_rounded, color: successColor),
+                      title: const Text("Telefone de Contato (Loja)"),
+                      subtitle: Text(currentNumber.isEmpty
+                          ? 'Não cadastrado'
+                          : currentNumber),
+                      trailing:
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                      onTap: () =>
+                          _showChangePhoneNumberDialog(context, currentNumber),
+                    ),
+                  ),
+                  const Divider(),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.person_outline_rounded),
+                      title: const Text("Meu Perfil de Gerente"),
+                      trailing:
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                      onTap: () {
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => EditUserProfilePage(user: user),
+                        ));
+                      },
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.lock_reset_rounded),
+                      title: const Text("Alterar Senha"),
+                      trailing:
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                      onTap: () {
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const ChangePasswordPage(),
+                        ));
+                      },
+                    ),
+                  ),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.email_outlined),
+                      title: const Text("Alterar E-mail"),
+                      trailing:
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                      onTap: () {
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => const ChangeEmailPage(),
+                        ));
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.logout, color: errorColor),
+                      title: const Text("Sair (Deslogar)",
+                          style: TextStyle(color: errorColor)),
+                      onTap: () async {
+                        final confirm = await showDialog<bool>(
+                          context: context,
+                          builder: (context) => AlertDialog(
+                            title: const Text('Confirmar Saída'),
+                            content: const Text(
+                                'Tem certeza que deseja sair do aplicativo?'),
+                            actions: [
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(false),
+                                child: const Text('Cancelar'),
+                              ),
+                              TextButton(
+                                onPressed: () =>
+                                    Navigator.of(context).pop(true),
+                                child: const Text('Sair'),
+                              ),
+                            ],
                           ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text('Sair'),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirm == true && context.mounted) {
-                      await FirebaseAuth.instance.signOut();
-                      Navigator.of(context, rootNavigator: true)
-                          .pushAndRemoveUntil(
-                        MaterialPageRoute(
-                            builder: (context) => const AuthGate()),
-                        (route) => false,
-                      );
-                    }
-                  },
-                ),
-              ),
-            ],
+                        );
+                        if (confirm == true && context.mounted) {
+                          await FirebaseAuth.instance.signOut();
+                          Navigator.of(context, rootNavigator: true)
+                              .pushAndRemoveUntil(
+                            MaterialPageRoute(
+                                builder: (context) => const AuthGate()),
+                            (route) => false,
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),

@@ -17,7 +17,7 @@ enum TrainingModality {
 }
 
 String modalityToString(TrainingModality modality) {
-  return modality == TrainingModality.gi ? 'Gi' : 'No-Gi';
+  return modality == TrainingModality.gi ? 'Gi' : 'No Gi';
 }
 
 TrainingModality modalityFromString(String? modalityString) {
