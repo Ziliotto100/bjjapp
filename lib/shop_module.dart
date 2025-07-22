@@ -1,7 +1,7 @@
 // lib/shop_module.dart
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
-import 'dart:typed_data'; // Import para manipulação de bytes da imagem
+// Import para manipulação de bytes da imagem
 import 'package:flutter/foundation.dart'; // Import para verificar o modo de depuração
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';

@@ -1276,58 +1276,72 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                   )
                 ]
               ]))),
-      actions: [
-        if (isEditing)
-          TextButton.icon(
-            icon: const Icon(Icons.delete_outline_rounded, color: errorColor),
-            label: const Text('Excluir', style: TextStyle(color: errorColor)),
-            onPressed: () => _confirmDeleteAluno(widget.alunoParaEditar!),
-          ),
-        const Spacer(),
-        TextButton(
-            child: const Text('Cancelar'),
-            onPressed: () => Navigator.of(context).pop()),
-        ElevatedButton.icon(
-            icon: Icon(
-                isEditing ? Icons.save_rounded : Icons.person_add_alt_1_rounded,
-                size: 18),
-            label: Text(isEditing ? 'Salvar' : 'Adicionar'),
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                DateTime? dataNascimento;
-                if (dNascC.text.isNotEmpty) {
-                  try {
-                    dataNascimento =
-                        DateFormat('dd/MM/yyyy').parseStrict(dNascC.text);
-                  } catch (e) {
-                    showBjjSnackBar(context, 'Formato de data inválido.',
-                        type: 'error');
-                    return;
+      actions: <Widget>[
+        // --- INÍCIO DA CORREÇÃO ---
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            if (isEditing)
+              TextButton.icon(
+                icon:
+                    const Icon(Icons.delete_outline_rounded, color: errorColor),
+                label:
+                    const Text('Excluir', style: TextStyle(color: errorColor)),
+                onPressed: () => _confirmDeleteAluno(widget.alunoParaEditar!),
+              ),
+            // Espaçador flexível para empurrar os outros botões para a direita
+            const Spacer(),
+            TextButton(
+                child: const Text('Cancelar'),
+                onPressed: () => Navigator.of(context).pop()),
+            ElevatedButton.icon(
+                icon: Icon(
+                    isEditing
+                        ? Icons.save_rounded
+                        : Icons.person_add_alt_1_rounded,
+                    size: 18),
+                label: Text(isEditing ? 'Salvar' : 'Adicionar'),
+                onPressed: () {
+                  if (formKey.currentState!.validate()) {
+                    DateTime? dataNascimento;
+                    if (dNascC.text.isNotEmpty) {
+                      try {
+                        dataNascimento =
+                            DateFormat('dd/MM/yyyy').parseStrict(dNascC.text);
+                      } catch (e) {
+                        showBjjSnackBar(context, 'Formato de data inválido.',
+                            type: 'error');
+                        return;
+                      }
+                    }
+
+                    final double peso =
+                        double.parse(pC.text.replaceAll(',', '.'));
+                    final alunoResult = Aluno(
+                        id: isEditing ? widget.alunoParaEditar!.id : '',
+                        nome: nC.text.trim(),
+                        faixa: fS!,
+                        peso: peso,
+                        graus: gS,
+                        dataNascimento: dataNascimento,
+                        userId:
+                            isEditing ? widget.alunoParaEditar!.userId : null,
+                        createdByUid: isEditing
+                            ? widget.alunoParaEditar!.createdByUid
+                            : widget.currentUser.uid,
+                        createdByName: isEditing
+                            ? widget.alunoParaEditar!.createdByName
+                            : widget.currentUser.name,
+                        lastUpdatedByUid: widget.currentUser.uid,
+                        lastUpdatedByName: widget.currentUser.name);
+
+                    widget.onAlunoAdicionado(alunoResult);
+                    Navigator.of(context).pop();
                   }
-                }
-
-                final double peso = double.parse(pC.text.replaceAll(',', '.'));
-                final alunoResult = Aluno(
-                    id: isEditing ? widget.alunoParaEditar!.id : '',
-                    nome: nC.text.trim(),
-                    faixa: fS!,
-                    peso: peso,
-                    graus: gS,
-                    dataNascimento: dataNascimento,
-                    userId: isEditing ? widget.alunoParaEditar!.userId : null,
-                    createdByUid: isEditing
-                        ? widget.alunoParaEditar!.createdByUid
-                        : widget.currentUser.uid,
-                    createdByName: isEditing
-                        ? widget.alunoParaEditar!.createdByName
-                        : widget.currentUser.name,
-                    lastUpdatedByUid: widget.currentUser.uid,
-                    lastUpdatedByName: widget.currentUser.name);
-
-                widget.onAlunoAdicionado(alunoResult);
-                Navigator.of(context).pop();
-              }
-            })
+                }),
+          ],
+        ),
+        // --- FIM DA CORREÇÃO ---
       ],
     );
   }
@@ -1602,27 +1616,36 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
           ),
         ),
       ),
-      actions: [
-        if (!isSelf)
-          TextButton.icon(
-            icon: const Icon(Icons.delete_outline_rounded, color: errorColor),
-            label: const Text('Excluir', style: TextStyle(color: errorColor)),
-            onPressed: () => _confirmDeleteProfessor(widget.professor),
-          ),
-        const Spacer(),
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
+      actions: <Widget>[
+        // --- INÍCIO DA CORREÇÃO ---
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            if (!isSelf)
+              TextButton.icon(
+                icon:
+                    const Icon(Icons.delete_outline_rounded, color: errorColor),
+                label:
+                    const Text('Excluir', style: TextStyle(color: errorColor)),
+                onPressed: () => _confirmDeleteProfessor(widget.professor),
+              ),
+            const Spacer(),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: _isLoading ? null : _submit,
+              child: _isLoading
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Salvar'),
+            ),
+          ],
         ),
-        ElevatedButton(
-          onPressed: _isLoading ? null : _submit,
-          child: _isLoading
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Salvar'),
-        ),
+        // --- FIM DA CORREÇÃO ---
       ],
     );
   }
