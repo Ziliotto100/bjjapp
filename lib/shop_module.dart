@@ -1,14 +1,17 @@
 // lib/shop_module.dart
 // ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
-// Import para manipulação de bytes da imagem
-import 'package:flutter/foundation.dart'; // Import para verificar o modo de depuração
+import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:intl/intl.dart';
+import 'package:shimmer/shimmer.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 
 import 'models.dart';
 import 'app_theme.dart';
@@ -27,16 +30,72 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   late final TabController _tabController;
   final List<String> _categories = ['Todos', 'Gi', 'No-Gi', 'Lifestyle'];
 
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: _categories.length, vsync: this);
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  Widget _buildProductCardPlaceholder() {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(
+            child: Container(color: Colors.white),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                    width: double.infinity, height: 16, color: Colors.white),
+                const SizedBox(height: 4),
+                Container(width: 80, height: 20, color: Colors.white),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- NOVO WIDGET: BARRA DE PESQUISA INTEGRADA ---
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: 'Buscar produtos...',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: _searchQuery.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () => _searchController.clear(),
+                )
+              : null,
+          contentPadding: const EdgeInsets.symmetric(vertical: 10),
+        ),
+      ),
+    );
   }
 
   @override
@@ -44,10 +103,13 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     final bool isManager = widget.user.role == UserRole.manager;
     final priceFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
+    // --- CORREÇÃO: REMOVIDO O SCAFFOLD E APPBAR DAQUI ---
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Column(
         children: [
+          // --- BARRA DE PESQUISA E ABAS AGORA FAZEM PARTE DO CORPO ---
+          _buildSearchBar(),
           Container(
             color: darkSurface,
             child: TabBar(
@@ -68,7 +130,23 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                   .snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return Shimmer.fromColors(
+                    baseColor: darkSurface,
+                    highlightColor: darkScaffoldBackground,
+                    child: GridView.builder(
+                      padding: const EdgeInsets.all(12),
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 2,
+                        crossAxisSpacing: 12,
+                        mainAxisSpacing: 12,
+                        childAspectRatio: 0.70,
+                      ),
+                      itemCount: 6,
+                      itemBuilder: (context, index) =>
+                          _buildProductCardPlaceholder(),
+                    ),
+                  );
                 }
                 if (snapshot.hasError) {
                   return const EmptyStateWidget(
@@ -89,69 +167,86 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                     .map((doc) => Product.fromFirestore(doc))
                     .toList();
 
-                Product? featuredProduct;
-                try {
-                  featuredProduct = allProducts.firstWhere((p) => p.isFeatured);
-                } catch (e) {
-                  featuredProduct = null;
-                }
+                final searchedProducts = _searchQuery.isEmpty
+                    ? allProducts
+                    : allProducts.where((p) {
+                        final query = _searchQuery.toLowerCase();
+                        return p.name.toLowerCase().contains(query) ||
+                            p.category.toLowerCase().contains(query);
+                      }).toList();
+
+                final featuredProducts =
+                    searchedProducts.where((p) => p.isFeatured).toList();
 
                 return TabBarView(
                   controller: _tabController,
                   children: _categories.map((category) {
                     final filteredProducts = category == 'Todos'
-                        ? allProducts
-                        : allProducts
+                        ? searchedProducts
+                        : searchedProducts
                             .where((p) =>
                                 p.category.toLowerCase() ==
                                 category.toLowerCase())
                             .toList();
 
                     if (filteredProducts.isEmpty) {
-                      return const EmptyStateWidget(
-                        icon: Icons.category_outlined,
+                      return EmptyStateWidget(
+                        icon: Icons.search_off_rounded,
                         title: 'Nenhum Produto',
-                        message: 'Não há produtos nesta categoria.',
+                        message: _searchQuery.isNotEmpty
+                            ? 'Nenhum resultado para "$_searchQuery" nesta categoria.'
+                            : 'Não há produtos nesta categoria.',
                       );
                     }
 
-                    bool showBanner =
-                        category == 'Todos' && featuredProduct != null;
+                    bool showCarousel =
+                        category == 'Todos' && featuredProducts.isNotEmpty;
 
-                    return CustomScrollView(
-                      slivers: [
-                        if (showBanner)
-                          SliverToBoxAdapter(
-                            child: _FeaturedProductBanner(
-                              user: widget.user,
-                              product: featuredProduct,
-                              priceFormat: priceFormat,
+                    return AnimationLimiter(
+                      child: CustomScrollView(
+                        slivers: [
+                          if (showCarousel)
+                            SliverToBoxAdapter(
+                              child: _FeaturedProductsCarousel(
+                                user: widget.user,
+                                featuredProducts: featuredProducts,
+                                priceFormat: priceFormat,
+                              ),
+                            ),
+                          SliverPadding(
+                            padding: const EdgeInsets.all(12),
+                            sliver: SliverGrid(
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: 2,
+                                crossAxisSpacing: 12,
+                                mainAxisSpacing: 12,
+                                childAspectRatio: 0.70,
+                              ),
+                              delegate: SliverChildBuilderDelegate(
+                                (context, index) {
+                                  final product = filteredProducts[index];
+                                  return AnimationConfiguration.staggeredGrid(
+                                    position: index,
+                                    duration: const Duration(milliseconds: 375),
+                                    columnCount: 2,
+                                    child: ScaleAnimation(
+                                      child: FadeInAnimation(
+                                        child: _ProductCard(
+                                          product: product,
+                                          user: widget.user,
+                                          priceFormat: priceFormat,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                                childCount: filteredProducts.length,
+                              ),
                             ),
                           ),
-                        SliverPadding(
-                          padding: const EdgeInsets.all(12),
-                          sliver: SliverGrid(
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 2,
-                              crossAxisSpacing: 12,
-                              mainAxisSpacing: 12,
-                              childAspectRatio: 0.70,
-                            ),
-                            delegate: SliverChildBuilderDelegate(
-                              (context, index) {
-                                final product = filteredProducts[index];
-                                return _ProductCard(
-                                  product: product,
-                                  user: widget.user,
-                                  priceFormat: priceFormat,
-                                );
-                              },
-                              childCount: filteredProducts.length,
-                            ),
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     );
                   }).toList(),
                 );
@@ -177,8 +272,8 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 }
 
-// --- WIDGET DO CARD DE PRODUTO ---
-class _ProductCard extends StatelessWidget {
+// --- WIDGET DO CARD DE PRODUTO (COM ANIMAÇÃO E NOVO LAYOUT) ---
+class _ProductCard extends StatefulWidget {
   final Product product;
   final UserModel user;
   final NumberFormat priceFormat;
@@ -190,10 +285,17 @@ class _ProductCard extends StatelessWidget {
   });
 
   @override
+  State<_ProductCard> createState() => _ProductCardState();
+}
+
+class _ProductCardState extends State<_ProductCard> {
+  bool _isPressed = false;
+
+  @override
   Widget build(BuildContext context) {
-    final imageWidget = product.imageUrls.isNotEmpty
+    final imageWidget = widget.product.imageUrls.isNotEmpty
         ? Image.network(
-            product.imageUrls.first,
+            widget.product.imageUrls.first,
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) => const Icon(
                 Icons.image_not_supported,
@@ -203,55 +305,82 @@ class _ProductCard extends StatelessWidget {
         : const Icon(Icons.image_not_supported, size: 50, color: textHint);
 
     return GestureDetector(
-      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProductDetailPage(
-          user: user,
-          product: product,
-        ),
-      )),
-      child: Card(
-        clipBehavior: Clip.antiAlias,
-        elevation: 4,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  kDebugMode
-                      ? imageWidget
-                      : Hero(
-                          tag: 'product_image_${product.id}_0',
-                          child: imageWidget,
-                        ),
-                  _ProductCardOverlays(product: product),
-                ],
+      onTapDown: (_) => setState(() => _isPressed = true),
+      onTapUp: (_) {
+        setState(() => _isPressed = false);
+        Navigator.of(context).push(MaterialPageRoute(
+          builder: (_) => ProductDetailPage(
+            user: widget.user,
+            product: widget.product,
+          ),
+        ));
+      },
+      onTapCancel: () => setState(() => _isPressed = false),
+      child: AnimatedScale(
+        scale: _isPressed ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 150),
+        child: Card(
+          clipBehavior: Clip.antiAlias,
+          elevation: 4,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Hero(
+                tag: 'product_image_${widget.product.id}_0',
+                child: imageWidget,
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.name,
-                    style: Theme.of(context).textTheme.titleSmall,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Colors.black.withOpacity(0.7),
+                      Colors.transparent,
+                    ],
+                    begin: Alignment.bottomCenter,
+                    end: Alignment.center,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    priceFormat.format(product.price),
-                    style: const TextStyle(
+                ),
+              ),
+              Positioned(
+                bottom: 8,
+                left: 8,
+                right: 8,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.product.name,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: Colors.white,
+                          shadows: [
+                            const Shadow(blurRadius: 1, color: Colors.black87)
+                          ]),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
                         color: primaryAccent,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16),
-                  ),
-                ],
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        widget.priceFormat.format(widget.product.price),
+                        style: const TextStyle(
+                          color: primaryAccentForeground,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+              _ProductCardOverlays(product: widget.product),
+            ],
+          ),
         ),
       ),
     );
@@ -316,7 +445,92 @@ class _ProductCardOverlays extends StatelessWidget {
   }
 }
 
-// --- WIDGET DO BANNER DE DESTAQUE ---
+// --- NOVO WIDGET: CARROSSEL DE PRODUTOS EM DESTAQUE ---
+class _FeaturedProductsCarousel extends StatefulWidget {
+  final List<Product> featuredProducts;
+  final UserModel user;
+  final NumberFormat priceFormat;
+
+  const _FeaturedProductsCarousel({
+    required this.featuredProducts,
+    required this.user,
+    required this.priceFormat,
+  });
+
+  @override
+  State<_FeaturedProductsCarousel> createState() =>
+      _FeaturedProductsCarouselState();
+}
+
+class _FeaturedProductsCarouselState extends State<_FeaturedProductsCarousel> {
+  final _pageController = PageController(viewportFraction: 0.9);
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Inicia o timer para auto-scroll se houver mais de um item
+    if (widget.featuredProducts.length > 1) {
+      _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
+        if (_pageController.page == widget.featuredProducts.length - 1) {
+          _pageController.animateToPage(0,
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeOut);
+        } else {
+          _pageController.nextPage(
+              duration: const Duration(milliseconds: 500),
+              curve: Curves.easeOut);
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        SizedBox(
+          height: 200,
+          child: PageView.builder(
+            controller: _pageController,
+            itemCount: widget.featuredProducts.length,
+            itemBuilder: (context, index) {
+              final product = widget.featuredProducts[index];
+              return _FeaturedProductBanner(
+                product: product,
+                user: widget.user,
+                priceFormat: widget.priceFormat,
+              );
+            },
+          ),
+        ),
+        if (widget.featuredProducts.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 12.0, bottom: 4.0),
+            child: SmoothPageIndicator(
+              controller: _pageController,
+              count: widget.featuredProducts.length,
+              effect: const ExpandingDotsEffect(
+                dotHeight: 8,
+                dotWidth: 8,
+                activeDotColor: primaryAccent,
+                dotColor: textHint,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// --- WIDGET DO BANNER DE DESTAQUE (AGORA USADO NO CARROSSEL) ---
 class _FeaturedProductBanner extends StatelessWidget {
   final Product product;
   final UserModel user;
@@ -338,7 +552,7 @@ class _FeaturedProductBanner extends StatelessWidget {
         ),
       )),
       child: Card(
-        margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+        margin: const EdgeInsets.fromLTRB(6, 12, 6, 0),
         clipBehavior: Clip.antiAlias,
         child: AspectRatio(
           aspectRatio: 16 / 9,
@@ -495,9 +709,20 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
               SliverAppBar(
                 expandedHeight: 300.0,
                 pinned: true,
+                stretch: true,
+                title: Text(widget.product.name),
                 flexibleSpace: FlexibleSpaceBar(
-                  title: Text(widget.product.name,
-                      style: const TextStyle(fontSize: 16)),
+                  stretchModes: const [StretchMode.zoomBackground],
+                  centerTitle: true,
+                  title: Text(
+                    widget.product.name,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16.0,
+                      fontWeight: FontWeight.bold,
+                      shadows: [Shadow(blurRadius: 2, color: Colors.black54)],
+                    ),
+                  ),
                   background: widget.product.imageUrls.isNotEmpty
                       ? Stack(
                           fit: StackFit.expand,
@@ -510,17 +735,31 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                               },
                               itemCount: widget.product.imageUrls.length,
                               itemBuilder: (context, index) {
-                                final imageWidget = Image.network(
-                                  widget.product.imageUrls[index],
-                                  fit: BoxFit.cover,
+                                final imageUrl =
+                                    widget.product.imageUrls[index];
+                                final heroTag =
+                                    'product_image_${widget.product.id}_$index';
+                                return GestureDetector(
+                                  onTap: () {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => _ImageViewerPage(
+                                          imageUrls: widget.product.imageUrls,
+                                          initialIndex: index,
+                                          heroTagPrefix:
+                                              'product_image_${widget.product.id}',
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                  child: Hero(
+                                    tag: heroTag,
+                                    child: Image.network(
+                                      imageUrl,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
                                 );
-                                return kDebugMode
-                                    ? imageWidget
-                                    : Hero(
-                                        tag:
-                                            'product_image_${widget.product.id}_$index',
-                                        child: imageWidget,
-                                      );
                               },
                             ),
                             if (widget.product.imageUrls.length > 1)
@@ -580,69 +819,63 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ),
                 ],
               ),
-              SliverList(
-                delegate: SliverChildListDelegate([
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.product.name,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineSmall
-                                  ?.copyWith(fontWeight: FontWeight.bold),
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        priceFormat.format(widget.product.price),
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              color: primaryAccent,
+                              fontWeight: FontWeight.bold,
                             ),
-                            const SizedBox(height: 12),
-                            Text(
-                              priceFormat.format(widget.product.price),
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleLarge
-                                  ?.copyWith(
-                                    color: primaryAccent,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                            ),
-                            const SizedBox(height: 12),
-                            Chip(
-                              avatar:
-                                  const Icon(Icons.category_outlined, size: 18),
-                              label: Text(widget.product.category),
-                            ),
-                          ],
-                        ),
                       ),
-                    ),
+                      const SizedBox(height: 16),
+                      Wrap(
+                        spacing: 8.0,
+                        runSpacing: 8.0,
+                        children: [
+                          Chip(
+                            avatar:
+                                const Icon(Icons.category_outlined, size: 18),
+                            label: Text(widget.product.category),
+                          ),
+                          Chip(
+                            label: Text(
+                                productStatusToString(widget.product.status)),
+                            backgroundColor: widget.product.status ==
+                                    ProductStatus.disponivel
+                                ? successColor.withOpacity(0.8)
+                                : (widget.product.status ==
+                                        ProductStatus.esgotado
+                                    ? errorColor.withOpacity(0.8)
+                                    : infoColor.withOpacity(0.8)),
+                            labelStyle: const TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 32),
+                      Text(
+                        'Descrição',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.product.description.isEmpty
+                            ? "Nenhuma descrição fornecida."
+                            : widget.product.description,
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodyLarge
+                            ?.copyWith(height: 1.5, color: textSecondary),
+                      ),
+                      const SizedBox(
+                          height: 90), // Espaço para o botão flutuante
+                    ],
                   ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Descrição',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const Divider(height: 24),
-                        Text(
-                          widget.product.description,
-                          style: Theme.of(context)
-                              .textTheme
-                              .bodyLarge
-                              ?.copyWith(height: 1.5, color: textSecondary),
-                        ),
-                        const SizedBox(
-                            height: 90), // Espaço para o botão flutuante
-                      ],
-                    ),
-                  ),
-                ]),
+                ),
               ),
             ],
           ),
@@ -668,7 +901,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 }
 
-// --- TELA DE EDIÇÃO/CRIAÇÃO DE PRODUTO (COM MÚLTIPLAS IMAGENS) ---
+// --- TELA DE EDIÇÃO/CRIAÇÃO DE PRODUTO ---
 class EditProductPage extends StatefulWidget {
   final String academyId;
   final Product? productToEdit;
@@ -999,6 +1232,69 @@ class _EditProductPageState extends State<EditProductPage> {
         ),
         child: const Center(
           child: Icon(Icons.add_a_photo_outlined, color: textHint, size: 32),
+        ),
+      ),
+    );
+  }
+}
+
+// --- TELA PARA VISUALIZAR IMAGEM (MODIFICADA PARA GALERIA) ---
+class _ImageViewerPage extends StatefulWidget {
+  final List<String> imageUrls;
+  final int initialIndex;
+  final String heroTagPrefix;
+
+  const _ImageViewerPage({
+    required this.imageUrls,
+    required this.initialIndex,
+    required this.heroTagPrefix,
+  });
+
+  @override
+  State<_ImageViewerPage> createState() => _ImageViewerPageState();
+}
+
+class _ImageViewerPageState extends State<_ImageViewerPage> {
+  late final PageController _pageController;
+
+  @override
+  void initState() {
+    super.initState();
+    _pageController = PageController(initialPage: widget.initialIndex);
+  }
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
+      body: Center(
+        child: PageView.builder(
+          controller: _pageController,
+          itemCount: widget.imageUrls.length,
+          itemBuilder: (context, index) {
+            final imageUrl = widget.imageUrls[index];
+            final heroTag = '${widget.heroTagPrefix}_$index';
+            return Hero(
+              tag: heroTag,
+              child: InteractiveViewer(
+                panEnabled: true,
+                minScale: 1.0,
+                maxScale: 4.0,
+                child: Image.network(imageUrl),
+              ),
+            );
+          },
         ),
       ),
     );

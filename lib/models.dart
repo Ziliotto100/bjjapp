@@ -57,6 +57,7 @@ class UserModel {
   final String? profileImagePath;
   final DateTime? dataNascimento;
   final Map<String, int> monthlyTrainingGoals;
+  final Timestamp? lastNotificationCheck;
 
   // [MELHORIA] Campos de Auditoria
   final Timestamp? createdAt;
@@ -81,6 +82,7 @@ class UserModel {
     this.profileImagePath,
     this.dataNascimento,
     this.monthlyTrainingGoals = const {},
+    this.lastNotificationCheck,
     this.createdAt,
     this.updatedAt,
     this.createdByUid,
@@ -139,6 +141,7 @@ class UserModel {
       profileImagePath: data['profileImagePath'],
       dataNascimento: (data['dataNascimento'] as Timestamp?)?.toDate(),
       monthlyTrainingGoals: goals,
+      lastNotificationCheck: data['lastNotificationCheck'],
       createdAt: data['createdAt'],
       updatedAt: data['updatedAt'],
       createdByUid: data['createdByUid'],
@@ -626,6 +629,59 @@ class Product {
       'isPromo': isPromo, // NOVO
       'status': productStatusToString(status), // NOVO
       'createdAt': createdAt,
+    };
+  }
+}
+
+// --- NOVO MODELO PARA NOTIFICAÇÕES ---
+class NotificationModel {
+  final String id;
+  final String title;
+  final String message;
+  final String senderId;
+  final String senderName;
+  final String senderRole;
+  final String academyId;
+  final Timestamp createdAt;
+  final List<String> readBy; // <-- NOVO CAMPO
+
+  NotificationModel({
+    required this.id,
+    required this.title,
+    required this.message,
+    required this.senderId,
+    required this.senderName,
+    required this.senderRole,
+    required this.academyId,
+    required this.createdAt,
+    this.readBy = const [], // <-- NOVO PARÂMETRO
+  });
+
+  factory NotificationModel.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return NotificationModel(
+      id: doc.id,
+      title: data['title'] ?? '',
+      message: data['message'] ?? '',
+      senderId: data['senderId'] ?? '',
+      senderName: data['senderName'] ?? '',
+      senderRole: data['senderRole'] ?? '',
+      academyId: data['academyId'] ?? '',
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+      readBy: List<String>.from(data['readBy'] ?? []), // <-- NOVA ATRIBUIÇÃO
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'title': title,
+      'message': message,
+      'senderId': senderId,
+      'senderName': senderName,
+      'senderRole': senderRole,
+      'academyId': academyId,
+      'createdAt': createdAt,
+      'readBy': readBy, // <-- NOVO CAMPO
     };
   }
 }

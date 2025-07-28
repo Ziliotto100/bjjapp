@@ -9,7 +9,8 @@ import 'student_module.dart';
 import 'schedule_module.dart';
 import 'scoreboard_module.dart';
 import 'study_notebook_module.dart';
-import 'shop_module.dart'; // <-- NOVO IMPORT
+import 'shop_module.dart';
+import 'notifications_module.dart'; // <-- NOVO IMPORT
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -139,13 +140,19 @@ class NavigationService {
 
       // Módulos Comuns
       AppModule(
+        id: 'common_notifications', // <-- NOVO MÓDULO
+        title: 'Avisos',
+        icon: Icons.notifications_rounded,
+        pageBuilder: (user, teachers, students) =>
+            NotificationsPage(user: user),
+      ),
+      AppModule(
         id: 'common_schedule',
         title: 'Grade',
         icon: Icons.calendar_month_rounded,
         pageBuilder: (user, teachers, students) =>
             SchedulePage(user: user, teachers: teachers),
       ),
-      // --- NOVO MÓDULO DA LOJA ---
       AppModule(
         id: 'common_shop',
         title: 'Loja',
@@ -184,18 +191,18 @@ class NavigationService {
       case UserRole.manager:
         defaultVisibleIds = [
           'manager_dashboard',
+          'common_notifications', // <-- ADICIONADO
           'manager_students',
           'manager_teachers',
-          'common_shop', // <-- ADICIONADO
           'common_schedule',
         ];
         break;
       case UserRole.teacher:
         defaultVisibleIds = [
           'teacher_dashboard',
+          'common_notifications', // <-- ADICIONADO
           'common_schedule',
           'teacher_students',
-          'common_shop', // <-- ADICIONADO
           'teacher_checkin',
         ];
         break;
@@ -203,8 +210,8 @@ class NavigationService {
       default:
         defaultVisibleIds = [
           'student_profile',
+          'common_notifications', // <-- ADICIONADO
           'common_schedule',
-          'common_shop', // <-- ADICIONADO
           'student_history',
           'common_notebook',
         ];

@@ -1,6 +1,7 @@
 // lib/student_module.dart
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously, unused_element, curly_braces_in_flow_control_structures
 
+import 'dart:async'; // <-- NOVO IMPORT
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -38,6 +39,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   List<UserModel> _teachers = [];
   List<Aluno> _students = [];
+  StreamSubscription? _notificationSubscription; // <-- NOVO
 
   @override
   void initState() {
@@ -45,7 +47,63 @@ class _StudentHomePageState extends State<StudentHomePage> {
     _navService =
         NavigationService(userId: widget.user.uid, userRole: widget.user.role);
     _loadInitialData();
+    _checkForNewNotifications(); // <-- NOVO
   }
+
+  @override
+  void dispose() {
+    _notificationSubscription?.cancel(); // <-- NOVO
+    super.dispose();
+  }
+
+  // --- NOVA LÓGICA DE NOTIFICAÇÃO ---
+  void _checkForNewNotifications() {
+    final userLastCheck = widget.user.lastNotificationCheck ??
+        Timestamp.fromMillisecondsSinceEpoch(0);
+
+    _notificationSubscription = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('notifications')
+        .where('createdAt', isGreaterThan: userLastCheck)
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .snapshots()
+        .listen((snapshot) async {
+      if (snapshot.docs.isNotEmpty && mounted) {
+        final notification =
+            NotificationModel.fromFirestore(snapshot.docs.first);
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(notification.title),
+            content: Text(notification.message),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await _updateLastNotificationCheck();
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _updateLastNotificationCheck() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.user.uid)
+          .update({'lastNotificationCheck': Timestamp.now()});
+    } catch (e) {
+      debugPrint("Falha ao atualizar o horário de checagem: $e");
+    }
+  }
+  // --- FIM DA LÓGICA DE NOTIFICAÇÃO ---
 
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);

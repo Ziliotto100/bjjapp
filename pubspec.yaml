@@ -19,6 +19,9 @@ dependencies:
   in_app_update: 4.2.3 # Use a versão mais atual
   firebase_remote_config: ^5.0.0 
   package_info_plus: ^8.0.0
+  shimmer: ^3.0.0 
+  flutter_staggered_animations: ^1.1.1
+  smooth_page_indicator: ^1.1.0
 
   image_picker: ^1.1.2    # <-- ADICIONE/ATUALIZE ESTA
   path: ^1.9.0            # <-- ADICIONE/ATUALIZE ESTA

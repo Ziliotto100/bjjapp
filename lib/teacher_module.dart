@@ -43,6 +43,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   bool _isSparringMode = false;
   StreamSubscription? _sparringStateSubscription;
   StreamSubscription? _settingsSubscription;
+  StreamSubscription? _notificationSubscription; // <-- NOVO
 
   @override
   void initState() {
@@ -51,12 +52,14 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         NavigationService(userId: widget.user.uid, userRole: widget.user.role);
     _loadInitialData();
     _listenToSparringState();
+    _checkForNewNotifications(); // <-- NOVO
   }
 
   @override
   void dispose() {
     _sparringStateSubscription?.cancel();
     _settingsSubscription?.cancel();
+    _notificationSubscription?.cancel(); // <-- NOVO
     super.dispose();
   }
 
@@ -117,6 +120,70 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     });
   }
 
+  // --- NOVA LÓGICA DE NOTIFICAÇÃO ---
+  void _checkForNewNotifications() {
+    // Usa um valor padrão muito antigo se o usuário nunca checou antes.
+    final userLastCheck = widget.user.lastNotificationCheck ??
+        Timestamp.fromMillisecondsSinceEpoch(0);
+
+    _notificationSubscription = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('notifications')
+        .where('createdAt', isGreaterThan: userLastCheck)
+        .orderBy('createdAt', descending: true)
+        .limit(1)
+        .snapshots()
+        .listen((snapshot) async {
+      if (snapshot.docs.isNotEmpty && mounted) {
+        final latestNotificationDoc = snapshot.docs.first;
+        final notification =
+            NotificationModel.fromFirestore(latestNotificationDoc);
+
+        // Evita mostrar o pop-up para a notificação que o próprio usuário acabou de enviar.
+        if (notification.senderId == widget.user.uid) {
+          final timeSinceSent =
+              DateTime.now().difference(notification.createdAt.toDate());
+          if (timeSinceSent.inSeconds < 10) {
+            // Apenas atualiza o horário de checagem sem mostrar o diálogo.
+            await _updateLastNotificationCheck();
+            return;
+          }
+        }
+
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(notification.title),
+            content: Text(notification.message),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.of(context).pop();
+                  await _updateLastNotificationCheck();
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    });
+  }
+
+  Future<void> _updateLastNotificationCheck() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.user.uid)
+          .update({'lastNotificationCheck': Timestamp.now()});
+    } catch (e) {
+      // O erro é registrado no console, mas não interrompe o usuário.
+      debugPrint("Falha ao atualizar o horário de checagem: $e");
+    }
+  }
+  // --- FIM DA LÓGICA DE NOTIFICAÇÃO ---
+
   Future<void> _iniciarSparring(List<List<String>> rounds, String tipoGeracao,
       List<Aluno> participants) async {
     if (participants.isEmpty) {
@@ -127,15 +194,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
 
     await _checkinAlunos(participants);
 
-    // --- INÍCIO DA CORREÇÃO 1: ESTRUTURA DE DADOS DAS RODADAS ---
-    // Transforma a lista de listas em uma lista de mapas para ser compatível com o Firestore.
     final roundsForFirestore =
         rounds.map((round) => {'fights': round}).toList();
-    // --- FIM DA CORREÇÃO 1 ---
 
     final stateData = {
       'isSparringMode': true,
-      'allRounds': roundsForFirestore, // Salva a nova estrutura
+      'allRounds': roundsForFirestore,
       'participants': participants.map((p) => p.id).toList(),
       'generationType': tipoGeracao,
       'currentRoundIndex': 1,
