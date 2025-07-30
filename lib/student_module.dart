@@ -1,7 +1,7 @@
 // lib/student_module.dart
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously, unused_element, curly_braces_in_flow_control_structures
 
-import 'dart:async'; // <-- NOVO IMPORT
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -39,7 +39,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   List<UserModel> _teachers = [];
   List<Aluno> _students = [];
-  StreamSubscription? _notificationSubscription; // <-- NOVO
+  StreamSubscription? _notificationSubscription;
 
   @override
   void initState() {
@@ -47,16 +47,15 @@ class _StudentHomePageState extends State<StudentHomePage> {
     _navService =
         NavigationService(userId: widget.user.uid, userRole: widget.user.role);
     _loadInitialData();
-    _checkForNewNotifications(); // <-- NOVO
+    _checkForNewNotifications();
   }
 
   @override
   void dispose() {
-    _notificationSubscription?.cancel(); // <-- NOVO
+    _notificationSubscription?.cancel();
     super.dispose();
   }
 
-  // --- NOVA LÓGICA DE NOTIFICAÇÃO ---
   void _checkForNewNotifications() {
     final userLastCheck = widget.user.lastNotificationCheck ??
         Timestamp.fromMillisecondsSinceEpoch(0);
@@ -103,7 +102,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
       debugPrint("Falha ao atualizar o horário de checagem: $e");
     }
   }
-  // --- FIM DA LÓGICA DE NOTIFICAÇÃO ---
 
   Future<void> _loadInitialData() async {
     setState(() => _isLoading = true);
@@ -111,11 +109,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
       final firestore = FirebaseFirestore.instance;
       final academyId = widget.user.academyId;
 
-      // Carrega dados que as telas podem precisar
+      // --- ALTERAÇÃO AQUI ---
+      // Busca apenas usuários com o papel 'teacher', excluindo o 'manager'.
       final usersSnapshot = await firestore
           .collection('users')
           .where('academyId', isEqualTo: academyId)
-          .where('role', whereIn: ['teacher', 'manager']).get();
+          .where('role', isEqualTo: 'teacher')
+          .get();
       _teachers = usersSnapshot.docs
           .map((doc) => UserModel.fromFirestore(doc))
           .toList();
@@ -133,7 +133,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
       _students = [...studentParticipants, ...teacherParticipants]
         ..sort((a, b) => a.nome.compareTo(b.nome));
 
-      // Escuta as configurações de abas
       _navService.getTabSettingsStream().listen((settingsDoc) {
         _configureNavigation(settingsDoc);
       });
@@ -908,7 +907,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
         final startOfMonth = DateTime(now.year, now.month, 1);
         final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
 
-        // Busca pagamentos
         final paymentSnapshot = await firestore
             .collection('academies')
             .doc(freshUser.academyId)
@@ -923,7 +921,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
           fee = MonthlyFee.fromFirestore(paymentSnapshot.docs.first);
         }
 
-        // Busca check-ins do mês
         final checkinsSnapshot = await firestore
             .collection('academies')
             .doc(freshUser.academyId)
@@ -1001,7 +998,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                       .update({'monthlyTrainingGoals.$goalKey': newGoal});
                 }
                 Navigator.of(context).pop();
-                _loadProfileData(); // Recarrega os dados
+                _loadProfileData();
               },
               child: const Text('Salvar Meta'),
             )
@@ -1023,9 +1020,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
                   children: [
                     UserProfileHeader(user: _currentUser!, studentData: _aluno),
-                    const SizedBox(
-                        height: 8), // MODIFICAÇÃO: Espaçamento reduzido
-
+                    const SizedBox(height: 8),
                     Card(
                       margin: const EdgeInsets.symmetric(vertical: 4.0),
                       child: ListTile(
@@ -1114,7 +1109,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 }
 
-// NOVO WIDGET PARA O CARD DE METAS
 class _TrainingGoalCard extends StatelessWidget {
   final UserModel currentUser;
   final int monthlyCheckins;
@@ -1144,7 +1138,7 @@ class _TrainingGoalCard extends StatelessWidget {
     }
 
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4.0), // Margem ajustada
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12.0),

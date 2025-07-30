@@ -10,7 +10,8 @@ import 'schedule_module.dart';
 import 'scoreboard_module.dart';
 import 'study_notebook_module.dart';
 import 'shop_module.dart';
-import 'notifications_module.dart'; // <-- NOVO IMPORT
+import 'notifications_module.dart';
+import 'birthdays_module.dart'; // <-- NOVO IMPORT
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -140,11 +141,18 @@ class NavigationService {
 
       // Módulos Comuns
       AppModule(
-        id: 'common_notifications', // <-- NOVO MÓDULO
+        id: 'common_notifications',
         title: 'Avisos',
         icon: Icons.notifications_rounded,
         pageBuilder: (user, teachers, students) =>
             NotificationsPage(user: user),
+      ),
+      AppModule(
+        id: 'common_birthdays', // <-- NOVO MÓDULO
+        title: 'Aniversários',
+        icon: Icons.cake_rounded,
+        pageBuilder: (user, teachers, students) =>
+            BirthdaysPage(academyId: user.academyId, currentUser: user),
       ),
       AppModule(
         id: 'common_schedule',
@@ -191,18 +199,18 @@ class NavigationService {
       case UserRole.manager:
         defaultVisibleIds = [
           'manager_dashboard',
-          'common_notifications', // <-- ADICIONADO
+          'common_notifications',
           'manager_students',
-          'manager_teachers',
+          'common_birthdays', // <-- ADICIONADO
           'common_schedule',
         ];
         break;
       case UserRole.teacher:
         defaultVisibleIds = [
           'teacher_dashboard',
-          'common_notifications', // <-- ADICIONADO
+          'common_notifications',
+          'common_birthdays', // <-- ADICIONADO
           'common_schedule',
-          'teacher_students',
           'teacher_checkin',
         ];
         break;
@@ -210,7 +218,7 @@ class NavigationService {
       default:
         defaultVisibleIds = [
           'student_profile',
-          'common_notifications', // <-- ADICIONADO
+          'common_notifications',
           'common_schedule',
           'student_history',
           'common_notebook',

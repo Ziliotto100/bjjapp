@@ -22,6 +22,27 @@ class AppDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // --- LÓGICA DE ORDENAÇÃO ADICIONADA AQUI ---
+    AppModule? inicioModule;
+    try {
+      // Encontra o módulo "Início"
+      inicioModule = allModules.firstWhere((m) => m.title == 'Início');
+    } catch (e) {
+      // Caso não encontre, continua sem ele
+      inicioModule = null;
+    }
+
+    // Cria uma lista com os outros módulos
+    final otherModules = allModules.where((m) => m.title != 'Início').toList();
+
+    // Ordena os outros módulos em ordem alfabética
+    otherModules.sort((a, b) => a.title.compareTo(b.title));
+
+    // Junta as listas, com "Início" no topo (se existir)
+    final sortedModules =
+        (inicioModule != null) ? [inicioModule, ...otherModules] : otherModules;
+    // --- FIM DA LÓGICA DE ORDENAÇÃO ---
+
     return Drawer(
       backgroundColor: darkScaffoldBackground,
       child: ListView(
@@ -29,15 +50,17 @@ class AppDrawer extends StatelessWidget {
         children: [
           _buildDrawerHeader(context),
           const Divider(color: borderNormal),
-          ...allModules.map((module) {
-            final index = allModules.indexOf(module);
+          // Mapeia a lista já ordenada para criar os itens do menu
+          ...sortedModules.map((module) {
+            // Pega o índice original do módulo para a navegação não quebrar
+            final originalIndex = allModules.indexOf(module);
             return ListTile(
               leading: Icon(module.icon, color: textSecondary),
               title: Text(module.title,
                   style: const TextStyle(color: textSecondary)),
               onTap: () {
                 Navigator.pop(context); // Fecha o drawer
-                onSelectItem(index); // Navega para a tela selecionada
+                onSelectItem(originalIndex); // Navega usando o índice correto
               },
             );
           }),
@@ -57,7 +80,6 @@ class AppDrawer extends StatelessWidget {
             leading: const Icon(Icons.logout, color: errorColor),
             title: const Text('Sair', style: TextStyle(color: errorColor)),
             onTap: () async {
-              // --- INÍCIO DA CORREÇÃO ---
               Navigator.pop(context); // Fecha o drawer primeiro
               final confirm = await showDialog<bool>(
                 context: context,
@@ -88,7 +110,6 @@ class AppDrawer extends StatelessWidget {
                   (route) => false,
                 );
               }
-              // --- FIM DA CORREÇÃO ---
             },
           ),
         ],

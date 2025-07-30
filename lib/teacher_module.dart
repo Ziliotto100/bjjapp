@@ -18,6 +18,7 @@ import 'auth_gate.dart';
 import 'schedule_module.dart';
 import 'navigation_service.dart';
 import 'app_drawer.dart';
+import 'user_card_widget.dart';
 
 // --- TELAS DO PROFESSOR ---
 class TeacherHomePage extends StatefulWidget {
@@ -43,7 +44,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   bool _isSparringMode = false;
   StreamSubscription? _sparringStateSubscription;
   StreamSubscription? _settingsSubscription;
-  StreamSubscription? _notificationSubscription; // <-- NOVO
+  StreamSubscription? _notificationSubscription;
 
   @override
   void initState() {
@@ -52,14 +53,14 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         NavigationService(userId: widget.user.uid, userRole: widget.user.role);
     _loadInitialData();
     _listenToSparringState();
-    _checkForNewNotifications(); // <-- NOVO
+    _checkForNewNotifications();
   }
 
   @override
   void dispose() {
     _sparringStateSubscription?.cancel();
     _settingsSubscription?.cancel();
-    _notificationSubscription?.cancel(); // <-- NOVO
+    _notificationSubscription?.cancel();
     super.dispose();
   }
 
@@ -69,10 +70,13 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       final firestore = FirebaseFirestore.instance;
       final academyId = widget.user.academyId;
 
+      // --- ALTERAÇÃO AQUI ---
+      // Busca apenas usuários com o papel 'teacher', excluindo o 'manager'.
       final usersSnapshot = await firestore
           .collection('users')
           .where('academyId', isEqualTo: academyId)
-          .where('role', whereIn: ['teacher', 'manager']).get();
+          .where('role', isEqualTo: 'teacher')
+          .get();
       _teachers = usersSnapshot.docs
           .map((doc) => UserModel.fromFirestore(doc))
           .toList();
@@ -120,9 +124,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     });
   }
 
-  // --- NOVA LÓGICA DE NOTIFICAÇÃO ---
   void _checkForNewNotifications() {
-    // Usa um valor padrão muito antigo se o usuário nunca checou antes.
     final userLastCheck = widget.user.lastNotificationCheck ??
         Timestamp.fromMillisecondsSinceEpoch(0);
 
@@ -140,12 +142,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         final notification =
             NotificationModel.fromFirestore(latestNotificationDoc);
 
-        // Evita mostrar o pop-up para a notificação que o próprio usuário acabou de enviar.
         if (notification.senderId == widget.user.uid) {
           final timeSinceSent =
               DateTime.now().difference(notification.createdAt.toDate());
           if (timeSinceSent.inSeconds < 10) {
-            // Apenas atualiza o horário de checagem sem mostrar o diálogo.
             await _updateLastNotificationCheck();
             return;
           }
@@ -178,11 +178,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           .doc(widget.user.uid)
           .update({'lastNotificationCheck': Timestamp.now()});
     } catch (e) {
-      // O erro é registrado no console, mas não interrompe o usuário.
       debugPrint("Falha ao atualizar o horário de checagem: $e");
     }
   }
-  // --- FIM DA LÓGICA DE NOTIFICAÇÃO ---
 
   Future<void> _iniciarSparring(List<List<String>> rounds, String tipoGeracao,
       List<Aluno> participants) async {
@@ -469,10 +467,12 @@ class AlunosTeacherPage extends StatefulWidget {
 class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
+  late Future<Map<String, UserModel>> _usersMapFuture;
 
   @override
   void initState() {
     super.initState();
+    _usersMapFuture = _fetchUsersMap();
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text;
@@ -480,52 +480,20 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
     });
   }
 
+  Future<Map<String, UserModel>> _fetchUsersMap() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('academyId', isEqualTo: widget.academyId)
+        .get();
+    return {
+      for (var doc in snapshot.docs) doc.id: UserModel.fromFirestore(doc)
+    };
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  void _editAluno(Aluno aluno) {
-    showDialog(
-      context: context,
-      builder: (_) => AdicionarAlunoDialog(
-        alunoParaEditar: aluno,
-        academyId: widget.academyId,
-        currentUser: widget.teacher,
-        onAlunoAdicionado: (alunoEditado) async {
-          try {
-            final dataToUpdate = {
-              'nome': alunoEditado.nome,
-              'faixa': alunoEditado.faixa,
-              'peso': alunoEditado.peso,
-              'graus': alunoEditado.graus,
-              'lastUpdatedByUid': widget.teacher.uid,
-              'lastUpdatedByName': widget.teacher.name,
-              'updatedAt': FieldValue.serverTimestamp(),
-            };
-
-            await FirebaseFirestore.instance
-                .collection('academies')
-                .doc(widget.academyId)
-                .collection('students')
-                .doc(alunoEditado.id)
-                .update(dataToUpdate);
-
-            if (mounted) {
-              showBjjSnackBar(
-                  context, '${alunoEditado.nome} atualizado com sucesso!',
-                  type: 'success');
-            }
-          } catch (e) {
-            if (mounted) {
-              showBjjSnackBar(context, 'Erro ao atualizar aluno: $e',
-                  type: 'error');
-            }
-          }
-        },
-      ),
-    );
   }
 
   @override
@@ -549,73 +517,78 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
           ),
         ),
         Expanded(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('academies')
-                .doc(widget.academyId)
-                .collection('students')
-                .orderBy('nome')
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
+          child: FutureBuilder<Map<String, UserModel>>(
+            future: _usersMapFuture,
+            builder: (context, usersSnapshot) {
+              if (usersSnapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-              if (snapshot.hasError) {
-                return Center(child: Text("Erro: ${snapshot.error}"));
-              }
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const EmptyStateWidget(
-                  icon: Icons.no_accounts_rounded,
-                  title: 'Nenhum Aluno Cadastrado',
-                  message:
-                      'Clique no botão "+" para adicionar o primeiro aluno da sua academia.',
-                );
+              if (usersSnapshot.hasError) {
+                return Center(
+                    child: Text(
+                        "Erro ao carregar usuários: ${usersSnapshot.error}"));
               }
 
-              final allAlunos = snapshot.data!.docs.map((doc) {
-                return Aluno.fromJson(
-                    doc.id, doc.data() as Map<String, dynamic>);
-              }).toList();
+              final usersMap = usersSnapshot.data ?? {};
 
-              final filteredAlunos = allAlunos.where((aluno) {
-                return aluno.nome
-                    .toLowerCase()
-                    .contains(_searchQuery.toLowerCase());
-              }).toList();
+              return StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('academies')
+                    .doc(widget.academyId)
+                    .collection('students')
+                    .orderBy('nome')
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(child: Text("Erro: ${snapshot.error}"));
+                  }
+                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                    return const EmptyStateWidget(
+                      icon: Icons.no_accounts_rounded,
+                      title: 'Nenhum Aluno Cadastrado',
+                      message:
+                          'Clique no botão "+" para adicionar o primeiro aluno.',
+                    );
+                  }
 
-              if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
-                return EmptyStateWidget(
-                  icon: Icons.person_search,
-                  title: "Nenhum Aluno Encontrado",
-                  message:
-                      "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
-                );
-              }
+                  final allAlunos = snapshot.data!.docs.map((doc) {
+                    return Aluno.fromJson(
+                        doc.id, doc.data() as Map<String, dynamic>);
+                  }).toList();
 
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 80.0),
-                itemCount: filteredAlunos.length,
-                itemBuilder: (context, index) {
-                  final aluno = filteredAlunos[index];
-                  return Card(
-                    child: ListTile(
-                      onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => StudentDetailPage(
-                          academyId: widget.academyId,
-                          student: aluno,
-                        ),
-                      )),
-                      title: Text(aluno.nome,
-                          style: Theme.of(context).textTheme.titleMedium),
-                      subtitle: Text(
-                          '${aluno.faixa}${aluno.graus != null ? ' - ${aluno.graus}º' : ''} - ${aluno.peso}kg'),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.edit_outlined,
-                            color: primaryAccent),
-                        onPressed: () => _editAluno(aluno),
-                        tooltip: 'Editar Aluno',
-                      ),
-                    ),
+                  final filteredAlunos = allAlunos.where((aluno) {
+                    return aluno.nome
+                        .toLowerCase()
+                        .contains(_searchQuery.toLowerCase());
+                  }).toList();
+
+                  if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
+                    return EmptyStateWidget(
+                      icon: Icons.person_search,
+                      title: "Nenhum Aluno Encontrado",
+                      message:
+                          "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.fromLTRB(8, 8.0, 8, 80.0),
+                    itemCount: filteredAlunos.length,
+                    itemBuilder: (context, index) {
+                      final aluno = filteredAlunos[index];
+                      final userModel = usersMap[aluno.userId];
+                      final imageUrl = userModel?.profileImagePath;
+
+                      return UserCard(
+                        user: aluno,
+                        academyId: widget.academyId,
+                        currentUser: widget.teacher,
+                        profileImageUrl: imageUrl,
+                      );
+                    },
                   );
                 },
               );
@@ -689,6 +662,7 @@ class TeacherDashboardPage extends StatelessWidget {
   }
 }
 
+// O restante do arquivo (Checkin, Sorteio, etc.) permanece o mesmo...
 class CheckinTeacherPage extends StatelessWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
@@ -1224,7 +1198,6 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
             .nome;
 
         if (existingDoc != null) {
-          // --- INÍCIO DA CORREÇÃO 2: ACESSO SEGURO AO CAMPO 'STATUS' ---
           final data = existingDoc.data() as Map<String, dynamic>?;
           if (data != null &&
               data['status'] == checkinStatusToString(CheckinStatus.pending)) {
@@ -1234,7 +1207,6 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
             });
             confirmedCount++;
           }
-          // --- FIM DA CORREÇÃO 2 ---
         } else {
           final newDocRef = checkinRef.doc();
           batch.set(newDocRef, {
@@ -1444,7 +1416,6 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
             .nome;
 
         if (existingDoc != null) {
-          // --- INÍCIO DA CORREÇÃO 2: ACESSO SEGURO AO CAMPO 'STATUS' ---
           final data = existingDoc.data() as Map<String, dynamic>?;
           if (data != null &&
               data['status'] == checkinStatusToString(CheckinStatus.pending)) {
@@ -1452,7 +1423,6 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
                 {'status': checkinStatusToString(CheckinStatus.approved)});
             confirmedCount++;
           }
-          // --- FIM DA CORREÇÃO 2 ---
         } else {
           final newDocRef = checkinRef.doc();
           batch.set(newDocRef, {
@@ -1627,8 +1597,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
           .doc(academyId)
           .collection('checkins')
           .where('status',
-              isEqualTo: checkinStatusToString(
-                  CheckinStatus.approved)) // Apenas aprovados
+              isEqualTo: checkinStatusToString(CheckinStatus.approved))
           .get();
       final allCheckins = checkinsSnapshot.docs
           .map((doc) => CheckinEntry.fromJson(doc.id, doc.data()))
@@ -2076,7 +2045,6 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
   List<List<String>> get _allRounds {
     final dynamic roundsData = _sparringState['allRounds'];
     if (roundsData is List) {
-      // Lida com a nova estrutura: List<Map<String, dynamic>>
       return roundsData.map<List<String>>((round) {
         if (round is Map &&
             round.containsKey('fights') &&

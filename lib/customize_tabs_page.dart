@@ -64,6 +64,28 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
           _orderedModules = savedOrder
               .map((id) => allUserModules.firstWhere((m) => m.id == id))
               .toList();
+
+          // --- LÓGICA DE ORDENAÇÃO ADICIONADA AQUI ---
+          AppModule? inicioModule;
+          try {
+            // Encontra o módulo "Início"
+            inicioModule =
+                _orderedModules.firstWhere((m) => m.title == 'Início');
+          } catch (e) {
+            inicioModule = null;
+          }
+
+          // Cria uma lista com os outros módulos e ordena alfabeticamente
+          final otherModules =
+              _orderedModules.where((m) => m.title != 'Início').toList();
+          otherModules.sort((a, b) => a.title.compareTo(b.title));
+
+          // Junta as listas, com "Início" no topo
+          _orderedModules = (inicioModule != null)
+              ? [inicioModule, ...otherModules]
+              : otherModules;
+          // --- FIM DA LÓGICA DE ORDENAÇÃO ---
+
           _visibleModuleIds = List<String>.from(settings['visible'] ?? []);
           _isLoading = false;
         });
@@ -131,7 +153,14 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
                               onChanged: (bool value) {
                                 setState(() {
                                   if (value) {
-                                    _visibleModuleIds.add(module.id);
+                                    // Limita a 5 abas visíveis
+                                    if (_visibleModuleIds.length < 5) {
+                                      _visibleModuleIds.add(module.id);
+                                    } else {
+                                      showBjjSnackBar(context,
+                                          "Você pode selecionar no máximo 5 abas.",
+                                          type: 'info');
+                                    }
                                   } else {
                                     _visibleModuleIds.remove(module.id);
                                   }

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app_theme.dart';
 import 'models.dart';
+import 'user_card_widget.dart'; // NOVO IMPORT
 
 // --- WIDGETS COMUNS REUTILIZÁVEIS ---
 
@@ -172,6 +173,7 @@ class UserProfileHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final profileImagePath = user.profileImagePath;
+    final heroTag = 'profile_pic_header_${user.uid}';
 
     final beltName = (user.role == UserRole.student && studentData != null)
         ? studentData!.faixa
@@ -190,17 +192,34 @@ class UserProfileHeader extends StatelessWidget {
               alignment: Alignment.center,
               clipBehavior: Clip.none,
               children: [
-                CircleAvatar(
-                  radius: 70,
-                  backgroundColor: primaryAccent.withOpacity(0.2),
-                  // MODIFICAÇÃO: Usa NetworkImage para URLs e null se for vazio.
-                  backgroundImage:
-                      (profileImagePath != null && profileImagePath.isNotEmpty)
+                GestureDetector(
+                  onTap: () {
+                    if (profileImagePath != null &&
+                        profileImagePath.isNotEmpty) {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => PhotoViewPage(
+                          imageUrl: profileImagePath,
+                          heroTag: heroTag,
+                        ),
+                      ));
+                    }
+                  },
+                  child: Hero(
+                    tag: heroTag,
+                    child: CircleAvatar(
+                      radius: 70,
+                      backgroundColor: primaryAccent.withOpacity(0.2),
+                      backgroundImage: (profileImagePath != null &&
+                              profileImagePath.isNotEmpty)
                           ? NetworkImage(profileImagePath)
                           : null,
-                  child: (profileImagePath == null || profileImagePath.isEmpty)
-                      ? const Icon(Icons.person, size: 80, color: primaryAccent)
-                      : null,
+                      child:
+                          (profileImagePath == null || profileImagePath.isEmpty)
+                              ? const Icon(Icons.person,
+                                  size: 80, color: primaryAccent)
+                              : null,
+                    ),
+                  ),
                 ),
                 if (showBelt)
                   Positioned(
