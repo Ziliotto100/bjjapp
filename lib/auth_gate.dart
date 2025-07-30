@@ -10,8 +10,8 @@ import 'common_widgets.dart';
 import 'app_theme.dart';
 import 'manager_module.dart';
 import 'teacher_module.dart';
-import 'student_module.dart';
-import 'update_checker.dart'; // <-- NOVO IMPORT
+import 'student_module.dart'; // NOVO IMPORT
+import 'update_checker.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -82,7 +82,8 @@ class _AuthGateState extends State<AuthGate> {
             final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
 
             if (userModel.mustChangePassword) {
-              return const ChangePasswordPage(isFirstLogin: true);
+              // --- ALTERAÇÃO AQUI: Passamos o userModel para a página ---
+              return ChangePasswordPage(isFirstLogin: true, user: userModel);
             }
 
             switch (userModel.role) {
@@ -103,7 +104,7 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
-// --- O RESTANTE DAS TELAS (LoginPage, ChangePasswordPage, etc.) CONTINUA IGUAL ---
+// --- O RESTANTE DAS TELAS (LoginPage, etc.) CONTINUA IGUAL ---
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
   @override
@@ -573,7 +574,13 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
 
 class ChangePasswordPage extends StatefulWidget {
   final bool isFirstLogin;
-  const ChangePasswordPage({super.key, this.isFirstLogin = false});
+  final UserModel? user; // --- ALTERAÇÃO AQUI ---
+
+  const ChangePasswordPage({
+    super.key,
+    this.isFirstLogin = false,
+    this.user, // --- ALTERAÇÃO AQUI ---
+  });
 
   @override
   State<ChangePasswordPage> createState() => _ChangePasswordPageState();
@@ -618,14 +625,22 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         showBjjSnackBar(context, "Senha alterada com sucesso!",
             type: "success");
 
+        // --- ALTERAÇÃO PRINCIPAL AQUI ---
         if (widget.isFirstLogin) {
+          // Após o primeiro login, vai para a tela de completar o perfil
           Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (context) => const AuthGate()),
+            MaterialPageRoute(
+                builder: (context) => EditStudentProfilePage(
+                      user: widget.user!,
+                      isFirstLogin: true,
+                    )),
             (Route<dynamic> route) => false,
           );
         } else {
+          // Em uma troca de senha normal, apenas fecha a tela
           Navigator.of(context).pop();
         }
+        // --- FIM DA ALTERAÇÃO PRINCIPAL ---
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) {

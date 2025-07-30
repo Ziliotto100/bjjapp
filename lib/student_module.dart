@@ -255,7 +255,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
 class EditStudentProfilePage extends StatefulWidget {
   final UserModel user;
-  const EditStudentProfilePage({super.key, required this.user});
+  final bool isFirstLogin; // --- ALTERAÇÃO AQUI ---
+
+  const EditStudentProfilePage({
+    super.key,
+    required this.user,
+    this.isFirstLogin = false, // --- ALTERAÇÃO AQUI ---
+  });
 
   @override
   State<EditStudentProfilePage> createState() => _EditStudentProfilePageState();
@@ -437,7 +443,15 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
       if (mounted) {
         showBjjSnackBar(context, "Perfil atualizado com sucesso!",
             type: 'success');
-        Navigator.of(context).pop();
+        // --- ALTERAÇÃO AQUI ---
+        if (widget.isFirstLogin) {
+          Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const AuthGate()),
+              (route) => false);
+        } else {
+          Navigator.of(context).pop();
+        }
+        // --- FIM DA ALTERAÇÃO ---
       }
     } catch (e) {
       if (mounted) {
@@ -460,7 +474,13 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(title: const Text("Editar Perfil")),
+      // --- ALTERAÇÃO AQUI ---
+      appBar: AppBar(
+        title:
+            Text(widget.isFirstLogin ? "Complete seu Perfil" : "Editar Perfil"),
+        automaticallyImplyLeading: !widget.isFirstLogin,
+      ),
+      // --- FIM DA ALTERAÇÃO ---
       body: AppBackground(
         child: SafeArea(
           child: _isLoading
@@ -468,6 +488,15 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
               : ListView(
                   padding: const EdgeInsets.all(16.0),
                   children: [
+                    if (widget.isFirstLogin)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 24.0),
+                        child: Text(
+                          "Para começar, por favor, confirme seus dados e adicione uma foto de perfil.",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: textHint, fontSize: 16),
+                        ),
+                      ),
                     Form(
                       key: _formKey,
                       child: Column(
@@ -593,7 +622,11 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                               : ElevatedButton.icon(
                                   onPressed: _updateProfile,
                                   icon: const Icon(Icons.save),
-                                  label: const Text("Salvar Alterações"),
+                                  // --- ALTERAÇÃO AQUI ---
+                                  label: Text(widget.isFirstLogin
+                                      ? "Confirmar e Continuar"
+                                      : "Salvar Alterações"),
+                                  // --- FIM DA ALTERAÇÃO ---
                                   style: ElevatedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 16)),
@@ -609,6 +642,8 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   }
 }
 
+// O restante do arquivo (MyCheckinsPage, SettingsPage, etc.) continua o mesmo.
+// ... (código restante do student_module.dart)
 class MyCheckinsPage extends StatefulWidget {
   final UserModel user;
   const MyCheckinsPage({super.key, required this.user});

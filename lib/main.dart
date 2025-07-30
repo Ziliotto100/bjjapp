@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'package:cloud_firestore/cloud_firestore.dart'; // NOVO IMPORT
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -38,6 +39,13 @@ void main() async {
   await Firebase.initializeApp(
     options: options,
   );
+
+  // --- ALTERAÇÃO AQUI: HABILITANDO O CACHE OFFLINE ---
+  FirebaseFirestore.instance.settings = const Settings(
+    persistenceEnabled: true,
+    cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+  );
+  // --- FIM DA ALTERAÇÃO ---
 
   // 4. Executa o aplicativo usando o widget BjjApp importado de app_theme.dart.
   runApp(const BjjApp());

@@ -1,4 +1,7 @@
 // lib/birthdays_module.dart
+// ignore_for_file: deprecated_member_use
+
+import 'package:cached_network_image/cached_network_image.dart'; // NOVO IMPORT
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -175,8 +178,11 @@ class _BirthdaysPageState extends State<BirthdaysPage> {
                       child: CircleAvatar(
                         radius: 28,
                         backgroundColor: primaryAccent,
-                        backgroundImage:
-                            hasImage ? NetworkImage(profileImageUrl) : null,
+                        // --- ALTERAÇÃO AQUI ---
+                        backgroundImage: hasImage
+                            ? CachedNetworkImageProvider(profileImageUrl)
+                            : null,
+                        // --- FIM DA ALTERAÇÃO ---
                         child: !hasImage
                             ? Text(
                                 name.isNotEmpty ? name[0].toUpperCase() : 'U',

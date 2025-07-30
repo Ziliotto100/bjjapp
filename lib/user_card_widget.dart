@@ -1,4 +1,5 @@
 // lib/user_card_widget.dart
+import 'package:cached_network_image/cached_network_image.dart'; // NOVO IMPORT
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'models.dart';
@@ -33,18 +34,16 @@ class PhotoViewPage extends StatelessWidget {
             panEnabled: true,
             minScale: 1.0,
             maxScale: 4.0,
-            child: Image.network(
-              imageUrl,
+            // --- ALTERAÇÃO AQUI ---
+            child: CachedNetworkImage(
+              imageUrl: imageUrl,
               fit: BoxFit.contain,
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return const Center(child: CircularProgressIndicator());
-              },
-              errorBuilder: (context, error, stackTrace) {
-                return const Icon(Icons.broken_image,
-                    size: 100, color: textHint);
-              },
+              placeholder: (context, url) =>
+                  const Center(child: CircularProgressIndicator()),
+              errorWidget: (context, url, error) =>
+                  const Icon(Icons.broken_image, size: 100, color: textHint),
             ),
+            // --- FIM DA ALTERAÇÃO ---
           ),
         ),
       ),
@@ -77,7 +76,11 @@ class UserCard extends StatelessWidget {
     final bool hasImage =
         profileImageUrl != null && profileImageUrl!.isNotEmpty;
 
-    final backgroundImage = hasImage ? NetworkImage(profileImageUrl!) : null;
+    // --- ALTERAÇÃO AQUI ---
+    final backgroundImage =
+        hasImage ? CachedNetworkImageProvider(profileImageUrl!) : null;
+    // --- FIM DA ALTERAÇÃO ---
+
     final childText = hasImage
         ? null
         : Text(

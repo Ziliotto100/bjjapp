@@ -1,4 +1,5 @@
 // lib/app_drawer.dart
+import 'package:cached_network_image/cached_network_image.dart'; // NOVO IMPORT
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -125,9 +126,11 @@ class AppDrawer extends StatelessWidget {
       accountEmail: Text(user.email, style: const TextStyle(color: textHint)),
       currentAccountPicture: CircleAvatar(
         backgroundColor: primaryAccent,
+        // --- ALTERAÇÃO AQUI ---
         backgroundImage: (profileImage != null && profileImage.isNotEmpty)
-            ? NetworkImage(profileImage)
+            ? CachedNetworkImageProvider(profileImage)
             : null,
+        // --- FIM DA ALTERAÇÃO ---
         child: (profileImage == null || profileImage.isEmpty)
             ? Text(
                 user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',

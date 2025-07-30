@@ -1,6 +1,7 @@
 // lib/common_widgets.dart
 // ignore_for_file: deprecated_member_use
 
+import 'package:cached_network_image/cached_network_image.dart'; // NOVO IMPORT
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app_theme.dart';
@@ -209,10 +210,12 @@ class UserProfileHeader extends StatelessWidget {
                     child: CircleAvatar(
                       radius: 70,
                       backgroundColor: primaryAccent.withOpacity(0.2),
+                      // --- ALTERAÇÃO AQUI ---
                       backgroundImage: (profileImagePath != null &&
                               profileImagePath.isNotEmpty)
-                          ? NetworkImage(profileImagePath)
+                          ? CachedNetworkImageProvider(profileImagePath)
                           : null,
+                      // --- FIM DA ALTERAÇÃO ---
                       child:
                           (profileImagePath == null || profileImagePath.isEmpty)
                               ? const Icon(Icons.person,
