@@ -160,7 +160,10 @@ class UserCard extends StatelessWidget {
                 }
               },
             ),
-            if (currentUser.role == UserRole.manager)
+            // --- ALTERAÇÃO PRINCIPAL AQUI ---
+            // Habilita o botão de edição para gerentes (sempre) e para professores (apenas se for um aluno)
+            if (currentUser.role == UserRole.manager ||
+                (currentUser.role == UserRole.teacher && isStudent))
               IconButton(
                 icon: const Icon(Icons.edit_outlined, color: primaryAccent),
                 tooltip: 'Editar / Gerenciar',
@@ -168,6 +171,7 @@ class UserCard extends StatelessWidget {
                   if (isStudent) {
                     _showEditAlunoDialog(context, user, academyId, currentUser);
                   } else {
+                    // Professores não podem editar outros professores, então apenas gerentes chegam aqui.
                     _showEditProfessorDialog(
                         context, user, academyId, currentUser);
                   }
@@ -183,14 +187,14 @@ class UserCard extends StatelessWidget {
 // Funções de diálogo movidas para cá para serem acessíveis por ambos os módulos.
 // Elas precisam de um BuildContext que tenha acesso às rotas e dependências.
 
-void _showEditAlunoDialog(
-    BuildContext context, Aluno aluno, String academyId, UserModel manager) {
+void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
+    UserModel currentUser) {
   showDialog(
     context: context,
     builder: (_) => AdicionarAlunoDialog(
       alunoParaEditar: aluno,
       academyId: academyId,
-      currentUser: manager,
+      currentUser: currentUser,
       onAlunoAdicionado: (alunoAtualizado) async {
         try {
           final dataToUpdate = {
@@ -201,8 +205,8 @@ void _showEditAlunoDialog(
             'dataNascimento': alunoAtualizado.dataNascimento != null
                 ? Timestamp.fromDate(alunoAtualizado.dataNascimento!)
                 : null,
-            'lastUpdatedByUid': manager.uid,
-            'lastUpdatedByName': manager.name,
+            'lastUpdatedByUid': currentUser.uid,
+            'lastUpdatedByName': currentUser.name,
             'updatedAt': FieldValue.serverTimestamp(),
           };
 
