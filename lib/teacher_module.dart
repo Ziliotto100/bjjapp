@@ -70,8 +70,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       final firestore = FirebaseFirestore.instance;
       final academyId = widget.user.academyId;
 
-      // --- ALTERAÇÃO AQUI ---
-      // Busca apenas usuários com o papel 'teacher', excluindo o 'manager'.
       final usersSnapshot = await firestore
           .collection('users')
           .where('academyId', isEqualTo: academyId)
@@ -182,8 +180,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     }
   }
 
-  Future<void> _iniciarSparring(List<List<String>> rounds, String tipoGeracao,
-      List<Aluno> participants) async {
+  Future<void> _iniciarSparring(List<List<Map<String, String>>> rounds,
+      String tipoGeracao, List<Aluno> participants) async {
     if (participants.isEmpty) {
       showBjjSnackBar(context, 'Selecione participantes para o treino.',
           type: 'error');
@@ -1746,7 +1744,8 @@ class SorteioTeacherPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
   final bool isSparringMode;
-  final Function(List<List<String>>, String, List<Aluno>) onIniciarSparring;
+  final Function(List<List<Map<String, String>>>, String, List<Aluno>)
+      onIniciarSparring;
   final Function(List<Aluno>) onCheckinAlunos;
 
   const SorteioTeacherPage({
@@ -1764,7 +1763,7 @@ class SorteioTeacherPage extends StatefulWidget {
 
 class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
   List<Aluno> _alunosParticipantes = [];
-  List<List<String>> _rodadasGeradas = [];
+  List<List<Map<String, String>>> _rodadasGeradas = [];
   String _tipoGeracao = 'Aleatório';
   final List<String> _opcoesGeracao = ['Aleatório', 'Por Faixa', 'Por Peso'];
 
@@ -1811,24 +1810,19 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
     tempAlunos.shuffle();
 
     if (tempAlunos.length % 2 != 0) {
-      tempAlunos.add(Aluno.novo(nome: "DESCANSA", faixa: "", peso: 0));
+      tempAlunos.add(Aluno.novo(
+          id: 'descansa-id', nome: "DESCANSA", faixa: "Branca", peso: 0));
     }
     int numRodadas = tempAlunos.length - 1;
     if (numRodadas <= 0) numRodadas = 1;
 
-    List<List<String>> rodadas = [];
+    List<List<Map<String, String>>> rodadas = [];
     for (int i = 0; i < numRodadas; i++) {
-      List<String> rodadaAtual = [];
+      List<Map<String, String>> rodadaAtual = [];
       for (int j = 0; j < tempAlunos.length / 2; j++) {
         final aluno1 = tempAlunos[j];
         final aluno2 = tempAlunos[tempAlunos.length - 1 - j];
-        if (aluno1.nome == "DESCANSA") {
-          rodadaAtual.add('${aluno2.nome} (descansa)');
-        } else if (aluno2.nome == "DESCANSA") {
-          rodadaAtual.add('${aluno1.nome} (descansa)');
-        } else {
-          rodadaAtual.add('${aluno1.nome} x ${aluno2.nome}');
-        }
+        rodadaAtual.add({'p1': aluno1.id, 'p2': aluno2.id});
       }
       rodadas.add(rodadaAtual);
       tempAlunos.insert(1, tempAlunos.removeLast());
@@ -1838,63 +1832,71 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
 
   void _gerarRodadasHierarquicas() {
     List<Aluno> tempAlunos = List.from(_alunosParticipantes);
-    List<Luta> todasLutasPossiveis = [];
-
-    for (int i = 0; i < tempAlunos.length; i++) {
-      for (int j = i + 1; j < tempAlunos.length; j++) {
-        double custo;
-        if (_tipoGeracao == 'Por Peso') {
-          custo = (tempAlunos[i].peso - tempAlunos[j].peso).abs();
-        } else {
-          int indexFaixa1 = _getBeltIndex(tempAlunos[i].faixa);
-          int indexFaixa2 = _getBeltIndex(tempAlunos[j].faixa);
-          double diffPeso = (tempAlunos[i].peso - tempAlunos[j].peso).abs();
-          custo =
-              (indexFaixa1 - indexFaixa2).abs().toDouble() + (diffPeso * 0.01);
-        }
-        todasLutasPossiveis.add(Luta(tempAlunos[i], tempAlunos[j], custo));
-      }
+    if (tempAlunos.length % 2 != 0) {
+      tempAlunos.add(Aluno.novo(
+          id: 'descansa-id', nome: "DESCANSA", faixa: "Branca", peso: 0));
     }
-    todasLutasPossiveis.sort((a, b) => a.custo.compareTo(b.custo));
 
-    List<List<String>> rodadasConstruidas = [];
-    Set<String> lutasJaRealizadasGlobal = {};
-    int maxRodadasPossiveis = tempAlunos.length - 1;
+    int numRodadas = tempAlunos.length - 1;
+    if (numRodadas <= 0) numRodadas = 1;
 
-    for (int i = 0; i < maxRodadasPossiveis; i++) {
-      List<String> rodadaAtual = [];
-      Set<String> alunosNestaRodada = {};
+    List<List<Luta>> rodadasDeLutas = [];
 
-      for (var luta in todasLutasPossiveis) {
-        String parId1 = '${luta.aluno1.id}-${luta.aluno2.id}';
-        String parId2 = '${luta.aluno2.id}-${luta.aluno1.id}';
-
-        if (!lutasJaRealizadasGlobal.contains(parId1) &&
-            !alunosNestaRodada.contains(luta.aluno1.id) &&
-            !alunosNestaRodada.contains(luta.aluno2.id)) {
-          rodadaAtual.add('${luta.aluno1.nome} x ${luta.aluno2.nome}');
-          alunosNestaRodada.add(luta.aluno1.id);
-          alunosNestaRodada.add(luta.aluno2.id);
-          lutasJaRealizadasGlobal.add(parId1);
-          lutasJaRealizadasGlobal.add(parId2);
-        }
+    // 1. Gera o cronograma completo usando Round Robin
+    for (int i = 0; i < numRodadas; i++) {
+      List<Luta> rodadaAtual = [];
+      for (int j = 0; j < tempAlunos.length / 2; j++) {
+        final aluno1 = tempAlunos[j];
+        final aluno2 = tempAlunos[tempAlunos.length - 1 - j];
+        rodadaAtual.add(Luta(aluno1, aluno2, _calcularCusto(aluno1, aluno2)));
       }
-
-      if (alunosNestaRodada.length < tempAlunos.length) {
-        final alunoDescanso = tempAlunos
-            .firstWhereOrNull((aluno) => !alunosNestaRodada.contains(aluno.id));
-        if (alunoDescanso != null) {
-          rodadaAtual.add('${alunoDescanso.nome} (descansa)');
-        }
-      }
-
-      if (rodadaAtual.isNotEmpty) {
-        rodadasConstruidas.add(rodadaAtual);
-      } else {
-        break;
-      }
+      rodadasDeLutas.add(rodadaAtual);
+      // Gira os participantes para a próxima rodada
+      tempAlunos.insert(1, tempAlunos.removeLast());
     }
-    setState(() => _rodadasGeradas = rodadasConstruidas);
+
+    // 2. Ordena as rodadas com base no custo médio
+    rodadasDeLutas.sort((a, b) {
+      final lutasReaisA = a.where((l) => l.custo != double.infinity);
+      final lutasReaisB = b.where((l) => l.custo != double.infinity);
+
+      if (lutasReaisA.isEmpty) return 1;
+      if (lutasReaisB.isEmpty) return -1;
+
+      final custoMedioA =
+          lutasReaisA.map((l) => l.custo).reduce((v, e) => v + e) /
+              lutasReaisA.length;
+      final custoMedioB =
+          lutasReaisB.map((l) => l.custo).reduce((v, e) => v + e) /
+              lutasReaisB.length;
+
+      return custoMedioA.compareTo(custoMedioB);
+    });
+
+    // 3. Converte para o formato de mapa de IDs
+    final rodadasFinais = rodadasDeLutas.map((rodada) {
+      return rodada.map((luta) {
+        return {'p1': luta.aluno1.id, 'p2': luta.aluno2.id};
+      }).toList();
+    }).toList();
+
+    setState(() => _rodadasGeradas = rodadasFinais);
+  }
+
+  double _calcularCusto(Aluno a1, Aluno a2) {
+    if (a1.id == 'descansa-id' || a2.id == 'descansa-id') {
+      return double.infinity;
+    }
+
+    if (_tipoGeracao == 'Por Peso') {
+      return (a1.peso - a2.peso).abs();
+    } else {
+      // 'Por Faixa'
+      int indexFaixa1 = _getBeltIndex(a1.faixa);
+      int indexFaixa2 = _getBeltIndex(a2.faixa);
+      double diffPeso = (a1.peso - a2.peso).abs();
+      return ((indexFaixa1 - indexFaixa2).abs() * 1000) + diffPeso;
+    }
   }
 
   int _getBeltIndex(String faixa) {
@@ -1934,6 +1936,12 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
 
   @override
   Widget build(BuildContext context) {
+    final participantsMap = {
+      for (var p in widget.todosParticipantesDaAcademia) p.id: p
+    };
+    participantsMap['descansa-id'] =
+        Aluno.novo(id: 'descansa-id', nome: 'DESCANSA', faixa: '', peso: 0);
+
     return Column(
       children: [
         Padding(
@@ -2011,9 +2019,19 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
                       child: ExpansionTile(
                         leading: CircleAvatar(child: Text('${index + 1}')),
                         title: Text('Rodada ${index + 1}'),
-                        children: rodada
-                            .map((luta) => ListTile(title: Text(luta)))
-                            .toList(),
+                        children: rodada.map((lutaMap) {
+                          final p1 = participantsMap[lutaMap['p1']];
+                          final p2 = participantsMap[lutaMap['p2']];
+                          String lutaText;
+                          if (p1?.nome == 'DESCANSA') {
+                            lutaText = '${p2?.nome ?? ''} (descansa)';
+                          } else if (p2?.nome == 'DESCANSA') {
+                            lutaText = '${p1?.nome ?? ''} (descansa)';
+                          } else {
+                            lutaText = '${p1?.nome ?? ''} x ${p2?.nome ?? ''}';
+                          }
+                          return ListTile(title: Text(lutaText));
+                        }).toList(),
                       ),
                     );
                   },
@@ -2039,19 +2057,21 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
   Map<String, dynamic> _sparringState = {};
   bool _isLoading = true;
   StreamSubscription? _sparringStateSubscription;
+  late Map<String, Aluno> _participantsMap;
 
   int get _currentRoundIndex => _sparringState['currentRoundIndex'] ?? 0;
 
-  List<List<String>> get _allRounds {
+  List<List<Map<String, String>>> get _allRounds {
     final dynamic roundsData = _sparringState['allRounds'];
     if (roundsData is List) {
-      return roundsData.map<List<String>>((round) {
-        if (round is Map &&
-            round.containsKey('fights') &&
-            round['fights'] is List) {
-          return List<String>.from(round['fights']);
+      return roundsData.map<List<Map<String, String>>>((dynamic roundData) {
+        if (roundData is Map && roundData['fights'] is List) {
+          final fightsList = roundData['fights'] as List;
+          return fightsList.map<Map<String, String>>((dynamic fightData) {
+            return Map<String, String>.from(fightData as Map);
+          }).toList();
         }
-        return <String>[];
+        return [];
       }).toList();
     }
     return [];
@@ -2060,6 +2080,9 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
   @override
   void initState() {
     super.initState();
+    _participantsMap = {for (var p in widget.todosAlunos) p.id: p};
+    _participantsMap['descansa-id'] = Aluno.novo(
+        id: 'descansa-id', nome: 'DESCANSA', faixa: 'Branca', peso: 0);
     _loadState();
   }
 
@@ -2126,23 +2149,18 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
 
     bool isSparringMode = _sparringState['isSparringMode'] ?? false;
     if (!isSparringMode) {
-      return Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(title: const Text("Treino")),
-        body: const AppBackground(
-          child: EmptyStateWidget(
-            icon: Icons.pause_circle_outline_rounded,
-            title: 'Nenhum treino em andamento.',
-            message: 'Volte para a tela de sorteio para iniciar um treino.',
-          ),
-        ),
+      return const EmptyStateWidget(
+        icon: Icons.pause_circle_outline_rounded,
+        title: 'Nenhum treino em andamento.',
+        message: 'Volte para a tela de sorteio para iniciar um treino.',
       );
     }
 
     final allRounds = _allRounds;
-    List<String> currentRoundFights = [];
+    List<Map<String, String>> currentRoundFights = [];
     String roundTitle = '';
     bool isLastRound = _currentRoundIndex >= allRounds.length;
+    final generationType = _sparringState['generationType'] as String?;
 
     if (allRounds.isNotEmpty) {
       if (_currentRoundIndex > allRounds.length) {
@@ -2155,64 +2173,130 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
       }
     }
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(title: Text(roundTitle)),
-      body: AppBackground(
-        child: SafeArea(
-          child: Column(
-            children: [
-              Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: currentRoundFights.length,
-                  itemBuilder: (context, index) {
-                    final matchText = currentRoundFights[index];
-                    bool isResting = matchText.contains('(descansa)');
+    currentRoundFights.sort((a, b) {
+      final aIsResting = _participantsMap[a['p1']]?.nome == 'DESCANSA' ||
+          _participantsMap[a['p2']]?.nome == 'DESCANSA';
+      final bIsResting = _participantsMap[b['p1']]?.nome == 'DESCANSA' ||
+          _participantsMap[b['p2']]?.nome == 'DESCANSA';
 
-                    return Card(
-                      color: isResting
-                          ? darkSurface.withOpacity(0.5)
-                          : darkSurface,
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Center(
-                          child: Text(matchText,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .titleMedium
-                                  ?.copyWith(
-                                      color:
-                                          isResting ? textHint : textPrimary)),
-                        ),
-                      ),
-                    );
-                  },
+      if (aIsResting && !bIsResting) {
+        return -1;
+      }
+      if (!aIsResting && bIsResting) {
+        return 1;
+      }
+      return 0;
+    });
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child:
+              Text(roundTitle, style: Theme.of(context).textTheme.titleLarge),
+        ),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: currentRoundFights.length,
+            itemBuilder: (context, index) {
+              final matchData = currentRoundFights[index];
+              final p1 = _participantsMap[matchData['p1']];
+              final p2 = _participantsMap[matchData['p2']];
+              bool isResting = p1?.nome == 'DESCANSA' || p2?.nome == 'DESCANSA';
+
+              if (p1 == null || p2 == null) {
+                return const Card(
+                    child: ListTile(
+                        title: Text('Erro: Participante não encontrado')));
+              }
+
+              if (isResting) {
+                final restingPlayer = (p1.nome == 'DESCANSA') ? p2 : p1;
+                return Card(
+                  color: darkSurface.withOpacity(0.5),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Center(
+                      child: Text('${restingPlayer.nome} (descansa)',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleMedium
+                              ?.copyWith(color: textHint)),
+                    ),
+                  ),
+                );
+              }
+
+              return Card(
+                color: darkSurface,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 8.0, vertical: 16.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _buildFighterInfo(p1, generationType),
+                      const Text('x', style: TextStyle(fontSize: 20)),
+                      _buildFighterInfo(p2, generationType),
+                    ],
+                  ),
                 ),
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              ElevatedButton.icon(
+                icon: const Icon(Icons.stop_circle_rounded),
+                onPressed: _finishSparring,
+                label: const Text('Finalizar'),
+                style: ElevatedButton.styleFrom(backgroundColor: errorColor),
               ),
-              Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.stop_circle_rounded),
-                      onPressed: _finishSparring,
-                      label: const Text('Finalizar'),
-                      style:
-                          ElevatedButton.styleFrom(backgroundColor: errorColor),
-                    ),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.skip_next_rounded),
-                      onPressed: isLastRound ? null : _nextRound,
-                      label: const Text('Próxima'),
-                    ),
-                  ],
-                ),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.skip_next_rounded),
+                onPressed: isLastRound ? null : _nextRound,
+                label: const Text('Próxima'),
               ),
             ],
           ),
         ),
+      ],
+    );
+  }
+
+  Widget _buildFighterInfo(Aluno? aluno, String? generationType) {
+    if (aluno == null) return const SizedBox.shrink();
+
+    String subtitle = '';
+    if (generationType == 'Por Faixa') {
+      subtitle = aluno.faixa;
+    } else if (generationType == 'Por Peso') {
+      subtitle = '${aluno.peso} kg';
+    }
+
+    return Expanded(
+      child: Column(
+        children: [
+          Text(
+            aluno.nome,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            textAlign: TextAlign.center,
+          ),
+          if (subtitle.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 4.0),
+              child: Text(
+                subtitle,
+                style: const TextStyle(fontSize: 12, color: textHint),
+                textAlign: TextAlign.center,
+              ),
+            ),
+        ],
       ),
     );
   }

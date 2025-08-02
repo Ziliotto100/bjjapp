@@ -199,6 +199,7 @@ class Aluno {
   }
 
   Aluno.novo({
+    this.id = '',
     required this.nome,
     required this.faixa,
     required this.peso,
@@ -207,8 +208,7 @@ class Aluno {
     this.userId,
     this.createdByUid,
     this.createdByName,
-  })  : id = '',
-        paymentStatus = PaymentStatus.pendente,
+  })  : paymentStatus = PaymentStatus.pendente,
         createdAt = null,
         updatedAt = null,
         lastUpdatedByUid = createdByUid,
