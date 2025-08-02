@@ -11,7 +11,7 @@ import 'scoreboard_module.dart';
 import 'study_notebook_module.dart';
 import 'shop_module.dart';
 import 'notifications_module.dart';
-import 'birthdays_module.dart'; // <-- NOVO IMPORT
+import 'birthdays_module.dart';
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -121,6 +121,13 @@ class NavigationService {
           onCheckinAlunos: (students) {},
         ),
       ),
+      AppModule(
+        id: 'teacher_history',
+        title: 'Histórico',
+        icon: Icons.calendar_today_rounded,
+        requiredRole: UserRole.teacher,
+        pageBuilder: (user, teachers, students) => MyCheckinsPage(user: user),
+      ),
 
       // Módulos do Aluno
       AppModule(
@@ -148,7 +155,7 @@ class NavigationService {
             NotificationsPage(user: user),
       ),
       AppModule(
-        id: 'common_birthdays', // <-- NOVO MÓDULO
+        id: 'common_birthdays',
         title: 'Aniversários',
         icon: Icons.cake_rounded,
         pageBuilder: (user, teachers, students) =>
@@ -201,16 +208,16 @@ class NavigationService {
           'manager_dashboard',
           'common_notifications',
           'manager_students',
-          'common_birthdays', // <-- ADICIONADO
+          'common_birthdays',
           'common_schedule',
         ];
         break;
       case UserRole.teacher:
         defaultVisibleIds = [
           'teacher_dashboard',
+          'teacher_history',
           'common_notifications',
-          'common_birthdays', // <-- ADICIONADO
-          'common_schedule',
+          'common_birthdays',
           'teacher_checkin',
         ];
         break;

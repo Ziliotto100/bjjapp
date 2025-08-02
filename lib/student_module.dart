@@ -657,8 +657,11 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final studentId = widget.user.studentRecordId;
-    if (studentId == null) {
+    final studentId = widget.user.role == UserRole.student
+        ? widget.user.studentRecordId
+        : widget.user.uid;
+
+    if (studentId == null && widget.user.role == UserRole.student) {
       return const EmptyStateWidget(
           icon: Icons.link_off,
           title: "Perfil não vinculado",
@@ -699,16 +702,17 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
         return Column(
           children: [
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: Card(
-                elevation: 4,
+                elevation: 2,
                 child: Padding(
-                  padding: const EdgeInsets.all(12.0),
+                  padding: const EdgeInsets.all(8.0),
                   child: Text(
                     'Treinos em ${DateFormat.yMMMM('pt_BR').format(_focusedDay)}: ${checkinsForFocusedMonth.length}',
+                    textAlign: TextAlign.center,
                     style: Theme.of(context)
                         .textTheme
-                        .titleLarge
+                        .titleMedium
                         ?.copyWith(color: primaryAccent),
                   ),
                 ),
@@ -716,7 +720,7 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
             ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                padding: const EdgeInsets.all(8.0),
                 child: Card(
                   child: TableCalendar<CheckinEntry>(
                     locale: 'pt_BR',
