@@ -8,8 +8,10 @@ import 'package:url_launcher/url_launcher.dart';
 
 class UpdateChecker {
   final BuildContext context;
+  // --- CORREÇÃO APLICADA AQUI ---
+  // O ID do seu app foi atualizado com base na imagem do seu Firebase.
   static const String _playStoreUrl =
-      'https://play.google.com/store/apps/details?id=com.example.bjjapp'; // <-- MUDE PARA O ID DO SEU APP
+      'https://play.google.com/store/apps/details?id=com.zillottosmartdev.matchbjj';
 
   UpdateChecker({required this.context});
 
@@ -32,8 +34,6 @@ class UpdateChecker {
         _showUpdateDialog();
       }
     } catch (e) {
-      // A verificação de atualização não deve impedir o usuário de usar o app.
-      // Apenas logamos o erro para fins de depuração.
       debugPrint("Erro ao verificar atualização: $e");
     }
   }

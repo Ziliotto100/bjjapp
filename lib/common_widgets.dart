@@ -1,12 +1,12 @@
 // lib/common_widgets.dart
 // ignore_for_file: deprecated_member_use
 
-import 'package:cached_network_image/cached_network_image.dart'; // NOVO IMPORT
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app_theme.dart';
 import 'models.dart';
-import 'user_card_widget.dart'; // NOVO IMPORT
+import 'user_card_widget.dart';
 
 // --- WIDGETS COMUNS REUTILIZÁVEIS ---
 
@@ -127,26 +127,25 @@ String getBeltImagePath(String? beltName) {
     return 'assets/images/faixas/branca.png'; // Padrão para faixa branca
   }
 
-  final formattedName = beltName
-      .toLowerCase()
-      .replaceAll(' com ponta branca', '_branco')
-      .replaceAll(' com ponta preta', '_preto')
-      .replaceAll(' ', '_');
+  // --- LÓGICA ATUALIZADA AQUI ---
+  // Converte o nome para minúsculas e substitui a barra por underline.
+  final formattedName =
+      beltName.toLowerCase().replaceAll('/', '_').replaceAll(' ', '_');
 
   const validBelts = [
     'branca',
+    'cinza_branca',
     'cinza',
-    'cinza_branco',
-    'cinza_preto',
+    'cinza_preta',
+    'amarela_branca',
     'amarela',
-    'amarela_branco',
-    'amarela_preto',
+    'amarela_preta',
+    'laranja_branca',
     'laranja',
-    'laranja_preto',
-    'laranja_branco',
+    'laranja_preta',
+    'verde_branca',
     'verde',
-    'verde_branco',
-    'verde_preto',
+    'verde_preta',
     'azul',
     'roxa',
     'marrom',
@@ -157,6 +156,7 @@ String getBeltImagePath(String? beltName) {
     return 'assets/images/faixas/$formattedName.png';
   }
 
+  // Fallback para o caso de algum nome antigo ainda existir no banco
   return 'assets/images/faixas/branca.png';
 }
 
@@ -211,12 +211,10 @@ class UserProfileHeader extends StatelessWidget {
                     child: CircleAvatar(
                       radius: 70,
                       backgroundColor: primaryAccent.withOpacity(0.2),
-                      // --- ALTERAÇÃO AQUI ---
                       backgroundImage: (profileImagePath != null &&
                               profileImagePath.isNotEmpty)
                           ? CachedNetworkImageProvider(profileImagePath)
                           : null,
-                      // --- FIM DA ALTERAÇÃO ---
                       child:
                           (profileImagePath == null || profileImagePath.isEmpty)
                               ? const Icon(Icons.person,
