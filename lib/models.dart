@@ -161,6 +161,7 @@ class Aluno {
   final DateTime? dataNascimento;
   String? userId;
   PaymentStatus paymentStatus;
+  bool isActive; // NOVO CAMPO
 
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
@@ -178,6 +179,7 @@ class Aluno {
     this.dataNascimento,
     this.userId,
     this.paymentStatus = PaymentStatus.pendente,
+    this.isActive = true, // VALOR PADRÃO
     this.createdAt,
     this.updatedAt,
     this.createdByUid,
@@ -209,6 +211,7 @@ class Aluno {
     this.createdByUid,
     this.createdByName,
   })  : paymentStatus = PaymentStatus.pendente,
+        isActive = true,
         createdAt = null,
         updatedAt = null,
         lastUpdatedByUid = createdByUid,
@@ -223,6 +226,7 @@ class Aluno {
       'dataNascimento':
           dataNascimento != null ? Timestamp.fromDate(dataNascimento!) : null,
       'userId': userId,
+      'isActive': isActive, // NOVO CAMPO
       'createdAt': createdAt ?? FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'createdByUid': createdByUid,
@@ -241,6 +245,7 @@ class Aluno {
       graus: json['graus'],
       dataNascimento: (json['dataNascimento'] as Timestamp?)?.toDate(),
       userId: json['userId'],
+      isActive: json['isActive'] ?? true, // NOVO CAMPO
       createdAt: json['createdAt'],
       updatedAt: json['updatedAt'],
       createdByUid: json['createdByUid'],
@@ -259,6 +264,7 @@ class Aluno {
       graus: user.graus,
       userId: user.uid,
       dataNascimento: user.dataNascimento,
+      isActive: user.isActive,
     );
   }
 
