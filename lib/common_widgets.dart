@@ -129,7 +129,8 @@ String getBeltImagePath(String? beltName) {
 
   final formattedName = beltName
       .toLowerCase()
-      .replaceAll(' com ponta ', '_')
+      .replaceAll(' com ponta branca', '_branco')
+      .replaceAll(' com ponta preta', '_preto')
       .replaceAll(' ', '_');
 
   const validBelts = [

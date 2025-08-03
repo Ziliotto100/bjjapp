@@ -18,6 +18,8 @@ import 'app_theme.dart';
 import 'auth_gate.dart';
 import 'navigation_service.dart';
 import 'app_drawer.dart';
+// NOVO IMPORT
+import 'graduation_timeline_page.dart';
 
 // --- TELAS DO ALUNO ---
 class StudentHomePage extends StatefulWidget {
@@ -642,8 +644,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   }
 }
 
-// O restante do arquivo (MyCheckinsPage, SettingsPage, etc.) continua o mesmo.
-// ... (código restante do student_module.dart)
 class MyCheckinsPage extends StatefulWidget {
   final UserModel user;
   const MyCheckinsPage({super.key, required this.user});
@@ -699,7 +699,7 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
               checkin.date.year == _focusedDay.year;
         }).toList();
 
-        return Column(
+        return ListView(
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
@@ -718,59 +718,79 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
                 ),
               ),
             ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(8.0),
-                child: Card(
-                  child: TableCalendar<CheckinEntry>(
-                    locale: 'pt_BR',
-                    firstDay: DateTime.utc(DateTime.now().year - 5, 1, 1),
-                    lastDay: DateTime.utc(DateTime.now().year + 5, 12, 31),
-                    focusedDay: _focusedDay,
-                    calendarFormat: CalendarFormat.month,
-                    headerStyle: const HeaderStyle(
-                      formatButtonVisible: false,
-                      titleCentered: true,
-                    ),
-                    eventLoader: (day) =>
-                        eventosAgrupados[
-                            DateTime.utc(day.year, day.month, day.day)] ??
-                        [],
-                    onPageChanged: (focusedDay) {
-                      setState(() {
-                        _focusedDay = focusedDay;
-                      });
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Card(
+                child: TableCalendar<CheckinEntry>(
+                  locale: 'pt_BR',
+                  firstDay: DateTime.utc(DateTime.now().year - 5, 1, 1),
+                  lastDay: DateTime.utc(DateTime.now().year + 5, 12, 31),
+                  focusedDay: _focusedDay,
+                  calendarFormat: CalendarFormat.month,
+                  availableCalendarFormats: const {
+                    CalendarFormat.month: 'Mês',
+                  },
+                  headerStyle: const HeaderStyle(
+                    formatButtonVisible: false,
+                    titleCentered: true,
+                  ),
+                  eventLoader: (day) =>
+                      eventosAgrupados[
+                          DateTime.utc(day.year, day.month, day.day)] ??
+                      [],
+                  onPageChanged: (focusedDay) {
+                    setState(() {
+                      _focusedDay = focusedDay;
+                    });
+                  },
+                  calendarBuilders: CalendarBuilders(
+                    markerBuilder: (context, date, events) {
+                      if (events.isNotEmpty) {
+                        return Positioned(
+                          right: 1,
+                          bottom: 1,
+                          child: Container(
+                            width: 7,
+                            height: 7,
+                            decoration: const BoxDecoration(
+                                shape: BoxShape.circle, color: successColor),
+                          ),
+                        );
+                      }
+                      return null;
                     },
-                    calendarBuilders: CalendarBuilders(
-                      markerBuilder: (context, date, events) {
-                        if (events.isNotEmpty) {
-                          return Positioned(
-                            right: 1,
-                            bottom: 1,
-                            child: Container(
-                              width: 7,
-                              height: 7,
-                              decoration: const BoxDecoration(
-                                  shape: BoxShape.circle, color: successColor),
-                            ),
-                          );
-                        }
-                        return null;
-                      },
-                    ),
-                    calendarStyle: CalendarStyle(
-                      outsideDaysVisible: false,
-                      todayDecoration: BoxDecoration(
-                          color: primaryAccent.withOpacity(0.3),
-                          shape: BoxShape.circle),
-                      selectedDecoration: const BoxDecoration(
-                          color: primaryAccent, shape: BoxShape.circle),
-                    ),
+                  ),
+                  calendarStyle: CalendarStyle(
+                    outsideDaysVisible: false,
+                    todayDecoration: BoxDecoration(
+                        color: primaryAccent.withOpacity(0.3),
+                        shape: BoxShape.circle),
+                    selectedDecoration: const BoxDecoration(
+                        color: primaryAccent, shape: BoxShape.circle),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: Card(
+                child: ListTile(
+                  leading:
+                      const Icon(Icons.military_tech_rounded, color: infoColor),
+                  title: const Text("Histórico de Graduações"),
+                  trailing:
+                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => GraduationTimelinePage(
+                        academyId: widget.user.academyId,
+                        user: widget.user,
+                      ),
+                    ));
+                  },
+                ),
+              ),
+            ),
           ],
         );
       },

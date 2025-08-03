@@ -685,3 +685,44 @@ class NotificationModel {
     };
   }
 }
+
+// --- NOVO MODELO PARA HISTÓRICO DE GRADUAÇÃO ---
+class GraduationHistory {
+  final String id;
+  final String belt;
+  final int? degree;
+  final DateTime date;
+  final String? promotedByUid;
+  final String? promotedByName;
+
+  GraduationHistory({
+    required this.id,
+    required this.belt,
+    this.degree,
+    required this.date,
+    this.promotedByUid,
+    this.promotedByName,
+  });
+
+  factory GraduationHistory.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return GraduationHistory(
+      id: doc.id,
+      belt: data['belt'] ?? 'Branca',
+      degree: data['degree'],
+      date: (data['date'] as Timestamp).toDate(),
+      promotedByUid: data['promotedByUid'],
+      promotedByName: data['promotedByName'],
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'belt': belt,
+      'degree': degree,
+      'date': Timestamp.fromDate(date),
+      'promotedByUid': promotedByUid,
+      'promotedByName': promotedByName,
+    };
+  }
+}

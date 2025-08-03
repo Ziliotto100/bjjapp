@@ -17,6 +17,7 @@ import 'auth_gate.dart';
 import 'navigation_service.dart';
 import 'app_drawer.dart';
 import 'user_card_widget.dart';
+import 'graduation_timeline_page.dart';
 
 // --- LÓGICA DE GERENCIAMENTO DE USUÁRIOS ---
 class UserManagementService {
@@ -1130,6 +1131,26 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                   },
                 )
               ],
+              if (isEditing) ...[
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.military_tech_rounded,
+                      color: successColor),
+                  label: const Text("Graduar",
+                      style: TextStyle(color: successColor)),
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close current dialog
+                    showDialog(
+                      context: context,
+                      builder: (_) => GraduationDialog(
+                        academyId: widget.academyId!,
+                        user: widget.alunoParaEditar!,
+                        currentUser: widget.currentUser,
+                      ),
+                    );
+                  },
+                ),
+              ],
               const SizedBox(height: 24), // Espaço antes dos botões
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1475,6 +1496,24 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                             },
                           ),
                         ],
+                      ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.military_tech_rounded,
+                      color: successColor),
+                  label: const Text("Graduar",
+                      style: TextStyle(color: successColor)),
+                  onPressed: () {
+                    Navigator.of(context).pop(); // Close current dialog
+                    showDialog(
+                      context: context,
+                      builder: (_) => GraduationDialog(
+                        academyId: widget.academyId,
+                        user: widget.professor,
+                        currentUser: widget.manager,
                       ),
                     );
                   },
@@ -2276,6 +2315,20 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(widget.student.nome),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.military_tech_rounded),
+            tooltip: 'Histórico de Graduações',
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => GraduationTimelinePage(
+                  academyId: widget.academyId,
+                  user: widget.student,
+                ),
+              ));
+            },
+          ),
+        ],
       ),
       body: AppBackground(
         child: SafeArea(
@@ -2427,6 +2480,20 @@ class ProfessorDetailPage extends StatelessWidget {
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(professor.name),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.military_tech_rounded),
+            tooltip: 'Histórico de Graduações',
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => GraduationTimelinePage(
+                  academyId: academyId,
+                  user: professor,
+                ),
+              ));
+            },
+          ),
+        ],
       ),
       body: AppBackground(
         child: SafeArea(
@@ -2769,5 +2836,225 @@ extension StringExtension on String {
   String capitalize() {
     if (isEmpty) return this;
     return "${this[0].toUpperCase()}${substring(1)}";
+  }
+}
+
+class GraduationDialog extends StatefulWidget {
+  final String academyId;
+  final dynamic user; // Pode ser Aluno ou UserModel
+  final UserModel currentUser;
+
+  const GraduationDialog({
+    super.key,
+    required this.academyId,
+    required this.user,
+    required this.currentUser,
+  });
+
+  @override
+  State<GraduationDialog> createState() => _GraduationDialogState();
+}
+
+class _GraduationDialogState extends State<GraduationDialog> {
+  // Lists of belts and degrees
+  final List<String> _faixasList = [
+    'Branca',
+    'Cinza com Ponta Branca',
+    'Cinza',
+    'Cinza com Ponta Preta',
+    'Amarela com Ponta Branca',
+    'Amarela',
+    'Amarela com Ponta Preta',
+    'Laranja com Ponta Branca',
+    'Laranja',
+    'Laranja com Ponta Preta',
+    'Verde com Ponta Branca',
+    'Verde',
+    'Verde com Ponta Preta',
+    'Azul',
+    'Roxa',
+    'Marrom',
+    'Preta'
+  ];
+  List<int> _grausList = [];
+
+  // Selected values
+  String? _selectedFaixa;
+  int? _selectedGrau;
+  DateTime _selectedDate = DateTime.now();
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedFaixa = widget.user.faixa;
+    _selectedGrau = widget.user.graus;
+    _grausList = _getGrausForFaixa(_selectedFaixa);
+  }
+
+  // Helper to get degrees for a given belt
+  List<int> _getGrausForFaixa(String? faixa) {
+    if (faixa == 'Preta') return List.generate(10, (i) => i + 1);
+    if (faixa != null) return [1, 2, 3, 4];
+    return [];
+  }
+
+  Future<void> _pickDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+      locale: const Locale('pt', 'BR'),
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
+  }
+
+  Future<void> _updateGraduation() async {
+    setState(() => _isLoading = true);
+    final firestore = FirebaseFirestore.instance;
+    final batch = firestore.batch();
+
+    final dataToUpdate = {
+      'faixa': _selectedFaixa,
+      'graus': _selectedGrau,
+      'lastUpdatedByUid': widget.currentUser.uid,
+      'lastUpdatedByName': widget.currentUser.name,
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    // Referência para o documento do usuário/aluno
+    DocumentReference mainDocRef;
+    // Referência para a nova coleção de histórico
+    CollectionReference historyCollectionRef;
+
+    if (widget.user is Aluno) {
+      mainDocRef = firestore
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('students')
+          .doc(widget.user.id);
+      historyCollectionRef = mainDocRef.collection('graduation_history');
+    } else {
+      mainDocRef = firestore.collection('users').doc(widget.user.uid);
+      historyCollectionRef = mainDocRef.collection('graduation_history');
+    }
+
+    // Adiciona a atualização do perfil ao batch
+    batch.update(mainDocRef, dataToUpdate);
+
+    // Cria e adiciona o registro de histórico ao batch
+    final historyEntry = GraduationHistory(
+      id: '',
+      belt: _selectedFaixa!,
+      degree: _selectedGrau,
+      date: _selectedDate,
+      promotedByUid: widget.currentUser.uid,
+      promotedByName: widget.currentUser.name,
+    );
+    batch.set(historyCollectionRef.doc(), historyEntry.toMap());
+
+    try {
+      await batch.commit();
+      if (mounted) {
+        showBjjSnackBar(context, 'Graduação atualizada!', type: 'success');
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao atualizar graduação: $e',
+            type: 'error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (widget.user is Aluno) ? widget.user.nome : widget.user.name;
+    return AlertDialog(
+      title: Text('Graduar $name'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedFaixa,
+              decoration: const InputDecoration(labelText: 'Faixa'),
+              items: _faixasList
+                  .map((faixa) => DropdownMenuItem(
+                      value: faixa,
+                      child: Text(faixa, overflow: TextOverflow.ellipsis)))
+                  .toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedFaixa = value;
+                  _grausList = _getGrausForFaixa(value);
+                  _selectedGrau = null;
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            if (_selectedFaixa != null)
+              DropdownButtonFormField<int>(
+                isExpanded: true,
+                value: _selectedGrau,
+                decoration: const InputDecoration(labelText: 'Graus'),
+                items: [
+                  const DropdownMenuItem<int>(
+                      value: null, child: Text("Nenhum")),
+                  ..._grausList.map((g) => DropdownMenuItem(
+                      value: g,
+                      child:
+                          Text("$gº Grau", overflow: TextOverflow.ellipsis))),
+                ],
+                onChanged: (value) {
+                  setState(() {
+                    _selectedGrau = value;
+                  });
+                },
+              ),
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: _pickDate,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Data da Graduação',
+                  prefixIcon: Icon(Icons.calendar_today),
+                ),
+                child: Text(
+                  DateFormat.yMd('pt_BR').format(_selectedDate),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _updateGraduation,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Salvar'),
+        ),
+      ],
+    );
   }
 }
