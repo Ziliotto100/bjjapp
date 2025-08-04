@@ -7,21 +7,22 @@ import 'package:timeline_tile/timeline_tile.dart';
 import 'models.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
+import 'manager_module.dart'; // Import para o novo Dialog de edição
 
 class GraduationTimelinePage extends StatelessWidget {
   final String academyId;
   final dynamic user; // Pode ser Aluno ou UserModel
+  final UserModel currentUser; // Usuário logado que está vendo a página
 
   const GraduationTimelinePage({
     super.key,
     required this.academyId,
     required this.user,
+    required this.currentUser, // Novo parâmetro
   });
 
   Stream<QuerySnapshot> _getHistoryStream() {
-    // --- LÓGICA CORRIGIDA AQUI ---
     if (user is Aluno) {
-      // Caso de um gerente/professor vendo o perfil de um aluno
       return FirebaseFirestore.instance
           .collection('academies')
           .doc(academyId)
@@ -31,13 +32,10 @@ class GraduationTimelinePage extends StatelessWidget {
           .orderBy('date', descending: true)
           .snapshots();
     } else {
-      // Caso do próprio usuário logado (UserModel)
       final userModel = user as UserModel;
       if (userModel.role == UserRole.student) {
-        // Se o usuário logado for um aluno, buscamos pelo seu registro de aluno
         if (userModel.studentRecordId == null) {
-          return const Stream
-              .empty(); // Retorna um stream vazio se não houver ID
+          return const Stream.empty();
         }
         return FirebaseFirestore.instance
             .collection('academies')
@@ -48,7 +46,6 @@ class GraduationTimelinePage extends StatelessWidget {
             .orderBy('date', descending: true)
             .snapshots();
       } else {
-        // Caso de um professor ou gerente vendo o próprio histórico
         return FirebaseFirestore.instance
             .collection('users')
             .doc(userModel.uid)
@@ -59,9 +56,24 @@ class GraduationTimelinePage extends StatelessWidget {
     }
   }
 
+  // --- NOVA FUNÇÃO PARA ABRIR O DIÁLOGO DE EDIÇÃO ---
+  void _showEditHistoryDialog(BuildContext context, GraduationHistory history) {
+    showDialog(
+      context: context,
+      builder: (_) => EditGraduationDialog(
+        academyId: academyId,
+        user: user,
+        currentUser: currentUser,
+        historyEntry: history,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final String name = (user is Aluno) ? user.nome : user.name;
+    final bool canEdit = currentUser.role == UserRole.manager ||
+        currentUser.role == UserRole.teacher;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -118,23 +130,47 @@ class GraduationTimelinePage extends StatelessWidget {
                       margin:
                           const EdgeInsets.only(left: 16, top: 8, bottom: 8),
                       child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                        padding: const EdgeInsets.fromLTRB(
+                            16, 8, 8, 8), // Padding ajustado
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              '${item.belt}${item.degree != null && item.degree! > 0 ? " - ${item.degree}º Grau" : ""}',
-                              style: Theme.of(context).textTheme.titleMedium,
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${item.belt}${item.degree != null && item.degree! > 0 ? " - ${item.degree}º Grau" : ""}',
+                                    style:
+                                        Theme.of(context).textTheme.titleMedium,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Graduado em: ${DateFormat.yMd('pt_BR').format(item.date)}',
+                                    style: const TextStyle(color: textHint),
+                                  ),
+                                  if (item.promotedByName != null)
+                                    Text(
+                                      'Por: ${item.promotedByName}',
+                                      style: const TextStyle(color: textHint),
+                                    ),
+                                ],
+                              ),
                             ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Graduado em: ${DateFormat.yMd('pt_BR').format(item.date)}',
-                              style: const TextStyle(color: textHint),
-                            ),
-                            if (item.promotedByName != null)
-                              Text(
-                                'Por: ${item.promotedByName}',
-                                style: const TextStyle(color: textHint),
+                            // --- BOTÃO DE MENU ADICIONADO AQUI ---
+                            if (canEdit)
+                              PopupMenuButton<String>(
+                                onSelected: (value) {
+                                  if (value == 'edit') {
+                                    _showEditHistoryDialog(context, item);
+                                  }
+                                },
+                                itemBuilder: (BuildContext context) => [
+                                  const PopupMenuItem<String>(
+                                    value: 'edit',
+                                    child: Text('Editar / Excluir'),
+                                  ),
+                                ],
                               ),
                           ],
                         ),

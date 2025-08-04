@@ -728,6 +728,7 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
                       builder: (_) => GraduationTimelinePage(
                         academyId: widget.user.academyId,
                         user: widget.user,
+                        currentUser: widget.user,
                       ),
                     ));
                   },
@@ -1379,7 +1380,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    // --- CORREÇÃO AQUI: Mostra a faixa do professor mas não permite editar ---
                     if (widget.user.faixa != null)
                       Card(
                         margin: const EdgeInsets.symmetric(vertical: 8.0),

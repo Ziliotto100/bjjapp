@@ -2257,9 +2257,13 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
 class StudentDetailPage extends StatefulWidget {
   final String academyId;
   final Aluno student;
+  final UserModel currentUser; // --- NOVO PARÂMETRO ---
 
   const StudentDetailPage(
-      {super.key, required this.academyId, required this.student});
+      {super.key,
+      required this.academyId,
+      required this.student,
+      required this.currentUser}); // --- CONSTRUTOR ATUALIZADO ---
 
   @override
   State<StudentDetailPage> createState() => _StudentDetailPageState();
@@ -2324,6 +2328,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                 builder: (_) => GraduationTimelinePage(
                   academyId: widget.academyId,
                   user: widget.student,
+                  currentUser: widget.currentUser, // --- CORREÇÃO AQUI ---
                 ),
               ));
             },
@@ -2462,24 +2467,33 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
   }
 }
 
-class ProfessorDetailPage extends StatelessWidget {
+class ProfessorDetailPage extends StatefulWidget {
   final String academyId;
   final UserModel professor;
+  final UserModel currentUser; // --- NOVO PARÂMETRO ---
 
   const ProfessorDetailPage(
-      {super.key, required this.academyId, required this.professor});
+      {super.key,
+      required this.academyId,
+      required this.professor,
+      required this.currentUser}); // --- CONSTRUTOR ATUALIZADO ---
 
+  @override
+  State<ProfessorDetailPage> createState() => _ProfessorDetailPageState();
+}
+
+class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final createdAt = professor.createdAt?.toDate();
-    final updatedAt = professor.updatedAt?.toDate();
-    final isManager = professor.role == UserRole.manager;
+    final createdAt = widget.professor.createdAt?.toDate();
+    final updatedAt = widget.professor.updatedAt?.toDate();
+    final isManager = widget.professor.role == UserRole.manager;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(professor.name),
+        title: Text(widget.professor.name),
         actions: [
           IconButton(
             icon: const Icon(Icons.military_tech_rounded),
@@ -2487,8 +2501,9 @@ class ProfessorDetailPage extends StatelessWidget {
             onPressed: () {
               Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => GraduationTimelinePage(
-                  academyId: academyId,
-                  user: professor,
+                  academyId: widget.academyId,
+                  user: widget.professor,
+                  currentUser: widget.currentUser, // --- CORREÇÃO AQUI ---
                 ),
               ));
             },
@@ -2514,34 +2529,36 @@ class ProfessorDetailPage extends StatelessWidget {
                       const Divider(height: 20),
                       if (!isManager) ...[
                         _buildInfoRow(context, Icons.shield_outlined, "Faixa",
-                            professor.faixa ?? 'Não informada'),
-                        if (professor.graus != null && professor.graus! > 0)
+                            widget.professor.faixa ?? 'Não informada'),
+                        if (widget.professor.graus != null &&
+                            widget.professor.graus! > 0)
                           _buildInfoRow(context, Icons.star_outline_rounded,
-                              "Graus", '${professor.graus}º Grau'),
-                        if (professor.peso != null)
+                              "Graus", '${widget.professor.graus}º Grau'),
+                        if (widget.professor.peso != null)
                           _buildInfoRow(context, Icons.fitness_center_rounded,
-                              "Peso", '${professor.peso} kg'),
+                              "Peso", '${widget.professor.peso} kg'),
                       ],
                       _buildInfoRow(context, Icons.email_outlined,
-                          "E-mail de Login", professor.email),
-                      if (professor.dataNascimento != null &&
-                          professor.idade != null)
+                          "E-mail de Login", widget.professor.email),
+                      if (widget.professor.dataNascimento != null &&
+                          widget.professor.idade != null)
                         _buildInfoRow(context, Icons.cake_rounded, "Idade",
-                            '${professor.idade} anos'),
+                            '${widget.professor.idade} anos'),
                       const Divider(height: 20),
-                      if (professor.createdByName != null && createdAt != null)
+                      if (widget.professor.createdByName != null &&
+                          createdAt != null)
                         _buildInfoRow(
                             context,
                             Icons.person_add_alt_1_outlined,
                             "Criado por",
-                            '${professor.createdByName} em ${DateFormat.yMd('pt_BR').format(createdAt)}'),
-                      if (professor.lastUpdatedByName != null &&
+                            '${widget.professor.createdByName} em ${DateFormat.yMd('pt_BR').format(createdAt)}'),
+                      if (widget.professor.lastUpdatedByName != null &&
                           updatedAt != null)
                         _buildInfoRow(
                             context,
                             Icons.edit_note_rounded,
                             "Última Edição",
-                            '${professor.lastUpdatedByName} em ${DateFormat.yMd('pt_BR').format(updatedAt)}'),
+                            '${widget.professor.lastUpdatedByName} em ${DateFormat.yMd('pt_BR').format(updatedAt)}'),
                     ],
                   ),
                 ),
@@ -2927,9 +2944,7 @@ class _GraduationDialogState extends State<GraduationDialog> {
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
-    // Referência para o documento do usuário/aluno
     DocumentReference mainDocRef;
-    // Referência para a nova coleção de histórico
     CollectionReference historyCollectionRef;
 
     if (widget.user is Aluno) {
@@ -2944,10 +2959,8 @@ class _GraduationDialogState extends State<GraduationDialog> {
       historyCollectionRef = mainDocRef.collection('graduation_history');
     }
 
-    // Adiciona a atualização do perfil ao batch
     batch.update(mainDocRef, dataToUpdate);
 
-    // Cria e adiciona o registro de histórico ao batch
     final historyEntry = GraduationHistory(
       id: '',
       belt: _selectedFaixa!,
@@ -3047,6 +3060,239 @@ class _GraduationDialogState extends State<GraduationDialog> {
         ),
         ElevatedButton(
           onPressed: _isLoading ? null : _updateGraduation,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Salvar'),
+        ),
+      ],
+    );
+  }
+}
+
+class EditGraduationDialog extends StatefulWidget {
+  final String academyId;
+  final dynamic user;
+  final UserModel currentUser;
+  final GraduationHistory historyEntry;
+
+  const EditGraduationDialog({
+    super.key,
+    required this.academyId,
+    required this.user,
+    required this.currentUser,
+    required this.historyEntry,
+  });
+
+  @override
+  State<EditGraduationDialog> createState() => _EditGraduationDialogState();
+}
+
+class _EditGraduationDialogState extends State<EditGraduationDialog> {
+  final List<String> _faixasList = [
+    'Branca',
+    'Cinza/Branca',
+    'Cinza',
+    'Cinza/Preta',
+    'Amarela/Branca',
+    'Amarela',
+    'Amarela/Preta',
+    'Laranja/Branca',
+    'Laranja',
+    'Laranja/Preta',
+    'Verde/Branca',
+    'Verde',
+    'Verde/Preta',
+    'Azul',
+    'Roxa',
+    'Marrom',
+    'Preta'
+  ];
+  List<int> _grausList = [];
+
+  String? _selectedFaixa;
+  int? _selectedGrau;
+  late DateTime _selectedDate;
+  bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedFaixa = widget.historyEntry.belt;
+    _selectedGrau = widget.historyEntry.degree;
+    _selectedDate = widget.historyEntry.date;
+    _grausList = _getGrausForFaixa(_selectedFaixa);
+  }
+
+  List<int> _getGrausForFaixa(String? faixa) {
+    if (faixa == 'Preta') return List.generate(10, (i) => i + 1);
+    if (faixa != null) return [1, 2, 3, 4];
+    return [];
+  }
+
+  Future<void> _pickDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+      locale: const Locale('pt', 'BR'),
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+      });
+    }
+  }
+
+  CollectionReference _getHistoryCollection() {
+    if (widget.user is Aluno) {
+      return FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('students')
+          .doc(widget.user.id)
+          .collection('graduation_history');
+    } else {
+      return FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.user.uid)
+          .collection('graduation_history');
+    }
+  }
+
+  Future<void> _saveChanges() async {
+    setState(() => _isLoading = true);
+    try {
+      await _getHistoryCollection().doc(widget.historyEntry.id).update({
+        'belt': _selectedFaixa,
+        'degree': _selectedGrau,
+        'date': Timestamp.fromDate(_selectedDate),
+        'promotedByName': widget.currentUser.name,
+        'promotedByUid': widget.currentUser.uid,
+      });
+
+      if (mounted) {
+        showBjjSnackBar(context, 'Registro atualizado!', type: 'success');
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao salvar: $e', type: 'error');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _deleteEntry() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Confirmar Exclusão"),
+        content: const Text(
+            "Tem certeza que deseja excluir este registro do histórico? Esta ação não pode ser desfeita."),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text("Cancelar")),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text("Excluir"),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await _getHistoryCollection().doc(widget.historyEntry.id).delete();
+      if (mounted) {
+        showBjjSnackBar(context, 'Registro excluído!', type: 'success');
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao excluir: $e', type: 'error');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Editar Registro de Graduação'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              isExpanded: true,
+              value: _selectedFaixa,
+              decoration: const InputDecoration(labelText: 'Faixa'),
+              items: _faixasList
+                  .map((faixa) => DropdownMenuItem(
+                      value: faixa,
+                      child: Text(faixa, overflow: TextOverflow.ellipsis)))
+                  .toList(),
+              onChanged: (value) => setState(() {
+                _selectedFaixa = value;
+                _grausList = _getGrausForFaixa(value);
+                _selectedGrau = null;
+              }),
+            ),
+            const SizedBox(height: 16),
+            if (_selectedFaixa != null)
+              DropdownButtonFormField<int>(
+                isExpanded: true,
+                value: _selectedGrau,
+                decoration: const InputDecoration(labelText: 'Graus'),
+                items: [
+                  const DropdownMenuItem<int>(
+                      value: null, child: Text("Nenhum")),
+                  ..._grausList.map((g) => DropdownMenuItem(
+                      value: g,
+                      child:
+                          Text("$gº Grau", overflow: TextOverflow.ellipsis))),
+                ],
+                onChanged: (value) => setState(() => _selectedGrau = value),
+              ),
+            const SizedBox(height: 16),
+            InkWell(
+              onTap: _pickDate,
+              child: InputDecorator(
+                decoration: const InputDecoration(
+                  labelText: 'Data da Graduação',
+                  prefixIcon: Icon(Icons.calendar_today),
+                ),
+                child: Text(
+                  DateFormat.yMd('pt_BR').format(_selectedDate),
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton.icon(
+          onPressed: _isLoading ? null : _deleteEntry,
+          icon: const Icon(Icons.delete_outline, color: errorColor),
+          label: const Text('Excluir', style: TextStyle(color: errorColor)),
+        ),
+        const Spacer(),
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar')),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _saveChanges,
           child: _isLoading
               ? const SizedBox(
                   height: 20,

@@ -1,12 +1,11 @@
 // lib/user_card_widget.dart
-import 'package:cached_network_image/cached_network_image.dart'; // NOVO IMPORT
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
-import 'manager_module.dart'; // Para StudentDetailPage e ProfessorDetailPage
-// Para acesso a diálogos de edição
+import 'manager_module.dart';
 
 /// Página para visualizar uma imagem em tela cheia com zoom.
 class PhotoViewPage extends StatelessWidget {
@@ -34,7 +33,6 @@ class PhotoViewPage extends StatelessWidget {
             panEnabled: true,
             minScale: 1.0,
             maxScale: 4.0,
-            // --- ALTERAÇÃO AQUI ---
             child: CachedNetworkImage(
               imageUrl: imageUrl,
               fit: BoxFit.contain,
@@ -43,7 +41,6 @@ class PhotoViewPage extends StatelessWidget {
               errorWidget: (context, url, error) =>
                   const Icon(Icons.broken_image, size: 100, color: textHint),
             ),
-            // --- FIM DA ALTERAÇÃO ---
           ),
         ),
       ),
@@ -55,7 +52,7 @@ class PhotoViewPage extends StatelessWidget {
 class UserCard extends StatelessWidget {
   final dynamic user; // Pode ser Aluno ou UserModel
   final String academyId;
-  final UserModel currentUser; // O usuário logado (gerente ou professor)
+  final UserModel currentUser;
   final String? profileImageUrl;
 
   const UserCard({
@@ -76,10 +73,8 @@ class UserCard extends StatelessWidget {
     final bool hasImage =
         profileImageUrl != null && profileImageUrl!.isNotEmpty;
 
-    // --- ALTERAÇÃO AQUI ---
     final backgroundImage =
         hasImage ? CachedNetworkImageProvider(profileImageUrl!) : null;
-    // --- FIM DA ALTERAÇÃO ---
 
     final childText = hasImage
         ? null
@@ -148,6 +143,7 @@ class UserCard extends StatelessWidget {
                     builder: (_) => StudentDetailPage(
                       academyId: academyId,
                       student: user,
+                      currentUser: currentUser, // --- CORREÇÃO AQUI ---
                     ),
                   ));
                 } else {
@@ -155,13 +151,12 @@ class UserCard extends StatelessWidget {
                     builder: (_) => ProfessorDetailPage(
                       academyId: academyId,
                       professor: user,
+                      currentUser: currentUser, // --- CORREÇÃO AQUI ---
                     ),
                   ));
                 }
               },
             ),
-            // --- ALTERAÇÃO PRINCIPAL AQUI ---
-            // Habilita o botão de edição para gerentes (sempre) e para professores (apenas se for um aluno)
             if (currentUser.role == UserRole.manager ||
                 (currentUser.role == UserRole.teacher && isStudent))
               IconButton(
@@ -171,7 +166,6 @@ class UserCard extends StatelessWidget {
                   if (isStudent) {
                     _showEditAlunoDialog(context, user, academyId, currentUser);
                   } else {
-                    // Professores não podem editar outros professores, então apenas gerentes chegam aqui.
                     _showEditProfessorDialog(
                         context, user, academyId, currentUser);
                   }
@@ -183,9 +177,6 @@ class UserCard extends StatelessWidget {
     );
   }
 }
-
-// Funções de diálogo movidas para cá para serem acessíveis por ambos os módulos.
-// Elas precisam de um BuildContext que tenha acesso às rotas e dependências.
 
 void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
     UserModel currentUser) {
