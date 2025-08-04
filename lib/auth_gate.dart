@@ -10,7 +10,7 @@ import 'common_widgets.dart';
 import 'app_theme.dart';
 import 'manager_module.dart';
 import 'teacher_module.dart';
-import 'student_module.dart'; // NOVO IMPORT
+import 'student_module.dart';
 import 'update_checker.dart';
 
 class AuthGate extends StatefulWidget {
@@ -82,7 +82,6 @@ class _AuthGateState extends State<AuthGate> {
             final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
 
             if (userModel.mustChangePassword) {
-              // --- ALTERAÇÃO AQUI: Passamos o userModel para a página ---
               return ChangePasswordPage(isFirstLogin: true, user: userModel);
             }
 
@@ -574,12 +573,12 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
 
 class ChangePasswordPage extends StatefulWidget {
   final bool isFirstLogin;
-  final UserModel? user; // --- ALTERAÇÃO AQUI ---
+  final UserModel? user;
 
   const ChangePasswordPage({
     super.key,
     this.isFirstLogin = false,
-    this.user, // --- ALTERAÇÃO AQUI ---
+    this.user,
   });
 
   @override
@@ -625,22 +624,34 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         showBjjSnackBar(context, "Senha alterada com sucesso!",
             type: "success");
 
-        // --- ALTERAÇÃO PRINCIPAL AQUI ---
+        // --- CORREÇÃO APLICADA AQUI ---
         if (widget.isFirstLogin) {
-          // Após o primeiro login, vai para a tela de completar o perfil
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(
-                builder: (context) => EditStudentProfilePage(
-                      user: widget.user!,
-                      isFirstLogin: true,
-                    )),
-            (Route<dynamic> route) => false,
-          );
+          // Após o primeiro login, verifica a função do usuário para o redirecionamento
+          if (widget.user!.role == UserRole.student) {
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                  builder: (context) => EditStudentProfilePage(
+                        user: widget.user!,
+                        isFirstLogin: true,
+                      )),
+              (route) => false,
+            );
+          } else {
+            // Professores e Gerentes vão para a tela de edição de perfil genérica
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(
+                  builder: (context) => EditUserProfilePage(
+                        user: widget.user!,
+                        isFirstLogin: true,
+                      )),
+              (route) => false,
+            );
+          }
         } else {
           // Em uma troca de senha normal, apenas fecha a tela
           Navigator.of(context).pop();
         }
-        // --- FIM DA ALTERAÇÃO PRINCIPAL ---
+        // --- FIM DA CORREÇÃO ---
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) {

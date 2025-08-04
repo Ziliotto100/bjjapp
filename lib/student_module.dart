@@ -18,7 +18,6 @@ import 'app_theme.dart';
 import 'auth_gate.dart';
 import 'navigation_service.dart';
 import 'app_drawer.dart';
-// NOVO IMPORT
 import 'graduation_timeline_page.dart';
 
 // --- TELAS DO ALUNO ---
@@ -111,8 +110,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
       final firestore = FirebaseFirestore.instance;
       final academyId = widget.user.academyId;
 
-      // --- ALTERAÇÃO AQUI ---
-      // Busca apenas usuários com o papel 'teacher', excluindo o 'manager'.
       final usersSnapshot = await firestore
           .collection('users')
           .where('academyId', isEqualTo: academyId)
@@ -257,12 +254,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
 class EditStudentProfilePage extends StatefulWidget {
   final UserModel user;
-  final bool isFirstLogin; // --- ALTERAÇÃO AQUI ---
+  final bool isFirstLogin;
 
   const EditStudentProfilePage({
     super.key,
     required this.user,
-    this.isFirstLogin = false, // --- ALTERAÇÃO AQUI ---
+    this.isFirstLogin = false,
   });
 
   @override
@@ -274,33 +271,11 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   final _nameController = TextEditingController();
   final _weightController = TextEditingController();
   final _dateController = TextEditingController();
-  String? _faixa;
-  int? _graus;
   bool _isLoading = true;
   bool _isSaving = false;
   String? _newProfileImagePath;
   String? _currentProfileImageUrl;
-
-  final List<String> _faixasList = [
-    'Branca',
-    'Cinza/Branca',
-    'Cinza',
-    'Cinza/Preta',
-    'Amarela/Branca',
-    'Amarela',
-    'Amarela/Preta',
-    'Laranja/Branca',
-    'Laranja',
-    'Laranja/Preta',
-    'Verde/Branca',
-    'Verde',
-    'Verde/Preta',
-    'Azul',
-    'Roxa',
-    'Marrom',
-    'Preta'
-  ];
-  List<int> _grausList = [];
+  Aluno? _currentAlunoData;
 
   @override
   void initState() {
@@ -315,12 +290,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
     _weightController.dispose();
     _dateController.dispose();
     super.dispose();
-  }
-
-  List<int> _getGrausForFaixa(String? faixa) {
-    if (faixa == 'Preta') return List.generate(10, (i) => i + 1);
-    if (faixa != null) return [1, 2, 3, 4];
-    return [];
   }
 
   Future<void> _loadStudentData() async {
@@ -339,15 +308,13 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
 
       if (mounted && doc.exists) {
         final aluno = Aluno.fromJson(doc.id, doc.data()!);
+        _currentAlunoData = aluno;
         _nameController.text = aluno.nome;
         _weightController.text = aluno.peso.toString();
-        _faixa = aluno.faixa;
-        _graus = aluno.graus;
         if (aluno.dataNascimento != null) {
           _dateController.text =
               DateFormat('dd/MM/yyyy').format(aluno.dataNascimento!);
         }
-        _grausList = _getGrausForFaixa(_faixa);
       } else if (mounted) {
         _nameController.text = widget.user.name;
       }
@@ -426,8 +393,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
       batch.update(studentRef, {
         'nome': _nameController.text.trim(),
         'peso': double.parse(_weightController.text.replaceAll(',', '.')),
-        'faixa': _faixa,
-        'graus': _graus,
         'dataNascimento':
             dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
       });
@@ -445,7 +410,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
       if (mounted) {
         showBjjSnackBar(context, "Perfil atualizado com sucesso!",
             type: 'success');
-        // --- ALTERAÇÃO AQUI ---
         if (widget.isFirstLogin) {
           Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(builder: (context) => const AuthGate()),
@@ -453,7 +417,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
         } else {
           Navigator.of(context).pop();
         }
-        // --- FIM DA ALTERAÇÃO ---
       }
     } catch (e) {
       if (mounted) {
@@ -476,13 +439,11 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      // --- ALTERAÇÃO AQUI ---
       appBar: AppBar(
         title:
             Text(widget.isFirstLogin ? "Complete seu Perfil" : "Editar Perfil"),
         automaticallyImplyLeading: !widget.isFirstLogin,
       ),
-      // --- FIM DA ALTERAÇÃO ---
       body: AppBackground(
         child: SafeArea(
           child: _isLoading
@@ -535,6 +496,23 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                             ),
                           ),
                           const SizedBox(height: 24),
+                          if (_currentAlunoData?.faixa != null)
+                            Card(
+                              margin: const EdgeInsets.symmetric(vertical: 8.0),
+                              child: ListTile(
+                                leading: const Icon(Icons.shield_outlined,
+                                    color: textHint),
+                                title: const Text("Sua Faixa Atual"),
+                                subtitle: Text(
+                                  '${_currentAlunoData!.faixa}${_currentAlunoData!.graus != null && _currentAlunoData!.graus! > 0 ? " - ${_currentAlunoData!.graus}º Grau" : ""}',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium
+                                      ?.copyWith(color: textPrimary),
+                                ),
+                              ),
+                            ),
+                          const SizedBox(height: 16),
                           TextFormField(
                             controller: _nameController,
                             decoration: const InputDecoration(
@@ -585,50 +563,15 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                   : null;
                             },
                           ),
-                          const SizedBox(height: 16),
-                          DropdownButtonFormField<String>(
-                            value: _faixa,
-                            decoration:
-                                const InputDecoration(labelText: 'Faixa'),
-                            items: _faixasList
-                                .map((faixa) => DropdownMenuItem(
-                                    value: faixa, child: Text(faixa)))
-                                .toList(),
-                            onChanged: (value) => setState(() {
-                              _faixa = value;
-                              _grausList = _getGrausForFaixa(_faixa);
-                              _graus = null;
-                            }),
-                            validator: (value) =>
-                                value == null ? 'Selecione sua faixa' : null,
-                          ),
-                          if (_faixa != null) ...[
-                            const SizedBox(height: 16),
-                            DropdownButtonFormField<int>(
-                              value: _graus,
-                              decoration: const InputDecoration(
-                                  labelText: 'Graus (opcional)'),
-                              items: [
-                                const DropdownMenuItem<int>(
-                                    value: null, child: Text("Nenhum")),
-                                ..._grausList.map((g) => DropdownMenuItem(
-                                    value: g, child: Text("$gº Grau"))),
-                              ],
-                              onChanged: (value) =>
-                                  setState(() => _graus = value),
-                            ),
-                          ],
                           const SizedBox(height: 24),
                           _isSaving
                               ? const Center(child: CircularProgressIndicator())
                               : ElevatedButton.icon(
                                   onPressed: _updateProfile,
                                   icon: const Icon(Icons.save),
-                                  // --- ALTERAÇÃO AQUI ---
                                   label: Text(widget.isFirstLogin
                                       ? "Confirmar e Continuar"
                                       : "Salvar Alterações"),
-                                  // --- FIM DA ALTERAÇÃO ---
                                   style: ElevatedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(
                                           vertical: 16)),
@@ -1255,7 +1198,13 @@ class _TrainingGoalCard extends StatelessWidget {
 
 class EditUserProfilePage extends StatefulWidget {
   final UserModel user;
-  const EditUserProfilePage({super.key, required this.user});
+  final bool isFirstLogin;
+
+  const EditUserProfilePage({
+    super.key,
+    required this.user,
+    this.isFirstLogin = false,
+  });
 
   @override
   State<EditUserProfilePage> createState() => _EditUserProfilePageState();
@@ -1266,32 +1215,9 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
   final _nameController = TextEditingController();
   final _weightController = TextEditingController();
   final _dateController = TextEditingController();
-  String? _faixa;
-  int? _graus;
   bool _isSaving = false;
   String? _newProfileImagePath;
   String? _currentProfileImageUrl;
-
-  final List<String> _faixasList = [
-    'Branca',
-    'Cinza/Branca',
-    'Cinza',
-    'Cinza/Preta',
-    'Amarela/Branca',
-    'Amarela',
-    'Amarela/Preta',
-    'Laranja/Branca',
-    'Laranja',
-    'Laranja/Preta',
-    'Verde/Branca',
-    'Verde',
-    'Verde/Preta',
-    'Azul',
-    'Roxa',
-    'Marrom',
-    'Preta'
-  ];
-  List<int> _grausList = [];
 
   @override
   void initState() {
@@ -1299,13 +1225,10 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
     _currentProfileImageUrl = widget.user.profileImagePath;
     _nameController.text = widget.user.name;
     _weightController.text = widget.user.peso?.toString() ?? '';
-    _faixa = widget.user.faixa;
-    _graus = widget.user.graus;
     if (widget.user.dataNascimento != null) {
       _dateController.text =
           DateFormat('dd/MM/yyyy').format(widget.user.dataNascimento!);
     }
-    _grausList = _getGrausForFaixa(_faixa);
   }
 
   @override
@@ -1314,12 +1237,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
     _weightController.dispose();
     _dateController.dispose();
     super.dispose();
-  }
-
-  List<int> _getGrausForFaixa(String? faixa) {
-    if (faixa == 'Preta') return List.generate(10, (i) => i + 1);
-    if (faixa != null) return [1, 2, 3, 4];
-    return [];
   }
 
   Future<void> _pickImage() async {
@@ -1360,8 +1277,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
         'name': _nameController.text.trim(),
         'peso': double.tryParse(_weightController.text.replaceAll(',', '.')) ??
             widget.user.peso,
-        'faixa': _faixa,
-        'graus': _graus,
         'dataNascimento':
             dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
       };
@@ -1383,7 +1298,13 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
       if (mounted) {
         showBjjSnackBar(context, "Perfil atualizado com sucesso!",
             type: 'success');
-        Navigator.of(context).pop();
+        if (widget.isFirstLogin) {
+          Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const AuthGate()),
+              (route) => false);
+        } else {
+          Navigator.of(context).pop();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -1396,8 +1317,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final bool isManager = widget.user.role == UserRole.manager;
-
     ImageProvider? backgroundImage;
     if (_newProfileImagePath != null) {
       backgroundImage = FileImage(File(_newProfileImagePath!));
@@ -1408,12 +1327,25 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(title: const Text("Editar Perfil")),
+      appBar: AppBar(
+        title:
+            Text(widget.isFirstLogin ? "Complete seu Perfil" : "Editar Perfil"),
+        automaticallyImplyLeading: !widget.isFirstLogin,
+      ),
       body: AppBackground(
         child: SafeArea(
           child: ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
+              if (widget.isFirstLogin)
+                const Padding(
+                  padding: EdgeInsets.only(bottom: 24.0),
+                  child: Text(
+                    "Para começar, por favor, confirme seus dados e adicione uma foto de perfil.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: textHint, fontSize: 16),
+                  ),
+                ),
               Form(
                 key: _formKey,
                 child: Column(
@@ -1447,6 +1379,24 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 24),
+                    // --- CORREÇÃO AQUI: Mostra a faixa do professor mas não permite editar ---
+                    if (widget.user.faixa != null)
+                      Card(
+                        margin: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: ListTile(
+                          leading: const Icon(Icons.shield_outlined,
+                              color: textHint),
+                          title: const Text("Sua Faixa Atual"),
+                          subtitle: Text(
+                            '${widget.user.faixa}${widget.user.graus != null && widget.user.graus! > 0 ? " - ${widget.user.graus}º Grau" : ""}',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(color: textPrimary),
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 16),
                     TextFormField(
                       controller: _nameController,
                       decoration:
@@ -1481,61 +1431,29 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                         }
                       },
                     ),
-                    if (!isManager) ...[
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _weightController,
-                        decoration:
-                            const InputDecoration(labelText: 'Peso (kg)'),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Peso inválido';
-                          final x = double.tryParse(v.replaceAll(',', '.'));
-                          return (x == null || x <= 0)
-                              ? 'Peso inválido (deve ser > 0)'
-                              : null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        value: _faixa,
-                        decoration: const InputDecoration(labelText: 'Faixa'),
-                        items: _faixasList
-                            .map((faixa) => DropdownMenuItem(
-                                value: faixa, child: Text(faixa)))
-                            .toList(),
-                        onChanged: (value) => setState(() {
-                          _faixa = value;
-                          _grausList = _getGrausForFaixa(_faixa);
-                          _graus = null;
-                        }),
-                        validator: (value) =>
-                            value == null ? 'Selecione sua faixa' : null,
-                      ),
-                      if (_faixa != null) ...[
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<int>(
-                          value: _graus,
-                          decoration: const InputDecoration(
-                              labelText: 'Graus (opcional)'),
-                          items: [
-                            const DropdownMenuItem<int>(
-                                value: null, child: Text("Nenhum")),
-                            ..._grausList.map((g) => DropdownMenuItem(
-                                value: g, child: Text("$gº Grau"))),
-                          ],
-                          onChanged: (value) => setState(() => _graus = value),
-                        ),
-                      ],
-                    ],
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _weightController,
+                      decoration: const InputDecoration(labelText: 'Peso (kg)'),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      validator: (v) {
+                        if (v == null || v.isEmpty) return 'Peso inválido';
+                        final x = double.tryParse(v.replaceAll(',', '.'));
+                        return (x == null || x <= 0)
+                            ? 'Peso inválido (deve ser > 0)'
+                            : null;
+                      },
+                    ),
                     const SizedBox(height: 24),
                     _isSaving
                         ? const Center(child: CircularProgressIndicator())
                         : ElevatedButton.icon(
                             onPressed: _updateProfile,
                             icon: const Icon(Icons.save),
-                            label: const Text("Salvar Alterações"),
+                            label: Text(widget.isFirstLogin
+                                ? "Confirmar e Continuar"
+                                : "Salvar Alterações"),
                             style: ElevatedButton.styleFrom(
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 16)),
