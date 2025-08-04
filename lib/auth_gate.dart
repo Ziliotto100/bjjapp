@@ -66,36 +66,58 @@ class _AuthGateState extends State<AuthGate> {
               return const LoginPage();
             }
 
-            final userDocData =
-                userDocSnapshot.data!.data() as Map<String, dynamic>;
-
-            if (authUser.email != null &&
-                authUser.email != userDocData['email']) {
-              FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(authUser.uid)
-                  .update({'email': authUser.email});
-
-              userDocData['email'] = authUser.email;
-            }
-
             final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
 
-            if (userModel.mustChangePassword) {
-              return ChangePasswordPage(isFirstLogin: true, user: userModel);
-            }
+            // --- NOVA VERIFICAÇÃO DE STATUS DA ACADEMIA ---
+            return FutureBuilder<DocumentSnapshot>(
+              future: FirebaseFirestore.instance
+                  .collection('academies')
+                  .doc(userModel.academyId)
+                  .get(),
+              builder: (context, academySnapshot) {
+                if (academySnapshot.connectionState ==
+                    ConnectionState.waiting) {
+                  return const Scaffold(
+                      body: AppBackground(
+                          child: Center(child: CircularProgressIndicator())));
+                }
 
-            switch (userModel.role) {
-              case UserRole.manager:
-                return ManagerHomePage(user: userModel);
-              case UserRole.teacher:
-                return TeacherHomePage(user: userModel);
-              case UserRole.student:
-                return StudentHomePage(user: userModel);
-              default:
-                FirebaseAuth.instance.signOut();
-                return const LoginPage();
-            }
+                // Se a academia não for encontrada, desloga o usuário por segurança
+                if (!academySnapshot.hasData || !academySnapshot.data!.exists) {
+                  FirebaseAuth.instance.signOut();
+                  return const LoginPage();
+                }
+
+                final academyData =
+                    academySnapshot.data!.data() as Map<String, dynamic>;
+                // O status padrão é 'active' se o campo não existir
+                final academyStatus = academyData['status'] ?? 'active';
+
+                if (academyStatus != 'active') {
+                  // Se a academia não estiver ativa, mostra a tela de suspensão
+                  return SuspendedAcademyPage();
+                }
+
+                // Se a academia estiver ativa, continua o fluxo normal
+                if (userModel.mustChangePassword) {
+                  return ChangePasswordPage(
+                      isFirstLogin: true, user: userModel);
+                }
+
+                switch (userModel.role) {
+                  case UserRole.manager:
+                    return ManagerHomePage(user: userModel);
+                  case UserRole.teacher:
+                    return TeacherHomePage(user: userModel);
+                  case UserRole.student:
+                    return StudentHomePage(user: userModel);
+                  default:
+                    FirebaseAuth.instance.signOut();
+                    return const LoginPage();
+                }
+              },
+            );
+            // --- FIM DA NOVA VERIFICAÇÃO ---
           },
         );
       },
@@ -103,7 +125,53 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
-// --- O RESTANTE DAS TELAS (LoginPage, etc.) CONTINUA IGUAL ---
+// --- NOVA TELA PARA ACADEMIAS SUSPENSAS ---
+class SuspendedAcademyPage extends StatelessWidget {
+  const SuspendedAcademyPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: AppBackground(
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Icon(Icons.lock_outline_rounded,
+                    size: 80, color: warningColor),
+                const SizedBox(height: 24),
+                Text(
+                  'Acesso Suspenso',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'O acesso para sua academia foi temporariamente suspenso. Por favor, peça ao administrador da sua academia para entrar em contato com o suporte.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: textHint, fontSize: 16),
+                ),
+                const SizedBox(height: 32),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.logout),
+                  label: const Text('Sair'),
+                  onPressed: () async {
+                    await FirebaseAuth.instance.signOut();
+                  },
+                )
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- O RESTANTE DAS TELAS (LoginPage, etc.) ---
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
   @override
@@ -393,6 +461,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         'plan': 'premium',
         'ownerId': newUser.uid,
         'createdAt': FieldValue.serverTimestamp(),
+        'status': 'active', // --- NOVO CAMPO ADICIONADO AQUI ---
       });
 
       batch.set(userRef, {
@@ -402,10 +471,9 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         'role': 'manager',
         'faixa': _faixa,
         'graus': _graus,
-        'peso': null, // Gerente pode preencher depois
+        'peso': null,
         'mustChangePassword': false,
         'isActive': true,
-        // [MELHORIA] Adicionando dados de auditoria na criação
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
         'createdByUid': newUser.uid,
@@ -624,9 +692,7 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
         showBjjSnackBar(context, "Senha alterada com sucesso!",
             type: "success");
 
-        // --- CORREÇÃO APLICADA AQUI ---
         if (widget.isFirstLogin) {
-          // Após o primeiro login, verifica a função do usuário para o redirecionamento
           if (widget.user!.role == UserRole.student) {
             Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(
@@ -637,7 +703,6 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
               (route) => false,
             );
           } else {
-            // Professores e Gerentes vão para a tela de edição de perfil genérica
             Navigator.of(context).pushAndRemoveUntil(
               MaterialPageRoute(
                   builder: (context) => EditUserProfilePage(
@@ -648,10 +713,8 @@ class _ChangePasswordPageState extends State<ChangePasswordPage> {
             );
           }
         } else {
-          // Em uma troca de senha normal, apenas fecha a tela
           Navigator.of(context).pop();
         }
-        // --- FIM DA CORREÇÃO ---
       }
     } on FirebaseAuthException catch (e) {
       if (mounted) {
