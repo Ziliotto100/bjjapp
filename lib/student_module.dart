@@ -3,6 +3,8 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart'
+    show kIsWeb; // NOVO IMPORT PARA DETECTAR WEB
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -273,7 +275,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   final _dateController = TextEditingController();
   bool _isLoading = true;
   bool _isSaving = false;
-  String? _newProfileImagePath;
+  XFile? _newProfileImageFile; // --- ALTERADO DE STRING PARA XFILE ---
   String? _currentProfileImageUrl;
   Aluno? _currentAlunoData;
 
@@ -336,7 +338,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
 
     if (pickedFile != null) {
       setState(() {
-        _newProfileImagePath = pickedFile.path;
+        _newProfileImageFile = pickedFile; // --- SALVA O XFILE ---
       });
     }
   }
@@ -378,17 +380,24 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
 
       final Map<String, dynamic> userUpdateData = {};
 
-      if (_newProfileImagePath != null) {
+      // --- LÓGICA DE UPLOAD CORRIGIDA ---
+      if (_newProfileImageFile != null) {
         final ref = FirebaseStorage.instance
             .ref()
             .child('profile_images')
             .child('${widget.user.uid}.jpg');
 
-        final imageFile = File(_newProfileImagePath!);
-        await ref.putFile(imageFile);
+        // Se for WEB, usa putData com os bytes. Se não, usa putFile com o path.
+        if (kIsWeb) {
+          await ref.putData(await _newProfileImageFile!.readAsBytes());
+        } else {
+          await ref.putFile(File(_newProfileImageFile!.path));
+        }
+
         final downloadUrl = await ref.getDownloadURL();
         userUpdateData['profileImagePath'] = downloadUrl;
       }
+      // --- FIM DA CORREÇÃO ---
 
       batch.update(studentRef, {
         'nome': _nameController.text.trim(),
@@ -430,12 +439,14 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   @override
   Widget build(BuildContext context) {
     ImageProvider? backgroundImage;
-    if (_newProfileImagePath != null) {
-      backgroundImage = FileImage(File(_newProfileImagePath!));
+    // --- LÓGICA DE EXIBIÇÃO DA IMAGEM ATUALIZADA ---
+    if (_newProfileImageFile != null && !kIsWeb) {
+      backgroundImage = FileImage(File(_newProfileImageFile!.path));
     } else if (_currentProfileImageUrl != null &&
         _currentProfileImageUrl!.isNotEmpty) {
       backgroundImage = NetworkImage(_currentProfileImageUrl!);
     }
+    // --- FIM DA ATUALIZAÇÃO ---
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -473,10 +484,29 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                   backgroundColor:
                                       primaryAccent.withOpacity(0.2),
                                   backgroundImage: backgroundImage,
-                                  child: backgroundImage == null
-                                      ? const Icon(Icons.person,
-                                          size: 60, color: primaryAccent)
-                                      : null,
+                                  // --- LÓGICA DE EXIBIÇÃO WEB ---
+                                  child: _newProfileImageFile != null && kIsWeb
+                                      ? ClipOval(
+                                          child: FutureBuilder<Uint8List>(
+                                            future: _newProfileImageFile!
+                                                .readAsBytes(),
+                                            builder: (context, snapshot) {
+                                              if (snapshot.hasData) {
+                                                return Image.memory(
+                                                  snapshot.data!,
+                                                  fit: BoxFit.cover,
+                                                  width: 120,
+                                                  height: 120,
+                                                );
+                                              }
+                                              return const CircularProgressIndicator();
+                                            },
+                                          ),
+                                        )
+                                      : backgroundImage == null
+                                          ? const Icon(Icons.person,
+                                              size: 60, color: primaryAccent)
+                                          : null,
                                 ),
                                 Positioned(
                                   bottom: 0,
@@ -1217,7 +1247,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
   final _weightController = TextEditingController();
   final _dateController = TextEditingController();
   bool _isSaving = false;
-  String? _newProfileImagePath;
+  XFile? _newProfileImageFile; // --- ALTERADO PARA XFILE ---
   String? _currentProfileImageUrl;
 
   @override
@@ -1247,7 +1277,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
 
     if (pickedFile != null) {
       setState(() {
-        _newProfileImagePath = pickedFile.path;
+        _newProfileImageFile = pickedFile; // --- ATUALIZADO ---
       });
     }
   }
@@ -1282,17 +1312,23 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
             dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
       };
 
-      if (_newProfileImagePath != null) {
+      // --- LÓGICA DE UPLOAD CORRIGIDA ---
+      if (_newProfileImageFile != null) {
         final ref = FirebaseStorage.instance
             .ref()
             .child('profile_images')
             .child('${widget.user.uid}.jpg');
 
-        final imageFile = File(_newProfileImagePath!);
-        await ref.putFile(imageFile);
+        if (kIsWeb) {
+          await ref.putData(await _newProfileImageFile!.readAsBytes());
+        } else {
+          await ref.putFile(File(_newProfileImageFile!.path));
+        }
+
         final downloadUrl = await ref.getDownloadURL();
         updateData['profileImagePath'] = downloadUrl;
       }
+      // --- FIM DA CORREÇÃO ---
 
       await userRef.update(updateData);
 
@@ -1318,9 +1354,11 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isManager = widget.user.role == UserRole.manager;
+
     ImageProvider? backgroundImage;
-    if (_newProfileImagePath != null) {
-      backgroundImage = FileImage(File(_newProfileImagePath!));
+    if (_newProfileImageFile != null && !kIsWeb) {
+      backgroundImage = FileImage(File(_newProfileImageFile!.path));
     } else if (_currentProfileImageUrl != null &&
         _currentProfileImageUrl!.isNotEmpty) {
       backgroundImage = NetworkImage(_currentProfileImageUrl!);
@@ -1359,10 +1397,28 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                             radius: 60,
                             backgroundColor: primaryAccent.withOpacity(0.2),
                             backgroundImage: backgroundImage,
-                            child: backgroundImage == null
-                                ? const Icon(Icons.person,
-                                    size: 60, color: primaryAccent)
-                                : null,
+                            child: _newProfileImageFile != null && kIsWeb
+                                ? ClipOval(
+                                    child: FutureBuilder<Uint8List>(
+                                      future:
+                                          _newProfileImageFile!.readAsBytes(),
+                                      builder: (context, snapshot) {
+                                        if (snapshot.hasData) {
+                                          return Image.memory(
+                                            snapshot.data!,
+                                            fit: BoxFit.cover,
+                                            width: 120,
+                                            height: 120,
+                                          );
+                                        }
+                                        return const CircularProgressIndicator();
+                                      },
+                                    ),
+                                  )
+                                : backgroundImage == null
+                                    ? const Icon(Icons.person,
+                                        size: 60, color: primaryAccent)
+                                    : null,
                           ),
                           Positioned(
                             bottom: 0,
@@ -1380,7 +1436,8 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    if (widget.user.faixa != null)
+                    // --- CORREÇÃO: PROFESSOR NÃO EDITA FAIXA ---
+                    if (!isManager && widget.user.faixa != null)
                       Card(
                         margin: const EdgeInsets.symmetric(vertical: 8.0),
                         child: ListTile(
@@ -1431,20 +1488,24 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                         }
                       },
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _weightController,
-                      decoration: const InputDecoration(labelText: 'Peso (kg)'),
-                      keyboardType:
-                          const TextInputType.numberWithOptions(decimal: true),
-                      validator: (v) {
-                        if (v == null || v.isEmpty) return 'Peso inválido';
-                        final x = double.tryParse(v.replaceAll(',', '.'));
-                        return (x == null || x <= 0)
-                            ? 'Peso inválido (deve ser > 0)'
-                            : null;
-                      },
-                    ),
+                    // --- CORREÇÃO: CAMPO DE PESO SÓ APARECE PARA PROFESSORES ---
+                    if (!isManager) ...[
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _weightController,
+                        decoration:
+                            const InputDecoration(labelText: 'Peso (kg)'),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Peso inválido';
+                          final x = double.tryParse(v.replaceAll(',', '.'));
+                          return (x == null || x <= 0)
+                              ? 'Peso inválido (deve ser > 0)'
+                              : null;
+                        },
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     _isSaving
                         ? const Center(child: CircularProgressIndicator())
