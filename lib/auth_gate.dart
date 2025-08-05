@@ -12,6 +12,29 @@ import 'manager_module.dart';
 import 'teacher_module.dart';
 import 'student_module.dart';
 import 'update_checker.dart';
+import 'super_admin_module.dart';
+
+// --- CLASSE DE CONFIGURAÇÃO ---
+class EnvConfig {
+  static const _flavor = String.fromEnvironment('FLAVOR');
+
+  // ----------------- ATENÇÃO: SUBSTITUA OS UIDs ABAIXO -----------------
+
+  // 1. Cole aqui o UID da sua conta de admin do Firebase de DESENVOLVIMENTO
+  static const _devAdminUid = "rwq5LYtBxLU9o54h0wNN2H1hHJ02";
+
+  // 2. Cole aqui o UID da sua conta de admin do Firebase de PRODUÇÃO
+  static const _prodAdminUid = "tV5CXlYjQcOdD4dOqMUc4Ac5Odw1";
+
+  // --------------------------------------------------------------------
+
+  static String get superAdminUid {
+    if (_flavor == 'prod') {
+      return _prodAdminUid;
+    }
+    return _devAdminUid;
+  }
+}
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -24,7 +47,6 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    // Inicia a verificação de atualização assim que o widget é construído.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       UpdateChecker(context: context).checkForUpdate();
     });
@@ -46,6 +68,10 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         final authUser = authSnapshot.data!;
+
+        if (authUser.uid == EnvConfig.superAdminUid) {
+          return const SuperAdminPage();
+        }
 
         return FutureBuilder<DocumentSnapshot>(
           future: FirebaseFirestore.instance
@@ -89,9 +115,18 @@ class _AuthGateState extends State<AuthGate> {
                 final academyData =
                     academySnapshot.data!.data() as Map<String, dynamic>;
                 final academyStatus = academyData['status'] ?? 'active';
+                final subscriptionEndDate =
+                    (academyData['subscriptionEndDate'] as Timestamp?)
+                        ?.toDate();
 
                 if (academyStatus != 'active') {
-                  return SuspendedAcademyPage();
+                  return const SuspendedAcademyPage();
+                }
+
+                if (subscriptionEndDate != null &&
+                    DateTime.now().isAfter(subscriptionEndDate)) {
+                  return const SuspendedAcademyPage(
+                      isSubscriptionExpired: true);
                 }
 
                 if (userModel.mustChangePassword) {
@@ -119,11 +154,19 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
+// O restante do arquivo (SuspendedAcademyPage, LoginPage, etc.) permanece o mesmo e não precisa ser alterado.
 class SuspendedAcademyPage extends StatelessWidget {
-  const SuspendedAcademyPage({super.key});
+  final bool isSubscriptionExpired;
+  const SuspendedAcademyPage({super.key, this.isSubscriptionExpired = false});
 
   @override
   Widget build(BuildContext context) {
+    final title =
+        isSubscriptionExpired ? 'Assinatura Expirada' : 'Acesso Suspenso';
+    final message = isSubscriptionExpired
+        ? 'A assinatura da sua academia expirou. Por favor, peça ao administrador para regularizar a situação.'
+        : 'O acesso para sua academia foi suspenso. Por favor, peça ao administrador para entrar em contato com o suporte.';
+
     return Scaffold(
       body: AppBackground(
         child: SafeArea(
@@ -137,15 +180,15 @@ class SuspendedAcademyPage extends StatelessWidget {
                     size: 80, color: warningColor),
                 const SizedBox(height: 24),
                 Text(
-                  'Acesso Suspenso',
+                  title,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
                 const SizedBox(height: 16),
-                const Text(
-                  'O acesso para sua academia foi temporariamente suspenso. Por favor, peça ao administrador da sua academia para entrar em contato com o suporte.',
+                Text(
+                  message,
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: textHint, fontSize: 16),
+                  style: const TextStyle(color: textHint, fontSize: 16),
                 ),
                 const SizedBox(height: 32),
                 ElevatedButton.icon(
@@ -454,6 +497,8 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         'ownerId': newUser.uid,
         'createdAt': FieldValue.serverTimestamp(),
         'status': 'active',
+        'subscriptionEndDate':
+            Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
       });
 
       batch.set(userRef, {
@@ -474,7 +519,6 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         'lastUpdatedByName': managerName,
       });
 
-      // --- ALTERAÇÃO AQUI: Adiciona o histórico de graduação para o novo gerente ---
       final historyEntry = GraduationHistory(
         id: '',
         belt: _faixa!,
@@ -485,7 +529,6 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
       );
       final historyRef = userRef.collection('graduation_history').doc();
       batch.set(historyRef, historyEntry.toMap());
-      // --- FIM DA ALTERAÇÃO ---
 
       await batch.commit();
 
