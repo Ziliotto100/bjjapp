@@ -324,15 +324,31 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
                 currentUser: widget.user,
                 onAlunoAdicionado: (novoAluno) async {
                   try {
-                    final data = novoAluno.toJson();
-                    data['createdAt'] = FieldValue.serverTimestamp();
-                    data['updatedAt'] = FieldValue.serverTimestamp();
-
-                    await FirebaseFirestore.instance
+                    // --- ALTERAÇÃO AQUI: Adicionar aluno e histórico ---
+                    final studentCollection = FirebaseFirestore.instance
                         .collection('academies')
                         .doc(widget.user.academyId)
-                        .collection('students')
-                        .add(data);
+                        .collection('students');
+
+                    // 1. Adiciona o aluno
+                    final docRef =
+                        await studentCollection.add(novoAluno.toJson());
+
+                    // 2. Cria o registro de graduação inicial
+                    final historyEntry = GraduationHistory(
+                      id: '',
+                      belt: novoAluno.faixa,
+                      degree: novoAluno.graus,
+                      date: DateTime.now(),
+                      promotedByUid: widget.user.uid,
+                      promotedByName: widget.user.name,
+                    );
+
+                    // 3. Adiciona o registro à subcoleção do novo aluno
+                    await docRef
+                        .collection('graduation_history')
+                        .add(historyEntry.toMap());
+                    // --- FIM DA ALTERAÇÃO ---
 
                     if (mounted) {
                       showBjjSnackBar(
@@ -1631,13 +1647,16 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
 
       if (newUser == null) {
         await tempApp.delete();
-        throw Exception("Falha ao criar la cuenta de autenticação.");
+        throw Exception("Falha ao criar a conta de autenticação.");
       }
 
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(newUser.uid)
-          .set({
+      // --- ALTERAÇÃO AQUI: Usando Batch para criar usuário e histórico ---
+      final firestore = FirebaseFirestore.instance;
+      final batch = firestore.batch();
+      final userRef = firestore.collection('users').doc(newUser.uid);
+
+      // 1. Cria o documento do usuário
+      batch.set(userRef, {
         'name': name,
         'email': email,
         'academyId': widget.academyId,
@@ -1654,6 +1673,22 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
         'lastUpdatedByUid': widget.manager.uid,
         'lastUpdatedByName': widget.manager.name,
       });
+
+      // 2. Cria o registro de graduação inicial
+      final historyEntry = GraduationHistory(
+        id: '',
+        belt: _faixa!,
+        degree: _graus,
+        date: DateTime.now(),
+        promotedByUid: widget.manager.uid,
+        promotedByName: widget.manager.name,
+      );
+      final historyRef = userRef.collection('graduation_history').doc();
+      batch.set(historyRef, historyEntry.toMap());
+
+      // 3. Executa as operações
+      await batch.commit();
+      // --- FIM DA ALTERAÇÃO ---
 
       await tempApp.delete();
 
@@ -2257,13 +2292,13 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
 class StudentDetailPage extends StatefulWidget {
   final String academyId;
   final Aluno student;
-  final UserModel currentUser; // --- NOVO PARÂMETRO ---
+  final UserModel currentUser;
 
   const StudentDetailPage(
       {super.key,
       required this.academyId,
       required this.student,
-      required this.currentUser}); // --- CONSTRUTOR ATUALIZADO ---
+      required this.currentUser});
 
   @override
   State<StudentDetailPage> createState() => _StudentDetailPageState();
@@ -2328,7 +2363,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                 builder: (_) => GraduationTimelinePage(
                   academyId: widget.academyId,
                   user: widget.student,
-                  currentUser: widget.currentUser, // --- CORREÇÃO AQUI ---
+                  currentUser: widget.currentUser,
                 ),
               ));
             },
@@ -2470,13 +2505,13 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
 class ProfessorDetailPage extends StatefulWidget {
   final String academyId;
   final UserModel professor;
-  final UserModel currentUser; // --- NOVO PARÂMETRO ---
+  final UserModel currentUser;
 
   const ProfessorDetailPage(
       {super.key,
       required this.academyId,
       required this.professor,
-      required this.currentUser}); // --- CONSTRUTOR ATUALIZADO ---
+      required this.currentUser});
 
   @override
   State<ProfessorDetailPage> createState() => _ProfessorDetailPageState();
@@ -2503,7 +2538,7 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
                 builder: (_) => GraduationTimelinePage(
                   academyId: widget.academyId,
                   user: widget.professor,
-                  currentUser: widget.currentUser, // --- CORREÇÃO AQUI ---
+                  currentUser: widget.currentUser,
                 ),
               ));
             },
@@ -3148,18 +3183,31 @@ class _EditGraduationDialogState extends State<EditGraduationDialog> {
   }
 
   CollectionReference _getHistoryCollection() {
-    if (widget.user is Aluno) {
+    // CORREÇÃO NA LÓGICA DE REFERÊNCIA
+    final userObject = widget.user;
+    if (userObject is Aluno) {
       return FirebaseFirestore.instance
           .collection('academies')
           .doc(widget.academyId)
           .collection('students')
-          .doc(widget.user.id)
+          .doc(userObject.id)
           .collection('graduation_history');
     } else {
-      return FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.user.uid)
-          .collection('graduation_history');
+      // É um UserModel
+      final userModel = userObject as UserModel;
+      if (userModel.role == UserRole.student) {
+        return FirebaseFirestore.instance
+            .collection('academies')
+            .doc(widget.academyId)
+            .collection('students')
+            .doc(userModel.studentRecordId)
+            .collection('graduation_history');
+      } else {
+        return FirebaseFirestore.instance
+            .collection('users')
+            .doc(userModel.uid)
+            .collection('graduation_history');
+      }
     }
   }
 

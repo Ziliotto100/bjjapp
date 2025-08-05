@@ -68,7 +68,6 @@ class _AuthGateState extends State<AuthGate> {
 
             final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
 
-            // --- NOVA VERIFICAÇÃO DE STATUS DA ACADEMIA ---
             return FutureBuilder<DocumentSnapshot>(
               future: FirebaseFirestore.instance
                   .collection('academies')
@@ -82,7 +81,6 @@ class _AuthGateState extends State<AuthGate> {
                           child: Center(child: CircularProgressIndicator())));
                 }
 
-                // Se a academia não for encontrada, desloga o usuário por segurança
                 if (!academySnapshot.hasData || !academySnapshot.data!.exists) {
                   FirebaseAuth.instance.signOut();
                   return const LoginPage();
@@ -90,15 +88,12 @@ class _AuthGateState extends State<AuthGate> {
 
                 final academyData =
                     academySnapshot.data!.data() as Map<String, dynamic>;
-                // O status padrão é 'active' se o campo não existir
                 final academyStatus = academyData['status'] ?? 'active';
 
                 if (academyStatus != 'active') {
-                  // Se a academia não estiver ativa, mostra a tela de suspensão
                   return SuspendedAcademyPage();
                 }
 
-                // Se a academia estiver ativa, continua o fluxo normal
                 if (userModel.mustChangePassword) {
                   return ChangePasswordPage(
                       isFirstLogin: true, user: userModel);
@@ -117,7 +112,6 @@ class _AuthGateState extends State<AuthGate> {
                 }
               },
             );
-            // --- FIM DA NOVA VERIFICAÇÃO ---
           },
         );
       },
@@ -125,7 +119,6 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
-// --- NOVA TELA PARA ACADEMIAS SUSPENSAS ---
 class SuspendedAcademyPage extends StatelessWidget {
   const SuspendedAcademyPage({super.key});
 
@@ -171,7 +164,6 @@ class SuspendedAcademyPage extends StatelessWidget {
   }
 }
 
-// --- O RESTANTE DAS TELAS (LoginPage, etc.) ---
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
   @override
@@ -461,7 +453,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         'plan': 'premium',
         'ownerId': newUser.uid,
         'createdAt': FieldValue.serverTimestamp(),
-        'status': 'active', // --- NOVO CAMPO ADICIONADO AQUI ---
+        'status': 'active',
       });
 
       batch.set(userRef, {
@@ -481,6 +473,19 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         'lastUpdatedByUid': newUser.uid,
         'lastUpdatedByName': managerName,
       });
+
+      // --- ALTERAÇÃO AQUI: Adiciona o histórico de graduação para o novo gerente ---
+      final historyEntry = GraduationHistory(
+        id: '',
+        belt: _faixa!,
+        degree: _graus,
+        date: DateTime.now(),
+        promotedByUid: newUser.uid,
+        promotedByName: managerName,
+      );
+      final historyRef = userRef.collection('graduation_history').doc();
+      batch.set(historyRef, historyEntry.toMap());
+      // --- FIM DA ALTERAÇÃO ---
 
       await batch.commit();
 

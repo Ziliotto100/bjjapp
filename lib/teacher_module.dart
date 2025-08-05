@@ -418,22 +418,37 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                 currentUser: widget.user,
                 onAlunoAdicionado: (novoAluno) async {
                   try {
-                    final data = novoAluno.toJson();
-                    data.removeWhere((key, value) => value == null);
-                    data['createdAt'] = FieldValue.serverTimestamp();
-                    data['updatedAt'] = FieldValue.serverTimestamp();
-
-                    await FirebaseFirestore.instance
+                    // --- CORREÇÃO APLICADA AQUI ---
+                    final studentCollection = FirebaseFirestore.instance
                         .collection('academies')
                         .doc(widget.user.academyId)
-                        .collection('students')
-                        .add(data);
+                        .collection('students');
+
+                    // 1. Adiciona o aluno e pega sua referência
+                    final docRef =
+                        await studentCollection.add(novoAluno.toJson());
+
+                    // 2. Cria o registro de graduação inicial
+                    final historyEntry = GraduationHistory(
+                      id: '',
+                      belt: novoAluno.faixa,
+                      degree: novoAluno.graus,
+                      date: DateTime.now(),
+                      promotedByUid: widget.user.uid,
+                      promotedByName: widget.user.name,
+                    );
+
+                    // 3. Adiciona o registro à subcoleção do novo aluno
+                    await docRef
+                        .collection('graduation_history')
+                        .add(historyEntry.toMap());
+                    // --- FIM DA CORREÇÃO ---
 
                     if (mounted) {
                       showBjjSnackBar(
                           context, '${novoAluno.nome} adicionado com sucesso!',
                           type: 'success');
-                      _loadInitialData();
+                      _loadInitialData(); // Recarrega os dados para atualizar a lista
                     }
                   } catch (e) {
                     if (mounted) {
