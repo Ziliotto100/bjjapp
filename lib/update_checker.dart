@@ -1,6 +1,7 @@
 // lib/update_checker.dart
 // ignore_for_file: deprecated_member_use
 
+import 'package:flutter/foundation.dart' show kIsWeb; // NOVO IMPORT
 import 'package:flutter/material.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -8,7 +9,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 class UpdateChecker {
   final BuildContext context;
-  // --- CORREÇÃO APLICADA AQUI ---
   // O ID do seu app foi atualizado com base na imagem do seu Firebase.
   static const String _playStoreUrl =
       'https://play.google.com/store/apps/details?id=com.zillottosmartdev.matchbjj';
@@ -16,6 +16,13 @@ class UpdateChecker {
   UpdateChecker({required this.context});
 
   Future<void> checkForUpdate() async {
+    // --- CORREÇÃO ADICIONADA AQUI ---
+    // Se o aplicativo estiver rodando na web, a verificação de atualização é ignorada.
+    if (kIsWeb) {
+      return;
+    }
+    // --- FIM DA CORREÇÃO ---
+
     try {
       final remoteConfig = FirebaseRemoteConfig.instance;
       await remoteConfig.setConfigSettings(RemoteConfigSettings(
