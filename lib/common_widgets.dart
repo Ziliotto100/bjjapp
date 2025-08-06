@@ -1,12 +1,15 @@
 // lib/common_widgets.dart
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'app_theme.dart';
 import 'models.dart';
 import 'user_card_widget.dart';
+import 'auth_gate.dart'; // Import necessário para a navegação
 
 // --- WIDGETS COMUNS REUTILIZÁVEIS ---
 
@@ -127,8 +130,6 @@ String getBeltImagePath(String? beltName) {
     return 'assets/images/faixas/branca.png'; // Padrão para faixa branca
   }
 
-  // --- LÓGICA ATUALIZADA AQUI ---
-  // Converte o nome para minúsculas e substitui a barra por underline.
   final formattedName =
       beltName.toLowerCase().replaceAll('/', '_').replaceAll(' ', '_');
 
@@ -156,7 +157,6 @@ String getBeltImagePath(String? beltName) {
     return 'assets/images/faixas/$formattedName.png';
   }
 
-  // Fallback para o caso de algum nome antigo ainda existir no banco
   return 'assets/images/faixas/branca.png';
 }
 
@@ -289,6 +289,60 @@ class DateInputFormatter extends TextInputFormatter {
     return newValue.copyWith(
       text: formattedText,
       selection: TextSelection.collapsed(offset: formattedText.length),
+    );
+  }
+}
+
+/// Banner de aviso para o modo de personificação.
+class ImpersonationBanner extends StatelessWidget {
+  final String userName;
+
+  const ImpersonationBanner({super.key, required this.userName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: warningColor,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded,
+                color: Colors.black, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Você está vendo como $userName.',
+                style: const TextStyle(
+                    color: Colors.black, fontWeight: FontWeight.bold),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                final superAdminUid = FirebaseAuth.instance.currentUser?.uid;
+                if (superAdminUid == null) return;
+
+                await FirebaseFirestore.instance
+                    .collection('impersonation_sessions')
+                    .doc(superAdminUid)
+                    .delete();
+                await FirebaseAuth.instance.signOut();
+
+                // Navega para a AuthGate e limpa a pilha de telas
+                if (context.mounted) {
+                  Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                    MaterialPageRoute(builder: (context) => const AuthGate()),
+                    (route) => false,
+                  );
+                }
+              },
+              child: const Text('SAIR',
+                  style: TextStyle(
+                      color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

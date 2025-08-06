@@ -23,7 +23,13 @@ import 'user_card_widget.dart';
 // --- TELAS DO PROFESSOR ---
 class TeacherHomePage extends StatefulWidget {
   final UserModel user;
-  const TeacherHomePage({super.key, required this.user});
+  final bool isImpersonating;
+
+  const TeacherHomePage({
+    super.key,
+    required this.user,
+    this.isImpersonating = false,
+  });
 
   @override
   State<TeacherHomePage> createState() => _TeacherHomePageState();
@@ -388,10 +394,19 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         allModules: _allModules,
         onSelectItem: _onDrawerItemTapped,
       ),
-      body: AppBackground(
-        child: SafeArea(
-          child: IndexedStack(index: _paginaAtual, children: _telas),
-        ),
+      body: Column(
+        children: [
+          if (widget.isImpersonating)
+            ImpersonationBanner(userName: widget.user.name),
+          Expanded(
+            child: AppBackground(
+              child: SafeArea(
+                top: !widget.isImpersonating,
+                child: IndexedStack(index: _paginaAtual, children: _telas),
+              ),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
@@ -418,17 +433,14 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                 currentUser: widget.user,
                 onAlunoAdicionado: (novoAluno) async {
                   try {
-                    // --- CORREÇÃO APLICADA AQUI ---
                     final studentCollection = FirebaseFirestore.instance
                         .collection('academies')
                         .doc(widget.user.academyId)
                         .collection('students');
 
-                    // 1. Adiciona o aluno e pega sua referência
                     final docRef =
                         await studentCollection.add(novoAluno.toJson());
 
-                    // 2. Cria o registro de graduação inicial
                     final historyEntry = GraduationHistory(
                       id: '',
                       belt: novoAluno.faixa,
@@ -438,17 +450,15 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                       promotedByName: widget.user.name,
                     );
 
-                    // 3. Adiciona o registro à subcoleção do novo aluno
                     await docRef
                         .collection('graduation_history')
                         .add(historyEntry.toMap());
-                    // --- FIM DA CORREÇÃO ---
 
                     if (mounted) {
                       showBjjSnackBar(
                           context, '${novoAluno.nome} adicionado com sucesso!',
                           type: 'success');
-                      _loadInitialData(); // Recarrega os dados para atualizar a lista
+                      _loadInitialData();
                     }
                   } catch (e) {
                     if (mounted) {

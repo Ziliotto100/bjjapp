@@ -3,8 +3,7 @@
 
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart'
-    show kIsWeb; // NOVO IMPORT PARA DETECTAR WEB
+import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -25,7 +24,13 @@ import 'graduation_timeline_page.dart';
 // --- TELAS DO ALUNO ---
 class StudentHomePage extends StatefulWidget {
   final UserModel user;
-  const StudentHomePage({super.key, required this.user});
+  final bool isImpersonating;
+
+  const StudentHomePage({
+    super.key,
+    required this.user,
+    this.isImpersonating = false,
+  });
 
   @override
   State<StudentHomePage> createState() => _StudentHomePageState();
@@ -235,10 +240,19 @@ class _StudentHomePageState extends State<StudentHomePage> {
         allModules: _allModules,
         onSelectItem: _onDrawerItemTapped,
       ),
-      body: AppBackground(
-        child: SafeArea(
-          child: IndexedStack(index: _paginaAtual, children: _telas),
-        ),
+      body: Column(
+        children: [
+          if (widget.isImpersonating)
+            ImpersonationBanner(userName: widget.user.name),
+          Expanded(
+            child: AppBackground(
+              child: SafeArea(
+                top: !widget.isImpersonating,
+                child: IndexedStack(index: _paginaAtual, children: _telas),
+              ),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
@@ -275,7 +289,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   final _dateController = TextEditingController();
   bool _isLoading = true;
   bool _isSaving = false;
-  XFile? _newProfileImageFile; // --- ALTERADO DE STRING PARA XFILE ---
+  XFile? _newProfileImageFile;
   String? _currentProfileImageUrl;
   Aluno? _currentAlunoData;
 
@@ -338,7 +352,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
 
     if (pickedFile != null) {
       setState(() {
-        _newProfileImageFile = pickedFile; // --- SALVA O XFILE ---
+        _newProfileImageFile = pickedFile;
       });
     }
   }
@@ -380,14 +394,12 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
 
       final Map<String, dynamic> userUpdateData = {};
 
-      // --- LÓGICA DE UPLOAD CORRIGIDA ---
       if (_newProfileImageFile != null) {
         final ref = FirebaseStorage.instance
             .ref()
             .child('profile_images')
             .child('${widget.user.uid}.jpg');
 
-        // Se for WEB, usa putData com os bytes. Se não, usa putFile com o path.
         if (kIsWeb) {
           await ref.putData(await _newProfileImageFile!.readAsBytes());
         } else {
@@ -397,7 +409,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
         final downloadUrl = await ref.getDownloadURL();
         userUpdateData['profileImagePath'] = downloadUrl;
       }
-      // --- FIM DA CORREÇÃO ---
 
       batch.update(studentRef, {
         'nome': _nameController.text.trim(),
@@ -439,14 +450,12 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   @override
   Widget build(BuildContext context) {
     ImageProvider? backgroundImage;
-    // --- LÓGICA DE EXIBIÇÃO DA IMAGEM ATUALIZADA ---
     if (_newProfileImageFile != null && !kIsWeb) {
       backgroundImage = FileImage(File(_newProfileImageFile!.path));
     } else if (_currentProfileImageUrl != null &&
         _currentProfileImageUrl!.isNotEmpty) {
       backgroundImage = NetworkImage(_currentProfileImageUrl!);
     }
-    // --- FIM DA ATUALIZAÇÃO ---
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -484,7 +493,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                   backgroundColor:
                                       primaryAccent.withOpacity(0.2),
                                   backgroundImage: backgroundImage,
-                                  // --- LÓGICA DE EXIBIÇÃO WEB ---
                                   child: _newProfileImageFile != null && kIsWeb
                                       ? ClipOval(
                                           child: FutureBuilder<Uint8List>(
@@ -1247,7 +1255,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
   final _weightController = TextEditingController();
   final _dateController = TextEditingController();
   bool _isSaving = false;
-  XFile? _newProfileImageFile; // --- ALTERADO PARA XFILE ---
+  XFile? _newProfileImageFile;
   String? _currentProfileImageUrl;
 
   @override
@@ -1277,7 +1285,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
 
     if (pickedFile != null) {
       setState(() {
-        _newProfileImageFile = pickedFile; // --- ATUALIZADO ---
+        _newProfileImageFile = pickedFile;
       });
     }
   }
@@ -1312,7 +1320,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
             dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
       };
 
-      // --- LÓGICA DE UPLOAD CORRIGIDA ---
       if (_newProfileImageFile != null) {
         final ref = FirebaseStorage.instance
             .ref()
@@ -1328,7 +1335,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
         final downloadUrl = await ref.getDownloadURL();
         updateData['profileImagePath'] = downloadUrl;
       }
-      // --- FIM DA CORREÇÃO ---
 
       await userRef.update(updateData);
 
@@ -1436,7 +1442,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 24),
-                    // --- CORREÇÃO: PROFESSOR NÃO EDITA FAIXA ---
                     if (!isManager && widget.user.faixa != null)
                       Card(
                         margin: const EdgeInsets.symmetric(vertical: 8.0),
@@ -1488,7 +1493,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                         }
                       },
                     ),
-                    // --- CORREÇÃO: CAMPO DE PESO SÓ APARECE PARA PROFESSORES ---
                     if (!isManager) ...[
                       const SizedBox(height: 16),
                       TextFormField(

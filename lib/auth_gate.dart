@@ -171,9 +171,11 @@ class _AuthGateState extends State<AuthGate> {
                 return ManagerHomePage(
                     user: userModel, isImpersonating: isImpersonating);
               case UserRole.teacher:
-                return TeacherHomePage(user: userModel);
+                return TeacherHomePage(
+                    user: userModel, isImpersonating: isImpersonating);
               case UserRole.student:
-                return StudentHomePage(user: userModel);
+                return StudentHomePage(
+                    user: userModel, isImpersonating: isImpersonating);
               default:
                 FirebaseAuth.instance.signOut();
                 return const LoginPage();
@@ -185,8 +187,7 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
-// O restante do arquivo (SuspendedAcademyPage, LoginPage, etc.) permanece o mesmo e não precisa ser alterado.
-// ... (código das outras classes)
+// O restante do arquivo (SuspendedAcademyPage, LoginPage, etc.) permanece o mesmo.
 class SuspendedAcademyPage extends StatelessWidget {
   final bool isSubscriptionExpired;
   const SuspendedAcademyPage({super.key, this.isSubscriptionExpired = false});

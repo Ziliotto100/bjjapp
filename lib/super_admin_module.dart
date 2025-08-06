@@ -9,8 +9,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
+import 'auth_gate.dart';
 
-// Tela principal do Super Admin
+// --- TELA PRINCIPAL DO ADMIN (LISTA DE ACADEMIAS) ---
 class SuperAdminPage extends StatefulWidget {
   const SuperAdminPage({super.key});
 
@@ -19,180 +20,68 @@ class SuperAdminPage extends StatefulWidget {
 }
 
 class _SuperAdminPageState extends State<SuperAdminPage> {
-  late Future<Map<String, UserModel>> _managersFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _managersFuture = _fetchManagers();
-  }
-
-  Future<Map<String, UserModel>> _fetchManagers() async {
-    final snapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .where('role', isEqualTo: 'manager')
-        .get();
-
-    return {
-      for (var doc in snapshot.docs) doc.id: UserModel.fromFirestore(doc)
-    };
-  }
-
-  void _showAcademyInfoDialog(
-      BuildContext context, DocumentSnapshot academyDoc, UserModel? manager) {
-    showDialog(
-      context: context,
-      builder: (_) =>
-          _AcademyInfoDialog(academyDoc: academyDoc, manager: manager),
-    );
-  }
-
-  Future<void> _startImpersonation(String targetManagerId) async {
-    final superAdminUid = FirebaseAuth.instance.currentUser?.uid;
-    if (superAdminUid == null) return;
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('impersonation_sessions')
-          .doc(superAdminUid)
-          .set({'targetUid': targetManagerId});
-
-      await FirebaseAuth.instance.signOut();
-    } catch (e) {
-      if (mounted) {
-        showBjjSnackBar(context, 'Erro ao iniciar a personificação: $e',
-            type: 'error');
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Painel de Controle Master'),
-        // --- BOTÃO DE LOGOUT ADICIONADO AQUI ---
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
             tooltip: 'Sair',
-            onPressed: () => FirebaseAuth.instance.signOut(),
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+              if (mounted) {
+                Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => const AuthGate()),
+                  (route) => false,
+                );
+              }
+            },
           )
         ],
       ),
       body: AppBackground(
         child: SafeArea(
-          child: FutureBuilder<Map<String, UserModel>>(
-            future: _managersFuture,
-            builder: (context, managersSnapshot) {
-              if (managersSnapshot.connectionState == ConnectionState.waiting) {
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('academies')
+                .orderBy('name')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
               }
-              if (managersSnapshot.hasError || !managersSnapshot.hasData) {
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
                 return const EmptyStateWidget(
-                    icon: Icons.error, title: 'Erro ao carregar gerentes');
+                  icon: Icons.business_center,
+                  title: 'Nenhuma Academia Cadastrada',
+                );
               }
-              final managersMap = managersSnapshot.data!;
+              final academies = snapshot.data!.docs;
+              return ListView.builder(
+                padding: const EdgeInsets.all(8),
+                itemCount: academies.length,
+                itemBuilder: (context, index) {
+                  final academyDoc = academies[index];
+                  final data = academyDoc.data() as Map<String, dynamic>;
+                  final academyName = data['name'] ?? 'Nome não encontrado';
 
-              return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('academies')
-                    .orderBy('name')
-                    .snapshots(),
-                builder: (context, academySnapshot) {
-                  if (academySnapshot.connectionState ==
-                      ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (!academySnapshot.hasData ||
-                      academySnapshot.data!.docs.isEmpty) {
-                    return const EmptyStateWidget(
-                      icon: Icons.business_center,
-                      title: 'Nenhuma Academia Cadastrada',
-                    );
-                  }
-
-                  final academies = academySnapshot.data!.docs;
-
-                  return RefreshIndicator(
-                    onRefresh: () async {
-                      setState(() {
-                        _managersFuture = _fetchManagers();
-                      });
-                    },
-                    child: ListView.builder(
-                      padding: const EdgeInsets.all(8),
-                      itemCount: academies.length,
-                      itemBuilder: (context, index) {
-                        final academyDoc = academies[index];
-                        final data = academyDoc.data() as Map<String, dynamic>;
-
-                        final academyName =
-                            data['name'] ?? 'Nome não encontrado';
-                        final ownerId = data['ownerId'];
-                        final manager = managersMap[ownerId];
-                        final managerImage = manager?.profileImagePath;
-
-                        return Card(
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              radius: 25,
-                              backgroundColor: darkSurface,
-                              backgroundImage: (managerImage != null &&
-                                      managerImage.isNotEmpty)
-                                  ? CachedNetworkImageProvider(managerImage)
-                                  : null,
-                              child: (managerImage == null ||
-                                      managerImage.isEmpty)
-                                  ? const Icon(Icons.business, color: textHint)
-                                  : null,
-                            ),
-                            title: Text(
-                              academyName,
-                              style: Theme.of(context).textTheme.titleMedium,
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                            subtitle: Text(
-                              manager?.name ?? "Gerente não encontrado",
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
-                            ),
-                            trailing: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (manager != null)
-                                  IconButton(
-                                    icon: const Icon(
-                                        Icons.theater_comedy_outlined,
-                                        color: warningColor),
-                                    tooltip: 'Entrar como ${manager.name}',
-                                    onPressed: () =>
-                                        _startImpersonation(manager.uid),
-                                  ),
-                                IconButton(
-                                  icon: const Icon(Icons.info_outline,
-                                      color: infoColor),
-                                  tooltip: 'Ver Informações',
-                                  onPressed: () => _showAcademyInfoDialog(
-                                      context, academyDoc, manager),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.edit_note,
-                                      color: primaryAccent),
-                                  tooltip: 'Editar Assinatura',
-                                  onPressed: () {
-                                    showDialog(
-                                      context: context,
-                                      builder: (_) =>
-                                          EditAcademySubscriptionDialog(
-                                              academyDoc: academyDoc),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
+                  return Card(
+                    child: ListTile(
+                      leading: const CircleAvatar(
+                        backgroundColor: darkSurface,
+                        child: Icon(Icons.business, color: textHint),
+                      ),
+                      title: Text(academyName),
+                      subtitle: const Text('Toque para gerenciar'),
+                      trailing: const Icon(Icons.arrow_forward_ios_rounded),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AcademyDetailPage(academyDoc: academyDoc),
                           ),
                         );
                       },
@@ -204,6 +93,218 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// --- TELA DE DETALHES DA ACADEMIA E LISTA DE USUÁRIOS ---
+class AcademyDetailPage extends StatefulWidget {
+  final DocumentSnapshot academyDoc;
+  const AcademyDetailPage({super.key, required this.academyDoc});
+
+  @override
+  State<AcademyDetailPage> createState() => _AcademyDetailPageState();
+}
+
+class _AcademyDetailPageState extends State<AcademyDetailPage> {
+  late Future<List<dynamic>> _usersFuture;
+  late Future<UserModel?> _managerFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _usersFuture = _fetchUsers();
+    _managerFuture = _fetchManager();
+  }
+
+  Future<UserModel?> _fetchManager() async {
+    final data = widget.academyDoc.data() as Map<String, dynamic>;
+    final ownerId = data['ownerId'];
+    if (ownerId == null) return null;
+
+    final doc =
+        await FirebaseFirestore.instance.collection('users').doc(ownerId).get();
+    if (doc.exists) {
+      return UserModel.fromFirestore(doc);
+    }
+    return null;
+  }
+
+  Future<List<dynamic>> _fetchUsers() async {
+    final academyId = widget.academyDoc.id;
+    final List<dynamic> allUsers = [];
+
+    // Busca professores
+    final teachersSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('academyId', isEqualTo: academyId)
+        .where('role', isEqualTo: 'teacher')
+        .get();
+    allUsers.addAll(
+        teachersSnapshot.docs.map((doc) => UserModel.fromFirestore(doc)));
+
+    // Busca alunos
+    final studentsSnapshot = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(academyId)
+        .collection('students')
+        .get();
+    allUsers.addAll(
+        studentsSnapshot.docs.map((doc) => Aluno.fromJson(doc.id, doc.data())));
+
+    return allUsers;
+  }
+
+  Future<void> _startImpersonation(String targetUid) async {
+    final superAdminUid = FirebaseAuth.instance.currentUser?.uid;
+    if (superAdminUid == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('impersonation_sessions')
+          .doc(superAdminUid)
+          .set({'targetUid': targetUid});
+      await FirebaseAuth.instance.signOut();
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const AuthGate()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao iniciar a personificação: $e',
+            type: 'error');
+      }
+    }
+  }
+
+  void _showAcademyInfoDialog(BuildContext context, UserModel? manager) {
+    showDialog(
+      context: context,
+      builder: (_) =>
+          _AcademyInfoDialog(academyDoc: widget.academyDoc, manager: manager),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final academyName =
+        (widget.academyDoc.data() as Map<String, dynamic>)['name'] ??
+            'Academia';
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(academyName),
+        // --- BOTÕES DE GERENCIAMENTO ADICIONADOS AQUI ---
+        actions: [
+          FutureBuilder<UserModel?>(
+              future: _managerFuture,
+              builder: (context, managerSnapshot) {
+                return IconButton(
+                  icon: const Icon(Icons.info_outline, color: infoColor),
+                  tooltip: 'Ver Informações',
+                  onPressed: () =>
+                      _showAcademyInfoDialog(context, managerSnapshot.data),
+                );
+              }),
+          IconButton(
+            icon: const Icon(Icons.edit_note, color: primaryAccent),
+            tooltip: 'Editar Assinatura',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (_) => EditAcademySubscriptionDialog(
+                    academyDoc: widget.academyDoc),
+              );
+            },
+          ),
+        ],
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: FutureBuilder<List<dynamic>>(
+            future: _usersFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError || !snapshot.hasData) {
+                return const EmptyStateWidget(
+                    icon: Icons.error, title: 'Erro ao carregar usuários');
+              }
+              final users = snapshot.data!;
+              final teachers = users.whereType<UserModel>().toList();
+              final students = users.whereType<Aluno>().toList();
+
+              return FutureBuilder<UserModel?>(
+                  future: _managerFuture,
+                  builder: (context, managerSnapshot) {
+                    final manager = managerSnapshot.data;
+                    return ListView(
+                      children: [
+                        if (manager != null)
+                          _buildUserSection("Gerente", [manager]),
+                        if (teachers.isNotEmpty)
+                          _buildUserSection("Professores", teachers),
+                        if (students.isNotEmpty)
+                          _buildUserSection("Alunos", students),
+                      ],
+                    );
+                  });
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserSection(String title, List<dynamic> users) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+        ),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: users.length,
+          itemBuilder: (context, index) {
+            final user = users[index];
+            final bool isStudent = user is Aluno;
+            final String name = isStudent ? user.nome : user.name;
+            final String uid = isStudent ? user.userId ?? '' : user.uid;
+            final String? image =
+                isStudent ? null : (user as UserModel).profileImagePath;
+
+            return Card(
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: (image != null && image.isNotEmpty)
+                      ? CachedNetworkImageProvider(image)
+                      : null,
+                  child: (image == null || image.isEmpty)
+                      ? const Icon(Icons.person)
+                      : null,
+                ),
+                title: Text(name),
+                trailing: (uid.isNotEmpty)
+                    ? IconButton(
+                        icon: const Icon(Icons.theater_comedy_outlined,
+                            color: warningColor),
+                        tooltip: 'Entrar como $name',
+                        onPressed: () => _startImpersonation(uid),
+                      )
+                    : null,
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 }
