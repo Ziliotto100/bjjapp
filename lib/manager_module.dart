@@ -117,7 +117,13 @@ class UserManagementService {
 // --- TELA PRINCIPAL DO GERENTE ---
 class ManagerHomePage extends StatefulWidget {
   final UserModel user;
-  const ManagerHomePage({super.key, required this.user});
+  final bool isImpersonating;
+
+  const ManagerHomePage({
+    super.key,
+    required this.user,
+    this.isImpersonating = false,
+  });
 
   @override
   State<ManagerHomePage> createState() => _ManagerHomePageState();
@@ -264,6 +270,44 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     });
   }
 
+  Widget _buildImpersonationBanner() {
+    return Material(
+      color: warningColor,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded,
+                color: Colors.black, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Você está vendo como ${widget.user.name}.',
+                style: const TextStyle(
+                    color: Colors.black, fontWeight: FontWeight.bold),
+              ),
+            ),
+            TextButton(
+              onPressed: () async {
+                final superAdminUid = FirebaseAuth.instance.currentUser?.uid;
+                if (superAdminUid == null) return;
+
+                await FirebaseFirestore.instance
+                    .collection('impersonation_sessions')
+                    .doc(superAdminUid)
+                    .delete();
+                await FirebaseAuth.instance.signOut();
+              },
+              child: const Text('SAIR',
+                  style: TextStyle(
+                      color: Colors.black, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -293,10 +337,18 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
         allModules: _allModules,
         onSelectItem: _onDrawerItemTapped,
       ),
-      body: AppBackground(
-        child: SafeArea(
-          child: IndexedStack(index: _paginaAtual, children: _telas),
-        ),
+      body: Column(
+        children: [
+          if (widget.isImpersonating) _buildImpersonationBanner(),
+          Expanded(
+            child: AppBackground(
+              child: SafeArea(
+                top: !widget.isImpersonating,
+                child: IndexedStack(index: _paginaAtual, children: _telas),
+              ),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,

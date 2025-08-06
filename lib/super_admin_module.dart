@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
@@ -46,12 +47,39 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     );
   }
 
+  Future<void> _startImpersonation(String targetManagerId) async {
+    final superAdminUid = FirebaseAuth.instance.currentUser?.uid;
+    if (superAdminUid == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('impersonation_sessions')
+          .doc(superAdminUid)
+          .set({'targetUid': targetManagerId});
+
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao iniciar a personificação: $e',
+            type: 'error');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: const Text('Painel de Controle Master'),
+        // --- BOTÃO DE LOGOUT ADICIONADO AQUI ---
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            tooltip: 'Sair',
+            onPressed: () => FirebaseAuth.instance.signOut(),
+          )
+        ],
       ),
       body: AppBackground(
         child: SafeArea(
@@ -120,16 +148,12 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                                   ? const Icon(Icons.business, color: textHint)
                                   : null,
                             ),
-                            // --- CORREÇÃO APLICADA AQUI ---
                             title: Text(
                               academyName,
                               style: Theme.of(context).textTheme.titleMedium,
-                              overflow: TextOverflow
-                                  .ellipsis, // Adiciona "..." se o texto for muito longo
-                              maxLines:
-                                  1, // Garante que o texto não quebre a linha
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
                             ),
-                            // --- FIM DA CORREÇÃO ---
                             subtitle: Text(
                               manager?.name ?? "Gerente não encontrado",
                               overflow: TextOverflow.ellipsis,
@@ -138,6 +162,15 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
                             trailing: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
+                                if (manager != null)
+                                  IconButton(
+                                    icon: const Icon(
+                                        Icons.theater_comedy_outlined,
+                                        color: warningColor),
+                                    tooltip: 'Entrar como ${manager.name}',
+                                    onPressed: () =>
+                                        _startImpersonation(manager.uid),
+                                  ),
                                 IconButton(
                                   icon: const Icon(Icons.info_outline,
                                       color: infoColor),

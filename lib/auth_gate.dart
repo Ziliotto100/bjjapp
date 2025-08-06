@@ -18,15 +18,10 @@ import 'super_admin_module.dart';
 class EnvConfig {
   static const _flavor = String.fromEnvironment('FLAVOR');
 
-  // ----------------- ATENÇÃO: SUBSTITUA OS UIDs ABAIXO -----------------
-
-  // 1. Cole aqui o UID da sua conta de admin do Firebase de DESENVOLVIMENTO
+  // --- SEUS UIDs JÁ ESTÃO AQUI ---
   static const _devAdminUid = "rwq5LYtBxLU9o54h0wNN2H1hHJ02";
-
-  // 2. Cole aqui o UID da sua conta de admin do Firebase de PRODUÇÃO
   static const _prodAdminUid = "tV5CXlYjQcOdD4dOqMUc4Ac5Odw1";
-
-  // --------------------------------------------------------------------
+  // -----------------------------
 
   static String get superAdminUid {
     if (_flavor == 'prod') {
@@ -54,13 +49,14 @@ class _AuthGateState extends State<AuthGate> {
 
   @override
   Widget build(BuildContext context) {
+    const loadingScaffold = Scaffold(
+        body: AppBackground(child: Center(child: CircularProgressIndicator())));
+
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnapshot) {
         if (authSnapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(
-              body: AppBackground(
-                  child: Center(child: CircularProgressIndicator())));
+          return loadingScaffold;
         }
 
         if (!authSnapshot.hasData || authSnapshot.data == null) {
@@ -69,84 +65,119 @@ class _AuthGateState extends State<AuthGate> {
 
         final authUser = authSnapshot.data!;
 
+        // --- LÓGICA DE ROTEAMENTO CORRIGIDA ---
+        // 1. É o Super Admin?
         if (authUser.uid == EnvConfig.superAdminUid) {
-          return const SuperAdminPage();
+          // Se sim, VERIFICA se há uma sessão de personificação
+          return FutureBuilder<DocumentSnapshot?>(
+            future: _getImpersonationSession(authUser.uid),
+            builder: (context, impersonationSnapshot) {
+              if (impersonationSnapshot.connectionState ==
+                  ConnectionState.waiting) {
+                return loadingScaffold;
+              }
+
+              final impersonationDoc = impersonationSnapshot.data;
+
+              if (impersonationDoc != null && impersonationDoc.exists) {
+                // Sessão ATIVA: Entra como o gerente alvo
+                final targetUid = impersonationDoc.get('targetUid');
+                return _buildUserFlow(targetUid, isImpersonating: true);
+              } else {
+                // Sem sessão: Mostra o painel de controle do admin
+                return const SuperAdminPage();
+              }
+            },
+          );
+        } else {
+          // 2. Não é o Super Admin, segue o fluxo normal para o usuário logado
+          return _buildUserFlow(authUser.uid, isImpersonating: false);
         }
+        // --- FIM DA CORREÇÃO ---
+      },
+    );
+  }
+
+  Future<DocumentSnapshot?> _getImpersonationSession(String uid) async {
+    // Esta função só deve ser chamada para o super admin
+    if (uid != EnvConfig.superAdminUid) return null;
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('impersonation_sessions')
+          .doc(uid)
+          .get();
+      return doc.exists ? doc : null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  Widget _buildUserFlow(String uid, {required bool isImpersonating}) {
+    const loadingScaffold = Scaffold(
+        body: AppBackground(child: Center(child: CircularProgressIndicator())));
+
+    return FutureBuilder<DocumentSnapshot>(
+      future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
+      builder: (context, userDocSnapshot) {
+        if (userDocSnapshot.connectionState == ConnectionState.waiting) {
+          return loadingScaffold;
+        }
+
+        if (userDocSnapshot.hasError ||
+            !userDocSnapshot.hasData ||
+            !userDocSnapshot.data!.exists) {
+          FirebaseAuth.instance.signOut();
+          return const LoginPage();
+        }
+
+        final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
 
         return FutureBuilder<DocumentSnapshot>(
           future: FirebaseFirestore.instance
-              .collection('users')
-              .doc(authUser.uid)
+              .collection('academies')
+              .doc(userModel.academyId)
               .get(),
-          builder: (context, userDocSnapshot) {
-            if (userDocSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                  body: AppBackground(
-                      child: Center(child: CircularProgressIndicator())));
+          builder: (context, academySnapshot) {
+            if (academySnapshot.connectionState == ConnectionState.waiting) {
+              return loadingScaffold;
             }
 
-            if (userDocSnapshot.hasError ||
-                !userDocSnapshot.hasData ||
-                !userDocSnapshot.data!.exists) {
+            if (!academySnapshot.hasData || !academySnapshot.data!.exists) {
               FirebaseAuth.instance.signOut();
               return const LoginPage();
             }
 
-            final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
+            final academyData =
+                academySnapshot.data!.data() as Map<String, dynamic>;
+            final academyStatus = academyData['status'] ?? 'active';
+            final subscriptionEndDate =
+                (academyData['subscriptionEndDate'] as Timestamp?)?.toDate();
 
-            return FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance
-                  .collection('academies')
-                  .doc(userModel.academyId)
-                  .get(),
-              builder: (context, academySnapshot) {
-                if (academySnapshot.connectionState ==
-                    ConnectionState.waiting) {
-                  return const Scaffold(
-                      body: AppBackground(
-                          child: Center(child: CircularProgressIndicator())));
-                }
+            if (academyStatus != 'active') {
+              return const SuspendedAcademyPage();
+            }
 
-                if (!academySnapshot.hasData || !academySnapshot.data!.exists) {
-                  FirebaseAuth.instance.signOut();
-                  return const LoginPage();
-                }
+            if (subscriptionEndDate != null &&
+                DateTime.now().isAfter(subscriptionEndDate)) {
+              return const SuspendedAcademyPage(isSubscriptionExpired: true);
+            }
 
-                final academyData =
-                    academySnapshot.data!.data() as Map<String, dynamic>;
-                final academyStatus = academyData['status'] ?? 'active';
-                final subscriptionEndDate =
-                    (academyData['subscriptionEndDate'] as Timestamp?)
-                        ?.toDate();
+            if (userModel.mustChangePassword) {
+              return ChangePasswordPage(isFirstLogin: true, user: userModel);
+            }
 
-                if (academyStatus != 'active') {
-                  return const SuspendedAcademyPage();
-                }
-
-                if (subscriptionEndDate != null &&
-                    DateTime.now().isAfter(subscriptionEndDate)) {
-                  return const SuspendedAcademyPage(
-                      isSubscriptionExpired: true);
-                }
-
-                if (userModel.mustChangePassword) {
-                  return ChangePasswordPage(
-                      isFirstLogin: true, user: userModel);
-                }
-
-                switch (userModel.role) {
-                  case UserRole.manager:
-                    return ManagerHomePage(user: userModel);
-                  case UserRole.teacher:
-                    return TeacherHomePage(user: userModel);
-                  case UserRole.student:
-                    return StudentHomePage(user: userModel);
-                  default:
-                    FirebaseAuth.instance.signOut();
-                    return const LoginPage();
-                }
-              },
-            );
+            switch (userModel.role) {
+              case UserRole.manager:
+                return ManagerHomePage(
+                    user: userModel, isImpersonating: isImpersonating);
+              case UserRole.teacher:
+                return TeacherHomePage(user: userModel);
+              case UserRole.student:
+                return StudentHomePage(user: userModel);
+              default:
+                FirebaseAuth.instance.signOut();
+                return const LoginPage();
+            }
           },
         );
       },
@@ -155,6 +186,7 @@ class _AuthGateState extends State<AuthGate> {
 }
 
 // O restante do arquivo (SuspendedAcademyPage, LoginPage, etc.) permanece o mesmo e não precisa ser alterado.
+// ... (código das outras classes)
 class SuspendedAcademyPage extends StatelessWidget {
   final bool isSubscriptionExpired;
   const SuspendedAcademyPage({super.key, this.isSubscriptionExpired = false});
