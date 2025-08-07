@@ -11,7 +11,7 @@ class UpdateChecker {
   final BuildContext context;
   // O ID do seu app foi atualizado com base na imagem do seu Firebase.
   static const String _playStoreUrl =
-      'https://play.google.com/store/apps/details?id=com.zillottosmartdev.matchbjj';
+      'https://play.google.com/store/apps/details?id=com.ziliottosmartdev.matchbjj';
 
   UpdateChecker({required this.context});
 

@@ -23,6 +23,7 @@ dependencies:
   flutter_staggered_animations: ^1.1.1
   smooth_page_indicator: ^1.1.0
   cached_network_image: ^3.3.1
+  fl_chart: ^0.68.0 # Adicione esta linha
 
   image_picker: ^1.1.2    # <-- ADICIONE/ATUALIZE ESTA
   path: ^1.9.0            # <-- ADICIONE/ATUALIZE ESTA

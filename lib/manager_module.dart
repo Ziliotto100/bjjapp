@@ -1900,19 +1900,34 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
         .map((doc) => Aluno.fromJson(doc.id, doc.data()))
         .toList();
 
+    // MODIFICAÇÃO: Busca na coleção 'payment_history'
     final paymentsSnapshot = await firestore
         .collection('academies')
         .doc(widget.academyId)
-        .collection('monthly_fees')
-        .where('paymentYear', isEqualTo: now.year)
-        .where('paymentMonth', isEqualTo: now.month)
+        .collection('payment_history')
+        .where('paymentDate',
+            isGreaterThanOrEqualTo: DateTime(now.year, now.month, 1))
         .get();
 
-    final paidStudentIds =
-        paymentsSnapshot.docs.map((doc) => doc['studentId'] as String).toSet();
+    // Mapeia pagamentos pelo ID do ALUNO, não pelo ID do usuário
+    final studentPaymentsThisMonth = <String, bool>{};
+    for (var doc in paymentsSnapshot.docs) {
+      final data = doc.data();
+      // Assumindo que o 'notes' contém o nome do aluno
+      // Uma abordagem melhor seria salvar o studentId no registro de pagamento
+      final note = data['notes'] as String?;
+      if (note != null) {
+        for (var student in students) {
+          if (note.contains(student.nome)) {
+            studentPaymentsThisMonth[student.id] = true;
+            break;
+          }
+        }
+      }
+    }
 
     for (var student in students) {
-      if (paidStudentIds.contains(student.id)) {
+      if (studentPaymentsThisMonth.containsKey(student.id)) {
         student.paymentStatus = PaymentStatus.pago;
       } else {
         student.paymentStatus =
@@ -2101,7 +2116,7 @@ class StudentPaymentHistoryPage extends StatefulWidget {
 }
 
 class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
-  late Future<Map<int, List<MonthlyFee>>> _historyFuture;
+  late Future<Map<int, List<PaymentRecord>>> _historyFuture;
 
   @override
   void initState() {
@@ -2109,21 +2124,24 @@ class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
     _historyFuture = _fetchPaymentHistory();
   }
 
-  Future<Map<int, List<MonthlyFee>>> _fetchPaymentHistory() async {
+  Future<Map<int, List<PaymentRecord>>> _fetchPaymentHistory() async {
     final snapshot = await FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.academyId)
-        .collection('monthly_fees')
-        .where('studentId', isEqualTo: widget.student.id)
+        .collection('payment_history')
         .orderBy('paymentDate', descending: true)
         .get();
 
-    final payments =
-        snapshot.docs.map((doc) => MonthlyFee.fromFirestore(doc)).toList();
+    final payments = snapshot.docs
+        .map((doc) => PaymentRecord.fromFirestore(doc))
+        // Filtra para garantir que a nota contenha o nome do aluno
+        .where((p) => p.notes?.contains(widget.student.nome) ?? false)
+        .toList();
 
-    final Map<int, List<MonthlyFee>> groupedByYear = {};
+    final Map<int, List<PaymentRecord>> groupedByYear = {};
     for (var payment in payments) {
-      groupedByYear.putIfAbsent(payment.paymentYear, () => []).add(payment);
+      final year = payment.paymentDate.year;
+      groupedByYear.putIfAbsent(year, () => []).add(payment);
     }
     return groupedByYear;
   }
@@ -2141,7 +2159,7 @@ class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
       ),
       body: AppBackground(
         child: SafeArea(
-          child: FutureBuilder<Map<int, List<MonthlyFee>>>(
+          child: FutureBuilder<Map<int, List<PaymentRecord>>>(
             future: _historyFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -2181,7 +2199,7 @@ class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
                         return ListTile(
                           leading: const Icon(Icons.check_circle,
                               color: successColor),
-                          title: Text(_getMonthName(payment.paymentMonth)),
+                          title: Text(_getMonthName(payment.paymentDate.month)),
                           subtitle: Text(
                               'Pago em: ${DateFormat.yMd('pt_BR').format(payment.paymentDate)} - ${payment.paymentMethod}'),
                           trailing: Text(
@@ -2239,22 +2257,22 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
     setState(() => _isLoading = true);
 
     final now = DateTime.now();
-    final newPayment = MonthlyFee(
-      id: '',
-      studentId: widget.student.id,
-      amount: double.parse(_amountController.text.replaceAll(',', '.')),
-      paymentDate: now,
-      paymentMethod: _paymentMethod!,
-      paymentYear: now.year,
-      paymentMonth: now.month,
-    );
+    final amount = double.parse(_amountController.text.replaceAll(',', '.'));
+
+    final newPaymentRecord = {
+      'amount': amount,
+      'paymentDate': Timestamp.fromDate(now),
+      'paymentMethod': _paymentMethod!,
+      'notes': 'Mensalidade de ${widget.student.nome}', // Nota importante
+      'recordedByUid': FirebaseAuth.instance.currentUser?.uid ?? 'manager',
+    };
 
     try {
       await FirebaseFirestore.instance
           .collection('academies')
           .doc(widget.academyId)
-          .collection('monthly_fees')
-          .add(newPayment.toMap());
+          .collection('payment_history')
+          .add(newPaymentRecord);
 
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {

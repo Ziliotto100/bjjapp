@@ -161,7 +161,7 @@ class Aluno {
   final DateTime? dataNascimento;
   String? userId;
   PaymentStatus paymentStatus;
-  bool isActive; // NOVO CAMPO
+  bool isActive;
 
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
@@ -179,7 +179,7 @@ class Aluno {
     this.dataNascimento,
     this.userId,
     this.paymentStatus = PaymentStatus.pendente,
-    this.isActive = true, // VALOR PADRÃO
+    this.isActive = true,
     this.createdAt,
     this.updatedAt,
     this.createdByUid,
@@ -226,7 +226,7 @@ class Aluno {
       'dataNascimento':
           dataNascimento != null ? Timestamp.fromDate(dataNascimento!) : null,
       'userId': userId,
-      'isActive': isActive, // NOVO CAMPO
+      'isActive': isActive,
       'createdAt': createdAt ?? FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'createdByUid': createdByUid,
@@ -245,7 +245,7 @@ class Aluno {
       graus: json['graus'],
       dataNascimento: (json['dataNascimento'] as Timestamp?)?.toDate(),
       userId: json['userId'],
-      isActive: json['isActive'] ?? true, // NOVO CAMPO
+      isActive: json['isActive'] ?? true,
       createdAt: json['createdAt'],
       updatedAt: json['updatedAt'],
       createdByUid: json['createdByUid'],
@@ -738,5 +738,46 @@ extension StringExtension on String {
   String capitalize() {
     if (isEmpty) return this;
     return "${this[0].toUpperCase()}${substring(1)}";
+  }
+}
+
+// --- NOVO MODELO PARA REGISTRO DE PAGAMENTO ---
+class PaymentRecord {
+  final String id;
+  final double amount;
+  final DateTime paymentDate;
+  final String paymentMethod;
+  final String? notes;
+  final String recordedByUid;
+
+  PaymentRecord({
+    required this.id,
+    required this.amount,
+    required this.paymentDate,
+    required this.paymentMethod,
+    this.notes,
+    required this.recordedByUid,
+  });
+
+  factory PaymentRecord.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return PaymentRecord(
+      id: doc.id,
+      amount: (data['amount'] as num).toDouble(),
+      paymentDate: (data['paymentDate'] as Timestamp).toDate(),
+      paymentMethod: data['paymentMethod'] ?? 'Não informado',
+      notes: data['notes'],
+      recordedByUid: data['recordedByUid'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'amount': amount,
+      'paymentDate': Timestamp.fromDate(paymentDate),
+      'paymentMethod': paymentMethod,
+      'notes': notes,
+      'recordedByUid': recordedByUid,
+    };
   }
 }

@@ -1,17 +1,18 @@
 // lib/super_admin_module.dart
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, prefer_final_fields
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'admin_dashboard_module.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
 import 'auth_gate.dart';
 
-// --- TELA PRINCIPAL DO ADMIN (LISTA DE ACADEMIAS) ---
+// --- TELA CONTAINER DO SUPER ADMIN COM NAVEGAÇÃO ---
 class SuperAdminPage extends StatefulWidget {
   const SuperAdminPage({super.key});
 
@@ -20,12 +21,25 @@ class SuperAdminPage extends StatefulWidget {
 }
 
 class _SuperAdminPageState extends State<SuperAdminPage> {
+  int _currentIndex = 0;
+  final List<Widget> _pages = [
+    const AdminDashboardPage(), // Tela de Dashboard
+    const AcademyListPage(), // Tela com a lista de academias
+    const AdminFinancialPage(), // Nova tela Financeira
+  ];
+
+  final List<String> _pageTitles = [
+    'Dashboard',
+    'Gerenciar Academias',
+    'Financeiro'
+  ];
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text('Painel de Controle Master'),
+        title: Text(_pageTitles[_currentIndex]),
         actions: [
           IconButton(
             icon: const Icon(Icons.logout),
@@ -44,55 +58,91 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       ),
       body: AppBackground(
         child: SafeArea(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('academies')
-                .orderBy('name')
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const EmptyStateWidget(
-                  icon: Icons.business_center,
-                  title: 'Nenhuma Academia Cadastrada',
-                );
-              }
-              final academies = snapshot.data!.docs;
-              return ListView.builder(
-                padding: const EdgeInsets.all(8),
-                itemCount: academies.length,
-                itemBuilder: (context, index) {
-                  final academyDoc = academies[index];
-                  final data = academyDoc.data() as Map<String, dynamic>;
-                  final academyName = data['name'] ?? 'Nome não encontrado';
+          child: _pages[_currentIndex],
+        ),
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard_rounded),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.business_rounded),
+            label: 'Academias',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.monetization_on_rounded),
+            label: 'Financeiro',
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-                  return Card(
-                    child: ListTile(
-                      leading: const CircleAvatar(
-                        backgroundColor: darkSurface,
-                        child: Icon(Icons.business, color: textHint),
-                      ),
-                      title: Text(academyName),
-                      subtitle: const Text('Toque para gerenciar'),
-                      trailing: const Icon(Icons.arrow_forward_ios_rounded),
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) =>
-                                AcademyDetailPage(academyDoc: academyDoc),
-                          ),
-                        );
-                      },
+// --- WIDGET PARA A LISTA DE ACADEMIAS (ANTIGA SUPER ADMIN PAGE) ---
+class AcademyListPage extends StatefulWidget {
+  const AcademyListPage({super.key});
+
+  @override
+  State<AcademyListPage> createState() => _AcademyListPageState();
+}
+
+class _AcademyListPageState extends State<AcademyListPage> {
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('academies')
+          .orderBy('name')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const EmptyStateWidget(
+            icon: Icons.business_center,
+            title: 'Nenhuma Academia Cadastrada',
+          );
+        }
+        final academies = snapshot.data!.docs;
+        return ListView.builder(
+          padding: const EdgeInsets.all(8),
+          itemCount: academies.length,
+          itemBuilder: (context, index) {
+            final academyDoc = academies[index];
+            final data = academyDoc.data() as Map<String, dynamic>;
+            final academyName = data['name'] ?? 'Nome não encontrado';
+
+            return Card(
+              child: ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: darkSurface,
+                  child: Icon(Icons.business, color: textHint),
+                ),
+                title: Text(academyName),
+                subtitle: const Text('Toque para gerenciar'),
+                trailing: const Icon(Icons.arrow_forward_ios_rounded),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => AcademyDetailPage(academyDoc: academyDoc),
                     ),
                   );
                 },
-              );
-            },
-          ),
-        ),
-      ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -134,7 +184,6 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
     final academyId = widget.academyDoc.id;
     final List<dynamic> allUsers = [];
 
-    // Busca professores
     final teachersSnapshot = await FirebaseFirestore.instance
         .collection('users')
         .where('academyId', isEqualTo: academyId)
@@ -143,7 +192,6 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
     allUsers.addAll(
         teachersSnapshot.docs.map((doc) => UserModel.fromFirestore(doc)));
 
-    // Busca alunos
     final studentsSnapshot = await FirebaseFirestore.instance
         .collection('academies')
         .doc(academyId)
@@ -193,13 +241,23 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
     final academyName =
         (widget.academyDoc.data() as Map<String, dynamic>)['name'] ??
             'Academia';
+    final academyId = widget.academyDoc.id;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Text(academyName),
-        // --- BOTÕES DE GERENCIAMENTO ADICIONADOS AQUI ---
         actions: [
+          IconButton(
+            icon: const Icon(Icons.receipt_long_rounded, color: successColor),
+            tooltip: 'Histórico de Pagamentos',
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => AcademyPaymentHistoryPage(
+                    academyId: academyId, academyName: academyName),
+              ));
+            },
+          ),
           FutureBuilder<UserModel?>(
               future: _managerFuture,
               builder: (context, managerSnapshot) {
@@ -525,6 +583,229 @@ class _EditAcademySubscriptionDialogState
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('Salvar'),
         ),
+      ],
+    );
+  }
+}
+
+// --- CLASSE ADICIONADA: HISTÓRICO DE PAGAMENTOS ---
+class AcademyPaymentHistoryPage extends StatelessWidget {
+  final String academyId;
+  final String academyName;
+
+  const AcademyPaymentHistoryPage({
+    super.key,
+    required this.academyId,
+    required this.academyName,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final priceFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text('Pagamentos de $academyName'),
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('academies')
+                .doc(academyId)
+                .collection('payment_history')
+                .orderBy('paymentDate', descending: true)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.receipt_long,
+                  title: 'Nenhum Pagamento',
+                  message:
+                      'Nenhum pagamento foi registrado para esta academia ainda.',
+                );
+              }
+              final records = snapshot.data!.docs
+                  .map((doc) => PaymentRecord.fromFirestore(doc))
+                  .toList();
+
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+                itemCount: records.length,
+                itemBuilder: (context, index) {
+                  final record = records[index];
+                  return Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.monetization_on,
+                          color: successColor),
+                      title: Text(priceFormat.format(record.amount)),
+                      subtitle: Text(
+                          '${record.paymentMethod} em ${DateFormat('dd/MM/yyyy').format(record.paymentDate)}'),
+                      trailing: IconButton(
+                        icon:
+                            const Icon(Icons.delete_outline, color: errorColor),
+                        tooltip: 'Excluir registro',
+                        onPressed: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Confirmar Exclusão'),
+                              content: const Text(
+                                  'Tem certeza que deseja excluir este registro de pagamento?'),
+                              actions: [
+                                TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(ctx).pop(false),
+                                    child: const Text('Cancelar')),
+                                ElevatedButton(
+                                    onPressed: () =>
+                                        Navigator.of(ctx).pop(true),
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: errorColor),
+                                    child: const Text('Excluir')),
+                              ],
+                            ),
+                          );
+                          if (confirm == true) {
+                            await FirebaseFirestore.instance
+                                .collection('academies')
+                                .doc(academyId)
+                                .collection('payment_history')
+                                .doc(record.id)
+                                .delete();
+                          }
+                        },
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (_) => AddPaymentRecordDialog(academyId: academyId),
+          );
+        },
+        tooltip: 'Registrar Pagamento',
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+// --- CLASSE ADICIONADA: DIÁLOGO PARA NOVO PAGAMENTO ---
+class AddPaymentRecordDialog extends StatefulWidget {
+  final String academyId;
+  const AddPaymentRecordDialog({super.key, required this.academyId});
+
+  @override
+  State<AddPaymentRecordDialog> createState() => _AddPaymentRecordDialogState();
+}
+
+class _AddPaymentRecordDialogState extends State<AddPaymentRecordDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _amountController = TextEditingController();
+  final _notesController = TextEditingController();
+  String _paymentMethod = 'Pix';
+  DateTime _paymentDate = DateTime.now();
+  bool _isLoading = false;
+
+  Future<void> _savePayment() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isLoading = true);
+
+    final amount = double.tryParse(_amountController.text.replaceAll(',', '.'));
+    if (amount == null) {
+      showBjjSnackBar(context, 'Valor inválido.', type: 'error');
+      setState(() => _isLoading = false);
+      return;
+    }
+
+    final record = PaymentRecord(
+      id: '',
+      amount: amount,
+      paymentDate: _paymentDate,
+      paymentMethod: _paymentMethod,
+      notes: _notesController.text.trim(),
+      recordedByUid: FirebaseAuth.instance.currentUser!.uid,
+    );
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('payment_history')
+          .add(record.toMap());
+
+      Navigator.of(context).pop();
+      showBjjSnackBar(context, 'Pagamento registrado com sucesso!',
+          type: 'success');
+    } catch (e) {
+      showBjjSnackBar(context, 'Erro ao registrar pagamento: $e',
+          type: 'error');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Registrar Novo Pagamento'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _amountController,
+                decoration: const InputDecoration(labelText: 'Valor (R\$)'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                validator: (v) => (v == null || v.trim().isEmpty)
+                    ? 'Campo obrigatório'
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _paymentMethod,
+                decoration:
+                    const InputDecoration(labelText: 'Método de Pagamento'),
+                items: ['Pix', 'Boleto', 'Cartão de Crédito', 'Dinheiro']
+                    .map((m) => DropdownMenuItem(value: m, child: Text(m)))
+                    .toList(),
+                onChanged: (value) => setState(() => _paymentMethod = value!),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _notesController,
+                decoration:
+                    const InputDecoration(labelText: 'Observações (Opcional)'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar')),
+        ElevatedButton(
+            onPressed: _isLoading ? null : _savePayment,
+            child: const Text('Registrar')),
       ],
     );
   }
