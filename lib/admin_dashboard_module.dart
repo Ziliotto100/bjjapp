@@ -6,7 +6,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
-import 'models.dart';
 
 // --- WIDGET HELPER (Inalterado) ---
 Widget _buildMetricCard(BuildContext context, String title, String value,

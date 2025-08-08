@@ -1,5 +1,5 @@
 // lib/admin_financial_page.dart
-// ignore_for_file: use_build_context_synchronously, curly_braces_in_flow_control_structures
+// ignore_for_file: use_build_context_synchronously, curly_braces_in_flow_control_structures, unnecessary_to_list_in_spreads
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';

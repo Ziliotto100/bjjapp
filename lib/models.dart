@@ -781,3 +781,68 @@ class PaymentRecord {
     };
   }
 }
+
+// --- MODELOS DE DADOS DA GRADE DE HORÁRIOS ---
+enum TrainingModality {
+  gi,
+  nogi,
+}
+
+String modalityToString(TrainingModality modality) {
+  return modality == TrainingModality.gi ? 'Gi' : 'No-Gi';
+}
+
+TrainingModality modalityFromString(String? modalityString) {
+  if (modalityString == 'No-Gi') {
+    return TrainingModality.nogi;
+  }
+  return TrainingModality.gi;
+}
+
+class TrainingClass {
+  final String id;
+  final String dayOfWeek;
+  final String startTime;
+  final String endTime;
+  final String teacherId;
+  final String teacherName;
+  final TrainingModality modality;
+  final String description;
+  final String level;
+  final String? location;
+  final String? recurringId;
+  final String? audience; // CAMPO ALTERADO PARA STRING
+
+  TrainingClass({
+    required this.id,
+    required this.dayOfWeek,
+    required this.startTime,
+    required this.endTime,
+    required this.teacherId,
+    required this.teacherName,
+    required this.modality,
+    this.description = '',
+    this.level = 'Todos os Níveis',
+    this.location,
+    this.recurringId,
+    this.audience = 'Adulto', // NOVO VALOR PADRÃO
+  });
+
+  factory TrainingClass.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return TrainingClass(
+      id: doc.id,
+      dayOfWeek: data['dayOfWeek'] ?? '',
+      startTime: data['startTime'] ?? '',
+      endTime: data['endTime'] ?? '',
+      teacherId: data['teacherId'] ?? '',
+      teacherName: data['teacherName'] ?? '',
+      modality: modalityFromString(data['modality']),
+      description: data['description'] ?? '',
+      level: data['level'] ?? 'Todos os Níveis',
+      location: data['location'],
+      recurringId: data['recurringId'],
+      audience: data['audience'] ?? 'Adulto', // NOVO
+    );
+  }
+}

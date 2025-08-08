@@ -1,5 +1,5 @@
 // lib/super_admin_module.dart
-// ignore_for_file: use_build_context_synchronously, prefer_final_fields
+// ignore_for_file: use_build_context_synchronously, prefer_final_fields, unnecessary_to_list_in_spreads
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
