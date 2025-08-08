@@ -22,6 +22,7 @@ class GraduationTimelinePage extends StatelessWidget {
   });
 
   Stream<QuerySnapshot> _getHistoryStream() {
+    // Se o objeto passado for um Aluno, o caminho é direto.
     if (user is Aluno) {
       return FirebaseFirestore.instance
           .collection('academies')
@@ -32,9 +33,13 @@ class GraduationTimelinePage extends StatelessWidget {
           .orderBy('date', descending: true)
           .snapshots();
     } else {
+      // Se for um UserModel, precisamos verificar o papel.
       final userModel = user as UserModel;
       if (userModel.role == UserRole.student) {
-        if (userModel.studentRecordId == null) {
+        // CORREÇÃO AQUI: Verifica se o studentRecordId existe.
+        if (userModel.studentRecordId == null ||
+            userModel.studentRecordId!.isEmpty) {
+          // Se não houver ID de registro de aluno, não há histórico para buscar.
           return const Stream.empty();
         }
         return FirebaseFirestore.instance
@@ -46,6 +51,7 @@ class GraduationTimelinePage extends StatelessWidget {
             .orderBy('date', descending: true)
             .snapshots();
       } else {
+        // Para gerentes e professores, o caminho é na coleção de usuários.
         return FirebaseFirestore.instance
             .collection('users')
             .doc(userModel.uid)

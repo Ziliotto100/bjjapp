@@ -212,8 +212,8 @@ class _ScheduleDayView extends StatelessWidget {
   }
 }
 
-// --- CARD DE AULA REUTILIZÁVEL ---
-class _ClassCard extends StatelessWidget {
+// --- CARD DE AULA CONVERTIDO PARA STATEFULWIDGET ---
+class _ClassCard extends StatefulWidget {
   final TrainingClass trainingClass;
   final UserModel user;
   final List<UserModel> teachers;
@@ -225,11 +225,48 @@ class _ClassCard extends StatelessWidget {
       required this.teachers,
       required this.allStudents});
 
+  @override
+  State<_ClassCard> createState() => _ClassCardState();
+}
+
+class _ClassCardState extends State<_ClassCard> {
+  Stream<DocumentSnapshot?>? _checkinStatusStream;
+
+  @override
+  void initState() {
+    super.initState();
+    // Inicia o stream para ouvir o status do check-in apenas se for um aluno
+    if (widget.user.role == UserRole.student &&
+        widget.user.studentRecordId != null) {
+      _listenToCheckinStatus();
+    }
+  }
+
+  void _listenToCheckinStatus() {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final studentId = widget.user.studentRecordId;
+
+    // Procura por um check-in específico para este aluno no dia de hoje
+    setState(() {
+      _checkinStatusStream = FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .collection('checkins')
+          .where('studentId', isEqualTo: studentId)
+          .where('date', isEqualTo: Timestamp.fromDate(today))
+          .limit(1)
+          .snapshots()
+          .map((snapshot) =>
+              snapshot.docs.isNotEmpty ? snapshot.docs.first : null);
+    });
+  }
+
   void _showCheckinDialog(BuildContext context) {
     final now = TimeOfDay.now();
     final startTime = TimeOfDay(
-      hour: int.parse(trainingClass.startTime.split(':')[0]),
-      minute: int.parse(trainingClass.startTime.split(':')[1]),
+      hour: int.parse(widget.trainingClass.startTime.split(':')[0]),
+      minute: int.parse(widget.trainingClass.startTime.split(':')[1]),
     );
 
     final checkinWindowStart = startTime.hour * 60 + startTime.minute - 15;
@@ -252,9 +289,10 @@ class _ClassCard extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('${trainingClass.dayOfWeek} - ${trainingClass.startTime}'),
+            Text(
+                '${widget.trainingClass.dayOfWeek} - ${widget.trainingClass.startTime}'),
             const SizedBox(height: 8),
-            Text('Professor: ${trainingClass.teacherName}'),
+            Text('Professor: ${widget.trainingClass.teacherName}'),
           ],
         ),
         actions: [
@@ -275,8 +313,9 @@ class _ClassCard extends StatelessWidget {
   }
 
   Future<void> _performCheckin(BuildContext context) async {
-    final studentId =
-        user.role == UserRole.student ? user.studentRecordId : user.uid;
+    final studentId = widget.user.role == UserRole.student
+        ? widget.user.studentRecordId
+        : widget.user.uid;
     if (studentId == null) {
       showBjjSnackBar(context, 'ID de aluno não encontrado.', type: 'error');
       return;
@@ -287,7 +326,7 @@ class _ClassCard extends StatelessWidget {
 
     final checkinRef = FirebaseFirestore.instance
         .collection('academies')
-        .doc(user.academyId)
+        .doc(widget.user.academyId)
         .collection('checkins');
 
     try {
@@ -309,13 +348,13 @@ class _ClassCard extends StatelessWidget {
 
     await checkinRef.add({
       'studentId': studentId,
-      'studentName': user.name,
+      'studentName': widget.user.name,
       'date': Timestamp.fromDate(dateOnly),
-      'classId': trainingClass.id,
+      'classId': widget.trainingClass.id,
       'className':
-          '${trainingClass.startTime} - Prof. ${trainingClass.teacherName}',
-      'creatorId': user.uid,
-      'creatorName': user.name,
+          '${widget.trainingClass.startTime} - Prof. ${widget.trainingClass.teacherName}',
+      'creatorId': widget.user.uid,
+      'creatorName': widget.user.name,
       'status': checkinStatusToString(CheckinStatus.pending),
     });
 
@@ -323,119 +362,260 @@ class _ClassCard extends StatelessWidget {
         type: 'success');
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final bool canEdit =
-        user.role == UserRole.manager || user.role == UserRole.teacher;
+  Widget _buildCheckinWidget() {
     final today = DateFormat('EEEE', 'pt_BR').format(DateTime.now());
     final isToday =
-        trainingClass.dayOfWeek.toLowerCase() == today.toLowerCase();
-    final isKidsClass = trainingClass.audience?.toLowerCase() == 'kids';
+        widget.trainingClass.dayOfWeek.toLowerCase() == today.toLowerCase();
+
+    if (!isToday || widget.user.role != UserRole.student) {
+      return const SizedBox.shrink();
+    }
+
+    if (widget.user.studentRecordId == null) {
+      return InkWell(
+        onTap: () => showBjjSnackBar(
+          context,
+          'Complete seu perfil na aba "Meu Perfil" para poder fazer check-in.',
+          type: 'warning',
+        ),
+        child: _InfoChip(
+            label: 'Fazer Check-in', color: infoColor, icon: Icons.check),
+      );
+    }
+
+    return StreamBuilder<DocumentSnapshot?>(
+      stream: _checkinStatusStream,
+      builder: (context, snapshot) {
+        // Enquanto carrega, não mostra nada
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            !snapshot.hasData) {
+          return const SizedBox(height: 28); // Espaço reservado para o chip
+        }
+
+        // Se já existe um check-in para hoje
+        if (snapshot.hasData && snapshot.data != null) {
+          final checkin = CheckinEntry.fromJson(
+              snapshot.data!.id, snapshot.data!.data() as Map<String, dynamic>);
+
+          if (checkin.status == CheckinStatus.approved) {
+            return _InfoChip(
+                label: 'Check-in Confirmado',
+                color: successColor,
+                icon: Icons.check_circle_outline,
+                textColor: Colors.white);
+          } else {
+            return _InfoChip(
+                label: 'Aguardando Aprovação',
+                color: warningColor,
+                icon: Icons.hourglass_top_rounded,
+                textColor: Colors.black);
+          }
+        }
+
+        // Se não houver check-in, mostra o botão
+        return InkWell(
+          onTap: () => _showCheckinDialog(context),
+          borderRadius: BorderRadius.circular(20),
+          child: _InfoChip(
+            label: 'Fazer Check-in',
+            color: infoColor,
+            icon: Icons.check,
+            textColor: Colors.white,
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool canEdit = widget.user.role == UserRole.manager ||
+        widget.user.role == UserRole.teacher;
+    final isGiClass = widget.trainingClass.modality == TrainingModality.gi;
+    final isPrivate = widget.trainingClass.isPrivate;
+
+    final Color borderColor = isPrivate
+        ? errorColor
+        : (isGiClass ? Colors.blue.shade300 : primaryAccent);
+    final String modalityLabel =
+        modalityToString(widget.trainingClass.modality).replaceAll('-', ' ');
 
     return Card(
-      color: isKidsClass ? darkSurface.withBlue(30) : darkSurface,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        side: BorderSide(color: borderColor, width: 2),
+        borderRadius: BorderRadius.circular(12),
+      ),
       child: InkWell(
         onTap: () => showDialog(
           context: context,
-          builder: (_) => _ClassDetailDialog(trainingClass: trainingClass),
+          builder: (_) =>
+              _ClassDetailDialog(trainingClass: widget.trainingClass),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(12.0),
+          padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Icon(Icons.access_time, color: textHint, size: 20),
-                  SizedBox(width: 8),
                   Text(
-                    '${trainingClass.startTime} - ${trainingClass.endTime}',
-                    style: Theme.of(context).textTheme.titleMedium,
+                    '${widget.trainingClass.startTime} - ${widget.trainingClass.endTime}',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
                   ),
-                  if (trainingClass.isPrivate) ...[
-                    SizedBox(width: 8),
-                    Icon(Icons.lock_person, color: primaryAccent, size: 18),
-                  ],
                   const Spacer(),
                   if (canEdit)
-                    IconButton(
-                      icon: Icon(Icons.edit_note_rounded, color: primaryAccent),
-                      tooltip: 'Editar Aula',
-                      onPressed: () {
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => EditSchedulePage(
-                            academyId: user.academyId,
-                            teachers: teachers,
-                            classToEdit: trainingClass,
-                            allStudents: allStudents,
-                          ),
-                        ));
-                      },
+                    SizedBox(
+                      height: 36,
+                      width: 36,
+                      child: IconButton(
+                        padding: EdgeInsets.zero,
+                        icon: Icon(Icons.edit_note_rounded, color: textHint),
+                        tooltip: 'Editar Aula',
+                        onPressed: () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => EditSchedulePage(
+                              academyId: widget.user.academyId,
+                              teachers: widget.teachers,
+                              classToEdit: widget.trainingClass,
+                              allStudents: widget.allStudents,
+                            ),
+                          ));
+                        },
+                      ),
                     ),
                 ],
               ),
-              const Divider(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    trainingClass.level,
-                    style: TextStyle(
-                        color: primaryAccent, fontWeight: FontWeight.bold),
-                  ),
-                  if (trainingClass.audience != null)
-                    Chip(
-                      label: Text(trainingClass.audience!),
-                      backgroundColor: isKidsClass ? infoColor : null,
+              const SizedBox(height: 8),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: [
+                    _InfoChip(
+                      label: modalityLabel,
+                      color: isGiClass ? Colors.blue.shade300 : primaryAccent,
+                      textColor: Colors.black,
                     ),
-                ],
-              ),
-              if (trainingClass.location != null &&
-                  trainingClass.location!.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8.0),
-                  child: Row(
-                    children: [
-                      Icon(Icons.location_on_outlined,
-                          size: 16, color: textHint),
-                      SizedBox(width: 8),
-                      Text(trainingClass.location!,
-                          style: TextStyle(color: textSecondary)),
-                    ],
-                  ),
+                    _InfoChip(
+                      label: widget.trainingClass.level,
+                    ),
+                    if (widget.trainingClass.audience != null)
+                      _InfoChip(
+                        label: widget.trainingClass.audience!,
+                        icon: widget.trainingClass.audience?.toLowerCase() ==
+                                'kids'
+                            ? Icons.child_care
+                            : null,
+                      ),
+                    if (widget.trainingClass.location != null &&
+                        widget.trainingClass.location!.isNotEmpty)
+                      _InfoChip(
+                        label: widget.trainingClass.location!,
+                        icon: Icons.location_on_outlined,
+                      ),
+                  ],
                 ),
-              SizedBox(height: 8),
+              ),
+              const SizedBox(height: 12),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Icon(Icons.person_outline_rounded, size: 16, color: textHint),
-                  SizedBox(width: 8),
                   Expanded(
-                      child: Text("Professor: ${trainingClass.teacherName}",
-                          style: TextStyle(color: textSecondary))),
-                  Chip(label: Text(modalityToString(trainingClass.modality))),
+                    child: _InfoRow(
+                      icon: Icons.person_outline_rounded,
+                      text: "Prof. ${widget.trainingClass.teacherName}",
+                    ),
+                  ),
+                  _buildCheckinWidget(),
+                  if (isPrivate && widget.user.role != UserRole.student)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8.0),
+                      child:
+                          Icon(Icons.lock_person, color: errorColor, size: 24),
+                    ),
                 ],
               ),
-              if (isToday && user.role == UserRole.student) ...[
-                SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: ActionChip(
-                    avatar: const Icon(Icons.check, size: 16),
-                    label: const Text('Fazer Check-in'),
-                    onPressed: user.studentRecordId == null
-                        ? () => showBjjSnackBar(
-                              context,
-                              'Complete seu perfil na aba "Meu Perfil" para poder fazer check-in.',
-                              type: 'warning',
-                            )
-                        : () => _showCheckinDialog(context),
-                    backgroundColor: successColor.withOpacity(0.9),
-                  ),
-                ),
-              ]
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// Widget auxiliar para os chips de informação
+class _InfoChip extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final Color? color;
+  final Color? textColor;
+
+  const _InfoChip({
+    required this.label,
+    this.icon,
+    this.color,
+    this.textColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(right: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color ?? darkSurface,
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null)
+            Icon(
+              icon,
+              size: 14,
+              color: textColor ?? Colors.white,
+            ),
+          if (icon != null) const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: textColor ?? Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Widget auxiliar para linhas de informação
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _InfoRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4.0),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: textHint),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: textSecondary, fontSize: 14),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -465,7 +645,7 @@ class _ClassDetailDialog extends StatelessWidget {
             _buildInfoRow(context, Icons.person_outline, "Professor",
                 trainingClass.teacherName),
             _buildInfoRow(context, Icons.sports_mma_outlined, "Modalidade",
-                modalityToString(trainingClass.modality)),
+                modalityToString(trainingClass.modality).replaceAll('-', ' ')),
             if (trainingClass.isPrivate)
               _buildInfoRow(
                   context, Icons.lock_person, "Tipo", "Aula Particular"),
@@ -1051,7 +1231,7 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
                     ),
                   ),
                 ),
-                if (_selectedDays.isEmpty)
+                if (_selectedDays.isEmpty && !_isEditing)
                   Padding(
                     padding: const EdgeInsets.only(top: 8.0, left: 12.0),
                     child: Text('Campo obrigatório',
@@ -1255,7 +1435,7 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
                     ButtonSegment(
                         value: TrainingModality.gi, label: Text('Gi')),
                     ButtonSegment(
-                        value: TrainingModality.nogi, label: Text('No-Gi')),
+                        value: TrainingModality.nogi, label: Text('No Gi')),
                   ],
                   selected: {_modality},
                   onSelectionChanged: (newSelection) {

@@ -914,7 +914,7 @@ class _ApproveCheckinsPageState extends State<ApproveCheckinsPage> {
                   return Card(
                     child: ListTile(
                       title: Text(studentName),
-                      subtitle: Text(className),
+                      subtitle: Text(className), // Esta linha agora é segura
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
