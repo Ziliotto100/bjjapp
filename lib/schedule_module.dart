@@ -28,6 +28,7 @@ class SchedulePage extends StatefulWidget {
 class _SchedulePageState extends State<SchedulePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  late Future<List<Aluno>> _allStudentsFuture;
   final List<String> _daysOfWeek = [
     'Seg',
     'Ter',
@@ -50,10 +51,22 @@ class _SchedulePageState extends State<SchedulePage>
   @override
   void initState() {
     super.initState();
+    _allStudentsFuture = _fetchAllStudents();
     _tabController = TabController(length: _daysOfWeek.length, vsync: this);
     // Move para a aba do dia atual
     final todayIndex = DateTime.now().weekday - 1;
     _tabController.animateTo(todayIndex);
+  }
+
+  Future<List<Aluno>> _fetchAllStudents() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('students')
+        .get();
+    return snapshot.docs
+        .map((doc) => Aluno.fromJson(doc.id, doc.data()))
+        .toList();
   }
 
   @override
@@ -65,6 +78,7 @@ class _SchedulePageState extends State<SchedulePage>
   @override
   Widget build(BuildContext context) {
     final bool isManager = widget.user.role == UserRole.manager;
+    final bool isTeacher = widget.user.role == UserRole.teacher;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -102,20 +116,44 @@ class _SchedulePageState extends State<SchedulePage>
                   .map((doc) => TrainingClass.fromFirestore(doc))
                   .toList();
 
+              // Se o usuário for um aluno, precisamos do ID do registro de aluno dele.
+              // Se for professor ou gerente, podemos usar o UID como fallback (embora não deva ser convidado para aulas)
+              final studentRecordId =
+                  widget.user.studentRecordId ?? widget.user.uid;
+
+              // Filtra as aulas visíveis para o usuário atual
+              final visibleClasses = allClasses.where((c) {
+                // Aulas públicas são sempre visíveis
+                if (!c.isPrivate) return true;
+                // Aulas privadas são visíveis para gerentes, professores e alunos explicitamente permitidos
+                return isManager ||
+                    isTeacher ||
+                    c.allowedStudentIds.contains(studentRecordId);
+              }).toList();
+
               return TabBarView(
                 controller: _tabController,
                 children: _daysOfWeekFull.map((day) {
                   final classesForDay =
-                      allClasses.where((c) => c.dayOfWeek == day).toList();
+                      visibleClasses.where((c) => c.dayOfWeek == day).toList();
                   if (classesForDay.isEmpty) {
                     return const EmptyStateWidget(
                         icon: Icons.calendar_today_rounded,
                         title: 'Nenhuma aula neste dia');
                   }
-                  return _ScheduleDayView(
-                    classes: classesForDay,
-                    user: widget.user,
-                    teachers: widget.teachers,
+                  return FutureBuilder<List<Aluno>>(
+                    future: _allStudentsFuture,
+                    builder: (context, studentSnapshot) {
+                      if (!studentSnapshot.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      return _ScheduleDayView(
+                        classes: classesForDay,
+                        user: widget.user,
+                        teachers: widget.teachers,
+                        allStudents: studentSnapshot.data ?? [],
+                      );
+                    },
                   );
                 }).toList(),
               );
@@ -123,13 +161,15 @@ class _SchedulePageState extends State<SchedulePage>
           ),
         ),
       ),
-      floatingActionButton: isManager
+      floatingActionButton: isManager || isTeacher
           ? FloatingActionButton(
-              onPressed: () {
+              onPressed: () async {
+                final students = await _allStudentsFuture;
                 Navigator.of(context).push(MaterialPageRoute(
                   builder: (_) => EditSchedulePage(
                     academyId: widget.user.academyId,
                     teachers: widget.teachers,
+                    allStudents: students,
                   ),
                 ));
               },
@@ -146,9 +186,13 @@ class _ScheduleDayView extends StatelessWidget {
   final List<TrainingClass> classes;
   final UserModel user;
   final List<UserModel> teachers;
+  final List<Aluno> allStudents;
 
   const _ScheduleDayView(
-      {required this.classes, required this.user, required this.teachers});
+      {required this.classes,
+      required this.user,
+      required this.teachers,
+      required this.allStudents});
 
   @override
   Widget build(BuildContext context) {
@@ -161,6 +205,7 @@ class _ScheduleDayView extends StatelessWidget {
           trainingClass: trainingClass,
           user: user,
           teachers: teachers,
+          allStudents: allStudents,
         );
       },
     );
@@ -172,11 +217,13 @@ class _ClassCard extends StatelessWidget {
   final TrainingClass trainingClass;
   final UserModel user;
   final List<UserModel> teachers;
+  final List<Aluno> allStudents;
 
   const _ClassCard(
       {required this.trainingClass,
       required this.user,
-      required this.teachers});
+      required this.teachers,
+      required this.allStudents});
 
   void _showCheckinDialog(BuildContext context) {
     final now = TimeOfDay.now();
@@ -278,7 +325,8 @@ class _ClassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isManager = user.role == UserRole.manager;
+    final bool canEdit =
+        user.role == UserRole.manager || user.role == UserRole.teacher;
     final today = DateFormat('EEEE', 'pt_BR').format(DateTime.now());
     final isToday =
         trainingClass.dayOfWeek.toLowerCase() == today.toLowerCase();
@@ -304,8 +352,12 @@ class _ClassCard extends StatelessWidget {
                     '${trainingClass.startTime} - ${trainingClass.endTime}',
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
+                  if (trainingClass.isPrivate) ...[
+                    SizedBox(width: 8),
+                    Icon(Icons.lock_person, color: primaryAccent, size: 18),
+                  ],
                   const Spacer(),
-                  if (isManager)
+                  if (canEdit)
                     IconButton(
                       icon: Icon(Icons.edit_note_rounded, color: primaryAccent),
                       tooltip: 'Editar Aula',
@@ -315,6 +367,7 @@ class _ClassCard extends StatelessWidget {
                             academyId: user.academyId,
                             teachers: teachers,
                             classToEdit: trainingClass,
+                            allStudents: allStudents,
                           ),
                         ));
                       },
@@ -413,6 +466,9 @@ class _ClassDetailDialog extends StatelessWidget {
                 trainingClass.teacherName),
             _buildInfoRow(context, Icons.sports_mma_outlined, "Modalidade",
                 modalityToString(trainingClass.modality)),
+            if (trainingClass.isPrivate)
+              _buildInfoRow(
+                  context, Icons.lock_person, "Tipo", "Aula Particular"),
             if (trainingClass.description.isNotEmpty) ...[
               const Divider(height: 24),
               Text('Descrição', style: Theme.of(context).textTheme.titleSmall),
@@ -461,12 +517,14 @@ class _ClassDetailDialog extends StatelessWidget {
 class EditSchedulePage extends StatefulWidget {
   final String academyId;
   final List<UserModel> teachers;
+  final List<Aluno> allStudents;
   final TrainingClass? classToEdit; // Aula opcional para edição
 
   const EditSchedulePage({
     super.key,
     required this.academyId,
     required this.teachers,
+    required this.allStudents,
     this.classToEdit,
   });
 
@@ -492,6 +550,10 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
   bool _isLoadingLocations = true;
   List<String> _classAudiences = [];
   bool _isLoadingAudiences = true;
+
+  // NOVOS CAMPOS PARA AULAS PARTICULARES
+  bool _isPrivate = false;
+  List<String> _selectedStudentIds = [];
 
   bool get _isEditing => widget.classToEdit != null;
 
@@ -524,6 +586,8 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
       _selectedLevel = c.level;
       _selectedLocation = c.location;
       _selectedAudience = c.audience;
+      _isPrivate = c.isPrivate;
+      _selectedStudentIds = List<String>.from(c.allowedStudentIds);
     }
   }
 
@@ -771,8 +835,31 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
         });
   }
 
+  Future<void> _showStudentSelectionDialog() async {
+    final selectedIds = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => _SelectStudentsDialog(
+        allStudents: widget.allStudents,
+        initiallySelectedIds: _selectedStudentIds,
+      ),
+    );
+
+    if (selectedIds != null) {
+      setState(() {
+        _selectedStudentIds = selectedIds;
+      });
+    }
+  }
+
   Future<void> _saveClass() async {
     if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    if (_isPrivate && _selectedStudentIds.isEmpty) {
+      showBjjSnackBar(
+          context, 'Selecione ao menos um aluno para a aula particular.',
+          type: 'error');
       return;
     }
 
@@ -791,6 +878,8 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
       'level': _selectedLevel,
       'location': _selectedLocation,
       'audience': _selectedAudience,
+      'isPrivate': _isPrivate,
+      'allowedStudentIds': _isPrivate ? _selectedStudentIds : [],
     };
 
     final collectionRef = FirebaseFirestore.instance
@@ -1013,6 +1102,38 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
                   validator: (v) => v == null ? 'Campo obrigatório' : null,
                 ),
                 const SizedBox(height: 16),
+                SwitchListTile(
+                  title: const Text('Aula Particular'),
+                  subtitle:
+                      const Text('Visível apenas para alunos selecionados.'),
+                  value: _isPrivate,
+                  onChanged: (value) {
+                    setState(() {
+                      _isPrivate = value;
+                      if (!_isPrivate) {
+                        _selectedStudentIds.clear();
+                      }
+                    });
+                  },
+                  secondary: const Icon(Icons.lock_person),
+                  contentPadding: EdgeInsets.zero,
+                ),
+                if (_isPrivate)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0, bottom: 16.0),
+                    child: OutlinedButton.icon(
+                      onPressed: _showStudentSelectionDialog,
+                      icon: const Icon(Icons.group_add_outlined),
+                      label: Text(
+                          'Selecionar Alunos (${_selectedStudentIds.length})'),
+                      style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          textStyle: Theme.of(context)
+                              .textTheme
+                              .labelLarge
+                              ?.copyWith(color: textHint)),
+                    ),
+                  ),
                 if (_isLoadingAudiences)
                   Center(child: CircularProgressIndicator())
                 else
@@ -1323,6 +1444,104 @@ class _ManageOptionsDialogState extends State<_ManageOptionsDialog> {
       actions: [
         TextButton(
             onPressed: () => Navigator.pop(context), child: Text('Fechar')),
+      ],
+    );
+  }
+}
+
+class _SelectStudentsDialog extends StatefulWidget {
+  final List<Aluno> allStudents;
+  final List<String> initiallySelectedIds;
+
+  const _SelectStudentsDialog({
+    required this.allStudents,
+    required this.initiallySelectedIds,
+  });
+
+  @override
+  State<_SelectStudentsDialog> createState() => _SelectStudentsDialogState();
+}
+
+class _SelectStudentsDialogState extends State<_SelectStudentsDialog> {
+  late Set<String> _selectedIds;
+  final _searchController = TextEditingController();
+  List<Aluno> _filteredStudents = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = Set<String>.from(widget.initiallySelectedIds);
+    _filteredStudents = widget.allStudents;
+    _searchController.addListener(() {
+      final query = _searchController.text.toLowerCase();
+      setState(() {
+        _filteredStudents = widget.allStudents
+            .where((s) => s.nome.toLowerCase().contains(query))
+            .toList();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Selecionar Alunos'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                labelText: 'Buscar aluno...',
+                prefixIcon: Icon(Icons.search),
+              ),
+              autofocus: true,
+            ),
+            Expanded(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _filteredStudents.length,
+                itemBuilder: (context, index) {
+                  final student = _filteredStudents[index];
+                  final isSelected = _selectedIds.contains(student.id);
+                  return CheckboxListTile(
+                    title: Text(student.nome),
+                    value: isSelected,
+                    onChanged: (value) {
+                      setState(() {
+                        if (value == true) {
+                          _selectedIds.add(student.id);
+                        } else {
+                          _selectedIds.remove(student.id);
+                        }
+                      });
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(context).pop(_selectedIds.toList());
+          },
+          child: const Text('Confirmar'),
+        ),
       ],
     );
   }

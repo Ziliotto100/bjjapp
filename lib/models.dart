@@ -811,7 +811,10 @@ class TrainingClass {
   final String level;
   final String? location;
   final String? recurringId;
-  final String? audience; // CAMPO ALTERADO PARA STRING
+  final String? audience;
+  // NOVOS CAMPOS PARA AULAS PARTICULARES
+  final bool isPrivate;
+  final List<String> allowedStudentIds;
 
   TrainingClass({
     required this.id,
@@ -825,7 +828,9 @@ class TrainingClass {
     this.level = 'Todos os Níveis',
     this.location,
     this.recurringId,
-    this.audience = 'Adulto', // NOVO VALOR PADRÃO
+    this.audience = 'Adulto',
+    this.isPrivate = false, // VALOR PADRÃO
+    this.allowedStudentIds = const [], // VALOR PADRÃO
   });
 
   factory TrainingClass.fromFirestore(DocumentSnapshot doc) {
@@ -842,7 +847,10 @@ class TrainingClass {
       level: data['level'] ?? 'Todos os Níveis',
       location: data['location'],
       recurringId: data['recurringId'],
-      audience: data['audience'] ?? 'Adulto', // NOVO
+      audience: data['audience'] ?? 'Adulto',
+      isPrivate: data['isPrivate'] ?? false, // NOVO
+      allowedStudentIds:
+          List<String>.from(data['allowedStudentIds'] ?? []), // NOVO
     );
   }
 }
