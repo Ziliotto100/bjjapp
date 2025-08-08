@@ -8,7 +8,7 @@ import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
 
-// --- WIDGET HELPER MOVido PARA FORA DA CLASSE ---
+// --- WIDGET HELPER (Inalterado) ---
 Widget _buildMetricCard(BuildContext context, String title, String value,
     IconData icon, Color color) {
   return Card(
@@ -37,7 +37,7 @@ Widget _buildMetricCard(BuildContext context, String title, String value,
   );
 }
 
-// Modelo para armazenar as métricas do dashboard
+// Modelo para armazenar as métricas do dashboard (Inalterado)
 class DashboardMetrics {
   final int totalAcademies;
   final int activeAcademies;
@@ -60,7 +60,7 @@ class DashboardMetrics {
   });
 }
 
-// Tela do Dashboard do Administrador
+// Tela do Dashboard do Administrador (Inalterada)
 class AdminDashboardPage extends StatefulWidget {
   const AdminDashboardPage({super.key});
 
@@ -80,7 +80,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   Future<DashboardMetrics> _fetchDashboardMetrics() async {
     final firestore = FirebaseFirestore.instance;
 
-    // 1. Busca Academias
     final academySnapshot = await firestore.collection('academies').get();
     final totalAcademies = academySnapshot.docs.length;
     final activeAcademies = academySnapshot.docs
@@ -88,7 +87,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         .length;
     final inactiveAcademies = totalAcademies - activeAcademies;
 
-    // 2. Busca Assinaturas a Vencer
     final now = DateTime.now();
     final thirtyDaysFromNow = now.add(const Duration(days: 30));
     final expiringSubscriptions = academySnapshot.docs.where((doc) {
@@ -99,7 +97,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           endDate.isBefore(thirtyDaysFromNow);
     }).toList();
 
-    // 3. Busca Usuários
     final usersSnapshot = await firestore.collection('users').get();
     final totalUsers = usersSnapshot.docs.length;
     int managers = 0;
@@ -241,145 +238,6 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           ],
         ),
       ),
-    );
-  }
-}
-
-// --- TELA FINANCEIRA ---
-class AdminFinancialPage extends StatefulWidget {
-  const AdminFinancialPage({super.key});
-
-  @override
-  State<AdminFinancialPage> createState() => _AdminFinancialPageState();
-}
-
-class _AdminFinancialPageState extends State<AdminFinancialPage> {
-  late Future<Map<String, String>> _academyNamesFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _academyNamesFuture = _fetchAcademyNames();
-  }
-
-  // --- FUNÇÃO CORRIGIDA PARA BUSCAR NOMES DAS ACADEMIAS ---
-  Future<Map<String, String>> _fetchAcademyNames() async {
-    final snapshot =
-        await FirebaseFirestore.instance.collection('academies').get();
-    return {
-      for (var doc in snapshot.docs)
-        doc.id: doc.data()['name'] ?? 'Nome não encontrado'
-    };
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final priceFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
-    final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month, 1);
-    final endOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-
-    return Column(
-      children: [
-        // Card de Faturamento do Mês
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: FutureBuilder<QuerySnapshot>(
-            future: FirebaseFirestore.instance
-                .collectionGroup('payment_history')
-                .where('paymentDate',
-                    isGreaterThanOrEqualTo: Timestamp.fromDate(startOfMonth))
-                .where('paymentDate',
-                    isLessThanOrEqualTo: Timestamp.fromDate(endOfMonth))
-                .get(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Card(
-                    child: Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Center(child: CircularProgressIndicator())));
-              }
-              double totalRevenue = 0;
-              if (snapshot.hasData) {
-                for (var doc in snapshot.data!.docs) {
-                  totalRevenue +=
-                      ((doc.data() as Map<String, dynamic>)['amount'] as num)
-                          .toDouble();
-                }
-              }
-              return _buildMetricCard(
-                  context,
-                  'Faturamento do Mês',
-                  priceFormat.format(totalRevenue),
-                  Icons.attach_money_rounded,
-                  successColor);
-            },
-          ),
-        ),
-        const Padding(
-          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-          child: Text('Todos os Pagamentos Recebidos',
-              style: TextStyle(color: textHint)),
-        ),
-        // Lista de Todos os Pagamentos
-        Expanded(
-          child: FutureBuilder<Map<String, String>>(
-            future: _academyNamesFuture,
-            builder: (context, academyNamesSnapshot) {
-              if (academyNamesSnapshot.connectionState ==
-                  ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              final academyNames = academyNamesSnapshot.data ?? {};
-
-              return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collectionGroup('payment_history')
-                    .orderBy('paymentDate', descending: true)
-                    .snapshots(),
-                builder: (context, paymentSnapshot) {
-                  if (paymentSnapshot.connectionState ==
-                      ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (!paymentSnapshot.hasData ||
-                      paymentSnapshot.data!.docs.isEmpty) {
-                    return const EmptyStateWidget(
-                      icon: Icons.receipt_long,
-                      title: 'Nenhum Pagamento Registrado',
-                    );
-                  }
-                  final records = paymentSnapshot.data!.docs.map((doc) {
-                    final academyId = doc.reference.parent.parent!.id;
-                    final payment = PaymentRecord.fromFirestore(doc);
-                    return MapEntry(academyId, payment);
-                  }).toList();
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    itemCount: records.length,
-                    itemBuilder: (context, index) {
-                      final recordEntry = records[index];
-                      final academyId = recordEntry.key;
-                      final record = recordEntry.value;
-                      final academyName =
-                          academyNames[academyId] ?? 'Academia não encontrada';
-
-                      return Card(
-                        child: ListTile(
-                          title: Text(priceFormat.format(record.amount)),
-                          subtitle: Text(
-                              '$academyName em ${DateFormat('dd/MM/yyyy').format(record.paymentDate)}'),
-                        ),
-                      );
-                    },
-                  );
-                },
-              );
-            },
-          ),
-        ),
-      ],
     );
   }
 }

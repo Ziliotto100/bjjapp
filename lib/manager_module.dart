@@ -428,13 +428,28 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
           if (result != null && mounted) {
             final name = result['name']!;
             final email = result['email']!;
-            final temporaryPassword = result['password']!;
             showDialog(
               context: context,
               builder: (_) => AlertDialog(
                 title: const Text("Professor Criado!"),
-                content: SelectableText(
-                    "A conta para $name foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
+                content: RichText(
+                  text: TextSpan(
+                    style: Theme.of(context).textTheme.bodyLarge,
+                    children: <TextSpan>[
+                      TextSpan(
+                          text:
+                              'A conta para o professor $name foi criada com sucesso!\n\n'),
+                      const TextSpan(
+                        text: 'A senha padrão é mudar123\n\n',
+                        style: TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      TextSpan(text: 'E-mail de acesso: $email\n\n'),
+                      const TextSpan(
+                          text:
+                              'O professor deverá usar esta senha temporária no primeiro login e será solicitado a criar uma nova senha.'),
+                    ],
+                  ),
+                ),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.of(context).pop(),
@@ -737,6 +752,7 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
   }
 }
 
+// --- CORREÇÃO APLICADA AQUI ---
 void _showCreateAccessDialog(BuildContext context, Aluno aluno,
     String academyId, UserModel manager) async {
   final result = await showDialog<Map<String, dynamic>?>(
@@ -750,13 +766,28 @@ void _showCreateAccessDialog(BuildContext context, Aluno aluno,
 
   if (result?['success'] == true && context.mounted) {
     final email = result!['email'];
-    const temporaryPassword = 'mudar123';
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
         title: const Text("Acesso Criado!"),
-        content: SelectableText(
-            "A conta para ${aluno.nome} foi criada.\n\nE-mail: $email\nSenha Temporária: $temporaryPassword\n\nPeça para que ele(a) faça o login e altere a senha."),
+        content: RichText(
+          text: TextSpan(
+            style: Theme.of(context).textTheme.bodyLarge,
+            children: <TextSpan>[
+              TextSpan(
+                  text:
+                      'A conta para ${aluno.nome} foi criada com sucesso!\n\n'),
+              const TextSpan(
+                text: 'A senha padrão é mudar123\n\n',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              TextSpan(text: 'E-mail de acesso: $email\n\n'),
+              const TextSpan(
+                  text:
+                      'O aluno deverá usar esta senha temporária no primeiro login e será solicitado a criar uma nova senha.'),
+            ],
+          ),
+        ),
         actions: [
           TextButton(
               onPressed: () => Navigator.of(context).pop(),
@@ -1148,10 +1179,17 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                   icon: const Icon(Icons.login_rounded, color: infoColor),
                   label: const Text("Criar Acesso de Login",
                       style: TextStyle(color: infoColor)),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    _showCreateAccessDialog(context, widget.alunoParaEditar!,
-                        widget.academyId!, widget.currentUser);
+                  onPressed: () async {
+                    // --- CORREÇÃO APLICADA AQUI ---
+                    final currentContext = context;
+                    // Primeiro, fecha o diálogo de edição
+                    Navigator.of(currentContext).pop();
+                    // Depois, inicia o fluxo de criação de acesso
+                    _showCreateAccessDialog(
+                        currentContext,
+                        widget.alunoParaEditar!,
+                        widget.academyId!,
+                        widget.currentUser);
                   },
                 )
               ],
@@ -1738,7 +1776,6 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
         Navigator.of(context).pop({
           'name': name,
           'email': email,
-          'password': temporaryPassword,
         });
       }
     } on FirebaseAuthException catch (e) {
@@ -2365,16 +2402,17 @@ class StudentDetailPage extends StatefulWidget {
 }
 
 class _StudentDetailPageState extends State<StudentDetailPage> {
-  late Future<Map<String, List<CheckinEntry>>> _checkinsFuture;
+  late Future<Map<String, dynamic>> _detailsFuture;
+  UserModel? _studentUserModel;
 
   @override
   void initState() {
     super.initState();
-    _checkinsFuture = _fetchAndGroupCheckins();
+    _detailsFuture = _fetchAllDetails();
   }
 
-  Future<Map<String, List<CheckinEntry>>> _fetchAndGroupCheckins() async {
-    final snapshot = await FirebaseFirestore.instance
+  Future<Map<String, dynamic>> _fetchAllDetails() async {
+    final checkinsSnapshot = await FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.academyId)
         .collection('checkins')
@@ -2383,7 +2421,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
         .get();
 
     final List<CheckinEntry> checkins = [];
-    for (final doc in snapshot.docs) {
+    for (final doc in checkinsSnapshot.docs) {
       try {
         final data = doc.data() as Map<String, dynamic>?;
         if (data != null) {
@@ -2400,7 +2438,22 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
       String monthKey = DateFormat.yMMMM('pt_BR').format(checkin.date);
       groupedByMonth.putIfAbsent(monthKey, () => []).add(checkin);
     }
-    return groupedByMonth;
+
+    UserModel? studentUser;
+    if (widget.student.userId != null) {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.student.userId!)
+          .get();
+      if (userDoc.exists) {
+        studentUser = UserModel.fromFirestore(userDoc);
+      }
+    }
+
+    return {
+      'groupedCheckins': groupedByMonth,
+      'studentUser': studentUser,
+    };
   }
 
   @override
@@ -2431,106 +2484,119 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
       ),
       body: AppBackground(
         child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(16.0),
-            children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text("Informações do Aluno",
-                          style: theme.textTheme.titleLarge),
-                      const Divider(height: 20),
-                      _buildInfoRow(context, Icons.shield_outlined, "Faixa",
-                          widget.student.faixa),
-                      if (widget.student.graus != null &&
-                          widget.student.graus! > 0)
-                        _buildInfoRow(context, Icons.star_outline_rounded,
-                            "Graus", '${widget.student.graus}º Grau'),
-                      _buildInfoRow(context, Icons.fitness_center_rounded,
-                          "Peso", '${widget.student.peso} kg'),
-                      if (widget.student.dataNascimento != null)
-                        _buildInfoRow(context, Icons.cake_rounded, "Idade",
-                            '${widget.student.idade} anos'),
-                      const Divider(height: 20),
-                      if (widget.student.createdByName != null &&
-                          createdAt != null)
-                        _buildInfoRow(
-                            context,
-                            Icons.person_add_alt_1_outlined,
-                            "Criado por",
-                            '${widget.student.createdByName} em ${DateFormat.yMd('pt_BR').format(createdAt)}'),
-                      if (widget.student.lastUpdatedByName != null &&
-                          updatedAt != null)
-                        _buildInfoRow(
-                            context,
-                            Icons.edit_note_rounded,
-                            "Última Edição",
-                            '${widget.student.lastUpdatedByName} em ${DateFormat.yMd('pt_BR').format(updatedAt)}'),
-                    ],
+          child: FutureBuilder<Map<String, dynamic>>(
+            future: _detailsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(
+                    child:
+                        Text("Erro ao carregar detalhes: ${snapshot.error}"));
+              }
+              if (!snapshot.hasData) {
+                return const EmptyStateWidget(
+                    icon: Icons.person_off, title: "Aluno não encontrado");
+              }
+
+              final details = snapshot.data!;
+              final groupedCheckins =
+                  details['groupedCheckins'] as Map<String, List<CheckinEntry>>;
+              _studentUserModel = details['studentUser'] as UserModel?;
+
+              return ListView(
+                padding: const EdgeInsets.all(16.0),
+                children: [
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Informações do Aluno",
+                              style: theme.textTheme.titleLarge),
+                          const Divider(height: 20),
+                          if (_studentUserModel != null)
+                            _buildInfoRow(context, Icons.email_outlined,
+                                "Email", _studentUserModel!.email),
+                          if (widget.student.dataNascimento != null)
+                            _buildInfoRow(
+                                context,
+                                Icons.cake_rounded,
+                                "Aniversário",
+                                '${DateFormat('dd/MM/yyyy').format(widget.student.dataNascimento!)} (${widget.student.idade} anos)'),
+                          _buildInfoRow(context, Icons.shield_outlined, "Faixa",
+                              widget.student.faixa),
+                          if (widget.student.graus != null &&
+                              widget.student.graus! > 0)
+                            _buildInfoRow(context, Icons.star_outline_rounded,
+                                "Graus", '${widget.student.graus}º Grau'),
+                          _buildInfoRow(context, Icons.fitness_center_rounded,
+                              "Peso", '${widget.student.peso} kg'),
+                          const Divider(height: 20),
+                          if (widget.student.createdByName != null &&
+                              createdAt != null)
+                            _buildInfoRow(
+                                context,
+                                Icons.person_add_alt_1_outlined,
+                                "Criado por",
+                                '${widget.student.createdByName} em ${DateFormat.yMd('pt_BR').format(createdAt)}'),
+                          if (widget.student.lastUpdatedByName != null &&
+                              updatedAt != null)
+                            _buildInfoRow(
+                                context,
+                                Icons.edit_note_rounded,
+                                "Última Edição",
+                                '${widget.student.lastUpdatedByName} em ${DateFormat.yMd('pt_BR').format(updatedAt)}'),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text("Histórico de Treinos", style: theme.textTheme.titleLarge),
-              const SizedBox(height: 8),
-              FutureBuilder<Map<String, List<CheckinEntry>>>(
-                future: _checkinsFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Center(
-                        child: Text(
-                            "Erro ao carregar treinos: ${snapshot.error}"));
-                  }
-                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return const EmptyStateWidget(
+                  const SizedBox(height: 20),
+                  Text("Histórico de Treinos",
+                      style: theme.textTheme.titleLarge),
+                  const SizedBox(height: 8),
+                  if (groupedCheckins.isEmpty)
+                    const EmptyStateWidget(
                       icon: Icons.calendar_month_outlined,
                       title: 'Nenhum Treino Registrado',
                       message: 'Este aluno ainda não possui check-ins.',
-                    );
-                  }
+                    )
+                  else
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: groupedCheckins.keys.length,
+                      itemBuilder: (context, index) {
+                        final month = groupedCheckins.keys.toList()[index];
+                        final checkinsInMonth = groupedCheckins[month]!;
+                        return Card(
+                          margin: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: ExpansionTile(
+                            title: Text(
+                                "$month (${checkinsInMonth.length} treinos)"),
+                            leading: const Icon(Icons.calendar_today_rounded),
+                            initiallyExpanded: index == 0,
+                            children: checkinsInMonth.map((checkin) {
+                              final titleText =
+                                  checkin.className ?? 'Check-in Aprovado';
 
-                  final groupedCheckins = snapshot.data!;
-                  final months = groupedCheckins.keys.toList();
-
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: months.length,
-                    itemBuilder: (context, index) {
-                      final month = months[index];
-                      final checkinsInMonth = groupedCheckins[month]!;
-                      return Card(
-                        margin: const EdgeInsets.symmetric(vertical: 8.0),
-                        child: ExpansionTile(
-                          title: Text(
-                              "$month (${checkinsInMonth.length} treinos)"),
-                          leading: const Icon(Icons.calendar_today_rounded),
-                          initiallyExpanded: index == 0,
-                          children: checkinsInMonth.map((checkin) {
-                            final titleText =
-                                checkin.className ?? 'Check-in Aprovado';
-
-                            return ListTile(
-                              title: Text(titleText),
-                              subtitle: Text(DateFormat.yMMMEd('pt_BR')
-                                  .format(checkin.date)),
-                              leading:
-                                  const Icon(Icons.check, color: successColor),
-                            );
-                          }).toList(),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ],
+                              return ListTile(
+                                title: Text(titleText),
+                                subtitle: Text(DateFormat.yMMMEd('pt_BR')
+                                    .format(checkin.date)),
+                                leading: const Icon(Icons.check,
+                                    color: successColor),
+                              );
+                            }).toList(),
+                          ),
+                        );
+                      },
+                    ),
+                ],
+              );
+            },
           ),
         ),
       ),

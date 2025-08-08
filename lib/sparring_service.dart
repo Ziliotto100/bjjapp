@@ -145,25 +145,25 @@ class SparringService {
   int _getBeltIndex(String faixa) {
     const List<String> ordemFaixas = [
       'Branca',
-      'Cinza com Ponta Branca',
+      'Cinza/Branca',
       'Cinza',
-      'Cinza com Ponta Preta',
-      'Amarela com Ponta Branca',
+      'Cinza/Preta',
+      'Amarela/Branca',
       'Amarela',
-      'Amarela com Ponta Preta',
-      'Laranja com Ponta Branca',
+      'Amarela/Preta',
+      'Laranja/Branca',
       'Laranja',
-      'Laranja com Ponta Preta',
-      'Verde com Ponta Branca',
+      'Laranja/Preta',
+      'Verde/Branca',
       'Verde',
-      'Verde com Ponta Preta',
+      'Verde/Preta',
       'Azul',
       'Roxa',
       'Marrom',
       'Preta'
     ];
     // Considera apenas a cor principal para simplificar
-    final faixaPrincipal = faixa.split(" ")[0].trim();
+    final faixaPrincipal = faixa.split("/")[0].trim();
     final index = ordemFaixas
         .indexWhere((f) => f.toLowerCase() == faixaPrincipal.toLowerCase());
     return index == -1 ? 0 : index; // Retorna 0 (Branca) se não encontrar

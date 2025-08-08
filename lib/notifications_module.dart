@@ -1,6 +1,7 @@
 // lib/notifications_module.dart
 // ignore_for_file: use_build_context_synchronously
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -19,11 +20,61 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   List<UserModel> _allUsers = [];
+  List<NotificationModel> _notifications = [];
+  bool _isLoading = true;
+  StreamSubscription? _notificationSubscription;
+
+  // --- NOVA VARIÁVEL DE ESTADO PARA O FILTRO ---
+  String _filterMode = 'all'; // 'all' ou 'sent'
 
   @override
   void initState() {
     super.initState();
     _fetchAllUsers();
+    _listenForNotifications();
+  }
+
+  @override
+  void dispose() {
+    _notificationSubscription?.cancel();
+    super.dispose();
+  }
+
+  // --- FUNÇÃO DE LÓGICA PRINCIPAL MODIFICADA ---
+  void _listenForNotifications() {
+    // Cancela a inscrição anterior se houver uma
+    _notificationSubscription?.cancel();
+
+    // Cria a query base
+    Query query = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('notifications')
+        .orderBy('createdAt', descending: true);
+
+    // Adiciona o filtro se necessário
+    if (_filterMode == 'sent') {
+      query = query.where('senderId', isEqualTo: widget.user.uid);
+    }
+
+    // Escuta o stream da query construída
+    _notificationSubscription = query.snapshots().listen((snapshot) {
+      if (mounted) {
+        final notifications = snapshot.docs
+            .map((doc) => NotificationModel.fromFirestore(doc))
+            .toList();
+
+        setState(() {
+          _notifications = notifications;
+          _isLoading = false;
+        });
+
+        // Marca como lido apenas se estiver na visualização de "todos"
+        if (_filterMode == 'all') {
+          _markNotificationsAsRead(notifications);
+        }
+      }
+    });
   }
 
   Future<void> _fetchAllUsers() async {
@@ -49,39 +100,43 @@ class _NotificationsPageState extends State<NotificationsPage> {
       context: context,
       builder: (_) => _SendNotificationDialog(
           user: widget.user, notificationToEdit: notification),
-    );
-  }
-
-  // --- NOVA FUNÇÃO PARA MARCAR COMO LIDO ---
-  void _markNotificationsAsRead(List<NotificationModel> notifications) {
-    // Adiciona um pequeno atraso para garantir que a UI tenha tempo de construir
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      final batch = FirebaseFirestore.instance.batch();
-      int updates = 0;
-
-      for (final notification in notifications) {
-        if (!notification.readBy.contains(widget.user.uid)) {
-          final docRef = FirebaseFirestore.instance
-              .collection('academies')
-              .doc(widget.user.academyId)
-              .collection('notifications')
-              .doc(notification.id);
-          batch.update(docRef, {
-            'readBy': FieldValue.arrayUnion([widget.user.uid])
-          });
-          updates++;
-        }
-      }
-
-      if (updates > 0) {
-        try {
-          await batch.commit();
-        } catch (e) {
-          // Erro silencioso para não incomodar o usuário
-          debugPrint("Erro ao marcar avisos como lidos: $e");
-        }
+    ).then((value) {
+      // Se um novo aviso foi enviado, volta para a aba "Meus Avisos"
+      if (value == true && _filterMode != 'sent') {
+        setState(() {
+          _filterMode = 'sent';
+          _isLoading = true;
+        });
+        _listenForNotifications();
       }
     });
+  }
+
+  void _markNotificationsAsRead(List<NotificationModel> notifications) async {
+    final batch = FirebaseFirestore.instance.batch();
+    int updates = 0;
+
+    for (final notification in notifications) {
+      if (!notification.readBy.contains(widget.user.uid)) {
+        final docRef = FirebaseFirestore.instance
+            .collection('academies')
+            .doc(widget.user.academyId)
+            .collection('notifications')
+            .doc(notification.id);
+        batch.update(docRef, {
+          'readBy': FieldValue.arrayUnion([widget.user.uid])
+        });
+        updates++;
+      }
+    }
+
+    if (updates > 0) {
+      try {
+        await batch.commit();
+      } catch (e) {
+        debugPrint("Erro ao marcar avisos como lidos: $e");
+      }
+    }
   }
 
   @override
@@ -91,52 +146,60 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('academies')
-            .doc(widget.user.academyId)
-            .collection('notifications')
-            .orderBy('createdAt', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError) {
-            return const EmptyStateWidget(
-              icon: Icons.error_outline,
-              title: 'Erro ao Carregar',
-              message: 'Não foi possível buscar os avisos.',
-            );
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const EmptyStateWidget(
-              icon: Icons.notifications_off_outlined,
-              title: 'Nenhum Aviso',
-              message: 'Ainda não há avisos para a sua academia.',
-            );
-          }
-
-          final notifications = snapshot.data!.docs
-              .map((doc) => NotificationModel.fromFirestore(doc))
-              .toList();
-
-          // Chama a função para marcar como lido
-          _markNotificationsAsRead(notifications);
-
-          return ListView.builder(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
-            itemCount: notifications.length,
-            itemBuilder: (context, index) {
-              final notification = notifications[index];
-              return _NotificationCard(
-                notification: notification,
-                user: widget.user,
-                allUsers: _allUsers, // Passa a lista de usuários
-              );
-            },
-          );
-        },
+      body: Column(
+        children: [
+          // --- WIDGET DE FILTRO ADICIONADO ---
+          if (canSend)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: SegmentedButton<String>(
+                segments: const <ButtonSegment<String>>[
+                  ButtonSegment<String>(
+                      value: 'all',
+                      label: Text('Todos os Avisos'),
+                      icon: Icon(Icons.notifications_rounded)),
+                  ButtonSegment<String>(
+                      value: 'sent',
+                      label: Text('Meus Avisos'),
+                      icon: Icon(Icons.send_rounded)),
+                ],
+                selected: {_filterMode},
+                onSelectionChanged: (newSelection) {
+                  setState(() {
+                    _filterMode = newSelection.first;
+                    _isLoading = true;
+                    _listenForNotifications();
+                  });
+                },
+              ),
+            ),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _notifications.isEmpty
+                    ? EmptyStateWidget(
+                        icon: Icons.notifications_off_outlined,
+                        title: _filterMode == 'sent'
+                            ? 'Nenhum Aviso Enviado'
+                            : 'Nenhum Aviso',
+                        message: _filterMode == 'sent'
+                            ? 'Os avisos que você enviar aparecerão aqui.'
+                            : 'Ainda não há avisos para a sua academia.',
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+                        itemCount: _notifications.length,
+                        itemBuilder: (context, index) {
+                          final notification = _notifications[index];
+                          return _NotificationCard(
+                            notification: notification,
+                            user: widget.user,
+                            allUsers: _allUsers,
+                          );
+                        },
+                      ),
+          ),
+        ],
       ),
       floatingActionButton: canSend
           ? FloatingActionButton(
@@ -152,7 +215,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
 class _NotificationCard extends StatelessWidget {
   final NotificationModel notification;
   final UserModel user;
-  final List<UserModel> allUsers; // <-- Recebe a lista de todos os usuários
+  final List<UserModel> allUsers;
 
   const _NotificationCard(
       {required this.notification, required this.user, required this.allUsers});
@@ -204,7 +267,6 @@ class _NotificationCard extends StatelessWidget {
     );
   }
 
-  // --- NOVA FUNÇÃO PARA MOSTRAR QUEM VISUALIZOU ---
   void _showViewersDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -215,8 +277,8 @@ class _NotificationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool canModify =
-        user.role == UserRole.manager || user.role == UserRole.teacher;
+    // --- LÓGICA DE PERMISSÃO MODIFICADA ---
+    final bool canManageThisNotification = notification.senderId == user.uid;
     final bool isUnread = !notification.readBy.contains(user.uid);
 
     return Card(
@@ -257,7 +319,8 @@ class _NotificationCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (canModify)
+                // --- BOTÃO DE MENU AGORA DEPENDE SE O USUÁRIO É O AUTOR ---
+                if (canManageThisNotification)
                   PopupMenuButton<String>(
                     onSelected: (value) {
                       if (value == 'edit') {
@@ -302,8 +365,7 @@ class _NotificationCard extends StatelessWidget {
                 ),
               ],
             ),
-            // --- NOVO BOTÃO DE VISUALIZAÇÕES ---
-            if (canModify)
+            if (canManageThisNotification)
               Padding(
                 padding: const EdgeInsets.only(top: 12.0),
                 child: TextButton.icon(
@@ -320,7 +382,6 @@ class _NotificationCard extends StatelessWidget {
   }
 }
 
-// --- NOVO WIDGET PARA MOSTRAR QUEM VISUALIZOU ---
 class _ViewersDialog extends StatelessWidget {
   final List<String> readByUserIds;
   final List<UserModel> allUsers;
@@ -416,11 +477,12 @@ class _SendNotificationDialogState extends State<_SendNotificationDialog> {
           'senderRole': widget.user.role.toString().split('.').last,
           'academyId': widget.user.academyId,
           'createdAt': FieldValue.serverTimestamp(),
-          'readBy': [], // <-- Inicializa a lista de lidos
+          'readBy': [],
         });
       }
 
-      Navigator.of(context).pop();
+      // --- RETORNA 'true' PARA INDICAR SUCESSO ---
+      Navigator.of(context).pop(true);
       showBjjSnackBar(
           context, _isEditing ? 'Aviso atualizado!' : 'Aviso enviado!',
           type: 'success');

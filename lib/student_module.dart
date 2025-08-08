@@ -48,6 +48,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
   List<UserModel> _teachers = [];
   List<Aluno> _students = [];
   StreamSubscription? _notificationSubscription;
+  StreamSubscription? _settingsSubscription;
+
+  // --- NOVA VARIÁVEL DE CONTROLE ---
+  bool _isNotificationDialogShowing = false;
 
   @override
   void initState() {
@@ -61,9 +65,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
   @override
   void dispose() {
     _notificationSubscription?.cancel();
+    _settingsSubscription?.cancel();
     super.dispose();
   }
 
+  // --- LÓGICA DE NOTIFICAÇÃO CORRIGIDA ---
   void _checkForNewNotifications() {
     final userLastCheck = widget.user.lastNotificationCheck ??
         Timestamp.fromMillisecondsSinceEpoch(0);
@@ -77,26 +83,39 @@ class _StudentHomePageState extends State<StudentHomePage> {
         .limit(1)
         .snapshots()
         .listen((snapshot) async {
-      if (snapshot.docs.isNotEmpty && mounted) {
-        final notification =
-            NotificationModel.fromFirestore(snapshot.docs.first);
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(notification.title),
-            content: Text(notification.message),
-            actions: [
-              TextButton(
-                onPressed: () async {
-                  Navigator.of(context).pop();
-                  await _updateLastNotificationCheck();
-                },
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
+      // Se não houver notificação nova ou um diálogo já estiver aberto, não faz nada
+      if (!mounted || snapshot.docs.isEmpty || _isNotificationDialogShowing)
+        return;
+
+      // Marca que um diálogo está sendo aberto
+      setState(() {
+        _isNotificationDialogShowing = true;
+      });
+
+      final notification = NotificationModel.fromFirestore(snapshot.docs.first);
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(notification.title),
+          content: Text(notification.message),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await _updateLastNotificationCheck();
+                if (mounted) Navigator.of(context).pop();
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      ).then((_) {
+        // Quando o diálogo for fechado, reseta a variável de controle
+        if (mounted) {
+          setState(() {
+            _isNotificationDialogShowing = false;
+          });
+        }
+      });
     });
   }
 
@@ -139,8 +158,11 @@ class _StudentHomePageState extends State<StudentHomePage> {
       _students = [...studentParticipants, ...teacherParticipants]
         ..sort((a, b) => a.nome.compareTo(b.nome));
 
-      _navService.getTabSettingsStream().listen((settingsDoc) {
-        _configureNavigation(settingsDoc);
+      _settingsSubscription =
+          _navService.getTabSettingsStream().listen((settingsDoc) {
+        if (mounted) {
+          _configureNavigation(settingsDoc);
+        }
       });
     } catch (e) {
       if (mounted) {
