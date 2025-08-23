@@ -127,37 +127,39 @@ class EmptyStateWidget extends StatelessWidget {
 /// Retorna o caminho do asset da imagem da faixa com base no nome da faixa.
 String getBeltImagePath(String? beltName) {
   if (beltName == null || beltName.isEmpty) {
-    return 'assets/images/faixas/branca.png'; // Padrão para faixa branca
+    // CAMINHO CORRIGIDO SEM 'assets/'
+    return 'images/faixas/branca.png';
   }
 
-  final formattedName =
-      beltName.toLowerCase().replaceAll('/', '_').replaceAll(' ', '_');
+  const Map<String, String> beltToFileMap = {
+    'Branca': 'branca',
+    'Cinza/Branca': 'cinza_branco',
+    'Cinza': 'cinza',
+    'Cinza/Preta': 'cinza_preto',
+    'Amarela/Branca': 'amarela_branco',
+    'Amarela': 'amarela',
+    'Amarela/Preta': 'amarela_preto',
+    'Laranja/Branca': 'laranja_branco',
+    'Laranja': 'laranja',
+    'Laranja/Preta': 'laranja_preto',
+    'Verde/Branca': 'verde_branco',
+    'Verde': 'verde',
+    'Verde/Preta': 'verde_preto',
+    'Azul': 'azul',
+    'Roxa': 'roxa',
+    'Marrom': 'marrom',
+    'Preta': 'preta',
+  };
 
-  const validBelts = [
-    'branca',
-    'cinza_branca',
-    'cinza',
-    'cinza_preta',
-    'amarela_branca',
-    'amarela',
-    'amarela_preta',
-    'laranja_branca',
-    'laranja',
-    'laranja_preta',
-    'verde_branca',
-    'verde',
-    'verde_preta',
-    'azul',
-    'roxa',
-    'marrom',
-    'preta'
-  ];
+  final fileName = beltToFileMap[beltName];
 
-  if (validBelts.contains(formattedName)) {
-    return 'assets/images/faixas/$formattedName.png';
+  if (fileName != null) {
+    // CAMINHO CORRIGIDO SEM 'assets/'
+    return 'images/faixas/$fileName.png';
   }
 
-  return 'assets/images/faixas/branca.png';
+  // CAMINHO CORRIGIDO SEM 'assets/'
+  return 'images/faixas/branca.png';
 }
 
 /// Cabeçalho de perfil reutilizável.

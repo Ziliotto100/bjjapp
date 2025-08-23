@@ -1,6 +1,7 @@
 // lib/auth_gate.dart
 // ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,6 +14,7 @@ import 'teacher_module.dart';
 import 'student_module.dart';
 import 'update_checker.dart';
 import 'super_admin_module.dart';
+import 'dev_quick_login.dart';
 
 // --- CLASSE DE CONFIGURAÇÃO ---
 class EnvConfig {
@@ -60,15 +62,16 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         if (!authSnapshot.hasData || authSnapshot.data == null) {
-          return const LoginPage();
+          if (kReleaseMode) {
+            return const LoginPage();
+          } else {
+            return const DevQuickLoginPage();
+          }
         }
 
         final authUser = authSnapshot.data!;
 
-        // --- LÓGICA DE ROTEAMENTO CORRIGIDA ---
-        // 1. É o Super Admin?
         if (authUser.uid == EnvConfig.superAdminUid) {
-          // Se sim, VERIFICA se há uma sessão de personificação
           return FutureBuilder<DocumentSnapshot?>(
             future: _getImpersonationSession(authUser.uid),
             builder: (context, impersonationSnapshot) {
@@ -80,26 +83,21 @@ class _AuthGateState extends State<AuthGate> {
               final impersonationDoc = impersonationSnapshot.data;
 
               if (impersonationDoc != null && impersonationDoc.exists) {
-                // Sessão ATIVA: Entra como o gerente alvo
                 final targetUid = impersonationDoc.get('targetUid');
                 return _buildUserFlow(targetUid, isImpersonating: true);
               } else {
-                // Sem sessão: Mostra o painel de controle do admin
                 return const SuperAdminPage();
               }
             },
           );
         } else {
-          // 2. Não é o Super Admin, segue o fluxo normal para o usuário logado
           return _buildUserFlow(authUser.uid, isImpersonating: false);
         }
-        // --- FIM DA CORREÇÃO ---
       },
     );
   }
 
   Future<DocumentSnapshot?> _getImpersonationSession(String uid) async {
-    // Esta função só deve ser chamada para o super admin
     if (uid != EnvConfig.superAdminUid) return null;
     try {
       final doc = await FirebaseFirestore.instance
@@ -187,7 +185,6 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
-// O restante do arquivo (SuspendedAcademyPage, LoginPage, etc.) permanece o mesmo.
 class SuspendedAcademyPage extends StatelessWidget {
   final bool isSubscriptionExpired;
   const SuspendedAcademyPage({super.key, this.isSubscriptionExpired = false});
@@ -522,7 +519,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
       final academyRef = firestore.collection('academies').doc();
       final userRef = firestore.collection('users').doc(newUser.uid);
       final batch = firestore.batch();
-      final managerName = _managerNameController.text.trim();
+      final managerName = _managerNameController.text.trim().capitalizeWords();
 
       batch.set(academyRef, {
         'name': _academyNameController.text.trim(),

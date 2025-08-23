@@ -433,14 +433,14 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
       }
 
       batch.update(studentRef, {
-        'nome': _nameController.text.trim(),
+        'nome': _nameController.text.trim().capitalizeWords(),
         'peso': double.parse(_weightController.text.replaceAll(',', '.')),
         'dataNascimento':
             dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
       });
 
-      if (_nameController.text.trim() != widget.user.name) {
-        userUpdateData['name'] = _nameController.text.trim();
+      if (_nameController.text.trim().capitalizeWords() != widget.user.name) {
+        userUpdateData['name'] = _nameController.text.trim().capitalizeWords();
       }
 
       if (userUpdateData.isNotEmpty) {
@@ -1335,7 +1335,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
           FirebaseFirestore.instance.collection('users').doc(widget.user.uid);
 
       final Map<String, dynamic> updateData = {
-        'name': _nameController.text.trim(),
+        'name': _nameController.text.trim().capitalizeWords(),
         'peso': double.tryParse(_weightController.text.replaceAll(',', '.')) ??
             widget.user.peso,
         'dataNascimento':

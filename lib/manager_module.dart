@@ -19,6 +19,32 @@ import 'app_drawer.dart';
 import 'user_card_widget.dart';
 import 'graduation_timeline_page.dart';
 
+// --- FUNÇÃO AUXILIAR PARA ORDENAÇÃO DE FAIXAS ---
+int _getBeltIndex(String faixa) {
+  const List<String> ordemFaixas = [
+    'Branca',
+    'Cinza/Branca',
+    'Cinza',
+    'Cinza/Preta',
+    'Amarela/Branca',
+    'Amarela',
+    'Amarela/Preta',
+    'Laranja/Branca',
+    'Laranja',
+    'Laranja/Preta',
+    'Verde/Branca',
+    'Verde',
+    'Verde/Preta',
+    'Azul',
+    'Roxa',
+    'Marrom',
+    'Preta'
+  ];
+  final index =
+      ordemFaixas.indexWhere((f) => f.toLowerCase() == faixa.toLowerCase());
+  return index == -1 ? 99 : index; // Retorna um número alto se não encontrar
+}
+
 // --- LÓGICA DE GERENCIAMENTO DE USUÁRIOS ---
 class UserManagementService {
   static Future<void> promoteToTeacher(BuildContext context,
@@ -507,6 +533,28 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
   String _searchQuery = '';
   late Future<Map<String, UserModel>> _usersMapFuture;
 
+  String? _beltFilter;
+  String _sortOption = 'nome';
+  final List<String> _beltOptions = [
+    'Branca',
+    'Cinza/Branca',
+    'Cinza',
+    'Cinza/Preta',
+    'Amarela/Branca',
+    'Amarela',
+    'Amarela/Preta',
+    'Laranja/Branca',
+    'Laranja',
+    'Laranja/Preta',
+    'Verde/Branca',
+    'Verde',
+    'Verde/Preta',
+    'Azul',
+    'Roxa',
+    'Marrom',
+    'Preta'
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -534,24 +582,111 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
     super.dispose();
   }
 
+  Future<void> _showBeltFilterDialog() async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Filtrar por Faixa'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _beltOptions.length,
+              itemBuilder: (context, index) {
+                final belt = _beltOptions[index];
+                return ListTile(
+                  title: Text(belt),
+                  onTap: () {
+                    Navigator.of(context).pop(belt);
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (selected != null) {
+      setState(() => _beltFilter = selected);
+    }
+  }
+
+  Widget _buildFilterSortMenu() {
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.filter_list,
+          color: _beltFilter != null ? primaryAccent : null),
+      tooltip: 'Filtrar e Ordenar',
+      onSelected: (value) {
+        if (value.startsWith('sort_')) {
+          setState(() => _sortOption = value.substring(5));
+        } else if (value == 'filter_belt') {
+          _showBeltFilterDialog();
+        } else if (value == 'clear_filter') {
+          setState(() => _beltFilter = null);
+        }
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        const PopupMenuItem<String>(
+          value: 'sort_nome',
+          child: Text('Ordenar por: Nome'),
+        ),
+        const PopupMenuItem<String>(
+          value: 'sort_faixa',
+          child: Text('Ordenar por: Faixa'),
+        ),
+        const PopupMenuItem<String>(
+          value: 'sort_peso',
+          child: Text('Ordenar por: Peso'),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: 'filter_belt',
+          child: Text(_beltFilter == null
+              ? 'Filtrar por Faixa...'
+              : 'Filtrar: $_beltFilter'),
+        ),
+        if (_beltFilter != null)
+          const PopupMenuItem<String>(
+            value: 'clear_filter',
+            child: Text('Limpar Filtro'),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              labelText: 'Buscar aluno por nome...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () => _searchController.clear(),
-                    )
-                  : null,
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    labelText: 'Buscar aluno por nome...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () => _searchController.clear(),
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+              _buildFilterSortMenu(),
+            ],
           ),
         ),
         Expanded(
@@ -574,7 +709,6 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
                     .collection('academies')
                     .doc(widget.academyId)
                     .collection('students')
-                    .orderBy('nome')
                     .snapshots(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
@@ -597,26 +731,50 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
                         doc.id, doc.data() as Map<String, dynamic>);
                   }).toList();
 
-                  final filteredAlunos = allAlunos.where((aluno) {
-                    return aluno.nome
-                        .toLowerCase()
-                        .contains(_searchQuery.toLowerCase());
-                  }).toList();
+                  List<Aluno> processedAlunos = List.from(allAlunos);
 
-                  if (filteredAlunos.isEmpty && _searchQuery.isNotEmpty) {
-                    return EmptyStateWidget(
+                  if (_searchQuery.isNotEmpty) {
+                    processedAlunos = processedAlunos.where((aluno) {
+                      return aluno.nome
+                          .toLowerCase()
+                          .contains(_searchQuery.toLowerCase());
+                    }).toList();
+                  }
+
+                  if (_beltFilter != null) {
+                    processedAlunos
+                        .retainWhere((aluno) => aluno.faixa == _beltFilter);
+                  }
+
+                  processedAlunos.sort((a, b) {
+                    switch (_sortOption) {
+                      case 'faixa':
+                        return _getBeltIndex(a.faixa)
+                            .compareTo(_getBeltIndex(b.faixa));
+                      case 'peso':
+                        return a.peso.compareTo(b.peso);
+                      case 'nome':
+                      default:
+                        return a.nome
+                            .toLowerCase()
+                            .compareTo(b.nome.toLowerCase());
+                    }
+                  });
+
+                  if (processedAlunos.isEmpty) {
+                    return const EmptyStateWidget(
                       icon: Icons.person_search,
                       title: "Nenhum Aluno Encontrado",
                       message:
-                          "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
+                          "Nenhum aluno corresponde aos filtros selecionados.",
                     );
                   }
 
                   return ListView.builder(
                     padding: const EdgeInsets.fromLTRB(8, 8.0, 8, 80.0),
-                    itemCount: filteredAlunos.length,
+                    itemCount: processedAlunos.length,
                     itemBuilder: (context, index) {
-                      final aluno = filteredAlunos[index];
+                      final aluno = processedAlunos[index];
                       final userModel = usersMap[aluno.userId];
                       final imageUrl = userModel?.profileImagePath;
 
@@ -652,6 +810,28 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
 
+  String? _beltFilter;
+  String _sortOption = 'nome';
+  final List<String> _beltOptions = [
+    'Branca',
+    'Cinza/Branca',
+    'Cinza',
+    'Cinza/Preta',
+    'Amarela/Branca',
+    'Amarela',
+    'Amarela/Preta',
+    'Laranja/Branca',
+    'Laranja',
+    'Laranja/Preta',
+    'Verde/Branca',
+    'Verde',
+    'Verde/Preta',
+    'Azul',
+    'Roxa',
+    'Marrom',
+    'Preta'
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -668,24 +848,107 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
     super.dispose();
   }
 
+  Future<void> _showBeltFilterDialog() async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Filtrar por Faixa'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: ListView.builder(
+              shrinkWrap: true,
+              itemCount: _beltOptions.length,
+              itemBuilder: (context, index) {
+                final belt = _beltOptions[index];
+                return ListTile(
+                  title: Text(belt),
+                  onTap: () {
+                    Navigator.of(context).pop(belt);
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancelar'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (selected != null) {
+      setState(() => _beltFilter = selected);
+    }
+  }
+
+  Widget _buildFilterSortMenu() {
+    return PopupMenuButton<String>(
+      icon: Icon(Icons.filter_list,
+          color: _beltFilter != null ? primaryAccent : null),
+      tooltip: 'Filtrar e Ordenar',
+      onSelected: (value) {
+        if (value.startsWith('sort_')) {
+          setState(() => _sortOption = value.substring(5));
+        } else if (value == 'filter_belt') {
+          _showBeltFilterDialog();
+        } else if (value == 'clear_filter') {
+          setState(() => _beltFilter = null);
+        }
+      },
+      itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
+        const PopupMenuItem<String>(
+          value: 'sort_nome',
+          child: Text('Ordenar por: Nome'),
+        ),
+        const PopupMenuItem<String>(
+          value: 'sort_faixa',
+          child: Text('Ordenar por: Faixa'),
+        ),
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: 'filter_belt',
+          child: Text(_beltFilter == null
+              ? 'Filtrar por Faixa...'
+              : 'Filtrar: $_beltFilter'),
+        ),
+        if (_beltFilter != null)
+          const PopupMenuItem<String>(
+            value: 'clear_filter',
+            child: Text('Limpar Filtro'),
+          ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-          child: TextField(
-            controller: _searchController,
-            decoration: InputDecoration(
-              labelText: 'Buscar professor por nome...',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: _searchQuery.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
-                      onPressed: () => _searchController.clear(),
-                    )
-                  : null,
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    labelText: 'Buscar professor por nome...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () => _searchController.clear(),
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+              _buildFilterSortMenu(),
+            ],
           ),
         ),
         Expanded(
@@ -694,7 +957,6 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
                 .collection('users')
                 .where('academyId', isEqualTo: widget.academyId)
                 .where('role', isEqualTo: 'teacher')
-                .orderBy('name')
                 .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -716,26 +978,46 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
                 return UserModel.fromFirestore(doc);
               }).toList();
 
-              final filteredProfessores = allProfessores.where((prof) {
-                return prof.name
-                    .toLowerCase()
-                    .contains(_searchQuery.toLowerCase());
-              }).toList();
+              List<UserModel> processedProfessores = List.from(allProfessores);
 
-              if (filteredProfessores.isEmpty && _searchQuery.isNotEmpty) {
-                return EmptyStateWidget(
+              if (_searchQuery.isNotEmpty) {
+                processedProfessores = processedProfessores.where((prof) {
+                  return prof.name
+                      .toLowerCase()
+                      .contains(_searchQuery.toLowerCase());
+                }).toList();
+              }
+
+              if (_beltFilter != null) {
+                processedProfessores
+                    .retainWhere((prof) => prof.faixa == _beltFilter);
+              }
+
+              processedProfessores.sort((a, b) {
+                switch (_sortOption) {
+                  case 'faixa':
+                    return _getBeltIndex(a.faixa ?? 'Branca')
+                        .compareTo(_getBeltIndex(b.faixa ?? 'Branca'));
+                  case 'nome':
+                  default:
+                    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+                }
+              });
+
+              if (processedProfessores.isEmpty) {
+                return const EmptyStateWidget(
                   icon: Icons.person_search,
                   title: "Nenhum Professor Encontrado",
                   message:
-                      "Nenhum professor corresponde à sua busca '$_searchQuery'.",
+                      "Nenhum professor corresponde aos filtros selecionados.",
                 );
               }
 
               return ListView.builder(
                 padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8, 80.0),
-                itemCount: filteredProfessores.length,
+                itemCount: processedProfessores.length,
                 itemBuilder: (context, index) {
-                  final professor = filteredProfessores[index];
+                  final professor = processedProfessores[index];
                   return UserCard(
                     user: professor,
                     academyId: widget.academyId,
@@ -752,7 +1034,6 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
   }
 }
 
-// --- CORREÇÃO APLICADA AQUI ---
 void _showCreateAccessDialog(BuildContext context, Aluno aluno,
     String academyId, UserModel manager) async {
   final result = await showDialog<Map<String, dynamic>?>(
@@ -1256,7 +1537,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  if (isEditing)
+                  // *** ALTERAÇÃO PRINCIPAL AQUI ***
+                  if (isEditing && widget.currentUser.role == UserRole.manager)
                     TextButton.icon(
                       icon: const Icon(Icons.delete_outline_rounded,
                           color: errorColor),
@@ -1266,7 +1548,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                           _confirmDeleteAluno(widget.alunoParaEditar!),
                     )
                   else
-                    const SizedBox(), // Placeholder
+                    const SizedBox(), // Placeholder para manter o alinhamento
                   ElevatedButton.icon(
                       icon: const Icon(Icons.save_outlined, size: 18),
                       label: Text(isEditing ? 'Salvar' : 'Adicionar'),
@@ -1289,7 +1571,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                               double.parse(pC.text.replaceAll(',', '.'));
                           final alunoResult = Aluno(
                               id: isEditing ? widget.alunoParaEditar!.id : '',
-                              nome: nC.text.trim(),
+                              nome: nC.text.trim().capitalizeWords(),
                               faixa: fS!,
                               peso: peso,
                               graus: gS,
@@ -1442,7 +1724,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
 
     final pesoStr = _pesoController.text.replaceAll(',', '.');
     final Map<String, dynamic> updatedData = {
-      'name': _nameController.text.trim(),
+      'name': _nameController.text.trim().capitalizeWords(),
       'faixa': _faixa,
       'graus': _graus,
       'peso': pesoStr.isNotEmpty ? double.tryParse(pesoStr) : null,
@@ -1714,7 +1996,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
     setState(() => _isLoading = true);
 
     const temporaryPassword = 'mudar123';
-    final name = _nameController.text.trim();
+    final name = _nameController.text.trim().capitalizeWords();
     final email = _emailController.text.trim();
 
     try {

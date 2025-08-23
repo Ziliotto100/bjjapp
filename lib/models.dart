@@ -739,6 +739,16 @@ extension StringExtension on String {
     if (isEmpty) return this;
     return "${this[0].toUpperCase()}${substring(1)}";
   }
+
+  // *** FUNÇÃO ADICIONADA AQUI ***
+  String capitalizeWords() {
+    if (trim().isEmpty) return '';
+    // Lida com múltiplos espaços entre as palavras
+    return trim().split(RegExp(r'\s+')).map((word) {
+      if (word.isEmpty) return '';
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).join(' ');
+  }
 }
 
 // --- NOVO MODELO PARA REGISTRO DE PAGAMENTO ---
