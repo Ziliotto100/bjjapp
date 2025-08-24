@@ -28,7 +28,7 @@ class _DevQuickLoginPageState extends State<DevQuickLoginPage> {
       'password': '123456',
     },
     'Professor': {
-      'email': 'professor2@matchbjj.com',
+      'email': 'professor1@matchbjj.com',
       'password': '123456',
     },
     'Aluno': {

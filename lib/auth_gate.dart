@@ -1,5 +1,5 @@
 // lib/auth_gate.dart
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, unused_import
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -30,6 +30,11 @@ class EnvConfig {
       return _prodAdminUid;
     }
     return _devAdminUid;
+  }
+
+  // *** NOVA FUNÇÃO PARA VERIFICAR O AMBIENTE ***
+  static bool isProd() {
+    return _flavor == 'prod';
   }
 }
 
@@ -62,7 +67,10 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         if (!authSnapshot.hasData || authSnapshot.data == null) {
-          if (kReleaseMode) {
+          // *** LÓGICA ALTERADA PARA USAR O FLAVOR ***
+          // Se o flavor for 'prod', mostra a tela de login normal.
+          // Caso contrário, mostra a tela de atalhos de desenvolvimento.
+          if (EnvConfig.isProd()) {
             return const LoginPage();
           } else {
             return const DevQuickLoginPage();
