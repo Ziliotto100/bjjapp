@@ -106,7 +106,9 @@ class NavigationService {
         icon: Icons.check_circle_outline_rounded,
         requiredRole: UserRole.teacher,
         pageBuilder: (user, teachers, students) => CheckinTeacherPage(
-            academyId: user.academyId, todosParticipantesDaAcademia: students),
+            user: user, // <-- CORREÇÃO APLICADA AQUI
+            academyId: user.academyId,
+            todosParticipantesDaAcademia: students),
       ),
       AppModule(
         id: 'teacher_sparring',
@@ -114,6 +116,7 @@ class NavigationService {
         icon: Icons.shuffle_rounded,
         requiredRole: UserRole.teacher,
         pageBuilder: (user, teachers, students) => SorteioTeacherPage(
+          user: user,
           academyId: user.academyId,
           todosParticipantesDaAcademia: students,
           isSparringMode: false, // O estado real virá da tela principal
@@ -186,7 +189,9 @@ class NavigationService {
         title: 'Placar',
         icon: Icons.scoreboard_rounded,
         pageBuilder: (user, teachers, students) => MatchSetupPage(
-            academyId: user.academyId, todosAlunosDaAcademia: students),
+            user: user,
+            academyId: user.academyId,
+            todosAlunosDaAcademia: students),
       ),
     ];
   }

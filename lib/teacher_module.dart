@@ -322,6 +322,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           );
         }
         return SorteioTeacherPage(
+          user: widget.user,
           academyId: widget.user.academyId,
           todosParticipantesDaAcademia: _students,
           isSparringMode: _isSparringMode,
@@ -457,6 +458,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             context: context,
             builder: (_) => AdicionarAlunoDialog(
                 currentUser: widget.user,
+                academyId: widget.user.academyId,
                 onAlunoAdicionado: (novoAluno) async {
                   try {
                     final studentCollection = FirebaseFirestore.instance
@@ -518,9 +520,9 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
   String _searchQuery = '';
   late Future<Map<String, UserModel>> _usersMapFuture;
 
-  // --- ESTADOS PARA FILTRO E ORDENAÇÃO ---
   String? _beltFilter;
-  String _sortOption = 'nome'; // 'nome', 'faixa', 'peso'
+  String? _unitFilter; // NOVO FILTRO
+  String _sortOption = 'nome';
   final List<String> _beltOptions = [
     'Branca',
     'Cinza/Branca',
@@ -568,7 +570,41 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
     super.dispose();
   }
 
-  // --- NOVO MÉTODO PARA MOSTRAR DIÁLOGO DE SELEÇÃO DE FAIXA ---
+  Future<void> _showUnitFilterDialog() async {
+    final unitsSnapshot = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('units')
+        .orderBy('name')
+        .get();
+    final units = unitsSnapshot.docs;
+
+    final selectedUnitId = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Filtrar por Unidade'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: units.length,
+            itemBuilder: (context, index) {
+              final unit = units[index];
+              return ListTile(
+                title: Text(unit['name']),
+                onTap: () => Navigator.of(context).pop(unit.id),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    if (selectedUnitId != null) {
+      setState(() => _unitFilter = selectedUnitId);
+    }
+  }
+
   Future<void> _showBeltFilterDialog() async {
     final selected = await showDialog<String>(
       context: context,
@@ -606,19 +642,25 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
     }
   }
 
-  // --- NOVO WIDGET DE MENU MINIMALISTA ---
   Widget _buildFilterSortMenu() {
     return PopupMenuButton<String>(
       icon: Icon(Icons.filter_list,
-          color: _beltFilter != null ? primaryAccent : null),
+          color: _beltFilter != null || _unitFilter != null
+              ? primaryAccent
+              : null),
       tooltip: 'Filtrar e Ordenar',
       onSelected: (value) {
         if (value.startsWith('sort_')) {
           setState(() => _sortOption = value.substring(5));
         } else if (value == 'filter_belt') {
           _showBeltFilterDialog();
+        } else if (value == 'filter_unit') {
+          _showUnitFilterDialog();
         } else if (value == 'clear_filter') {
-          setState(() => _beltFilter = null);
+          setState(() {
+            _beltFilter = null;
+            _unitFilter = null;
+          });
         }
       },
       itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -635,16 +677,20 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
           child: Text('Ordenar por: Peso'),
         ),
         const PopupMenuDivider(),
+        const PopupMenuItem<String>(
+          value: 'filter_unit',
+          child: Text('Filtrar por Unidade...'),
+        ),
         PopupMenuItem<String>(
           value: 'filter_belt',
           child: Text(_beltFilter == null
               ? 'Filtrar por Faixa...'
               : 'Filtrar: $_beltFilter'),
         ),
-        if (_beltFilter != null)
+        if (_beltFilter != null || _unitFilter != null)
           const PopupMenuItem<String>(
             value: 'clear_filter',
-            child: Text('Limpar Filtro'),
+            child: Text('Limpar Filtros'),
           ),
       ],
     );
@@ -732,6 +778,11 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
                   if (_beltFilter != null) {
                     processedAlunos
                         .retainWhere((aluno) => aluno.faixa == _beltFilter);
+                  }
+
+                  if (_unitFilter != null) {
+                    processedAlunos
+                        .retainWhere((aluno) => aluno.unitId == _unitFilter);
                   }
 
                   processedAlunos.sort((a, b) {
@@ -849,10 +900,14 @@ class TeacherDashboardPage extends StatelessWidget {
 class CheckinTeacherPage extends StatelessWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
-  const CheckinTeacherPage(
-      {super.key,
-      required this.academyId,
-      required this.todosParticipantesDaAcademia});
+  final UserModel user;
+
+  const CheckinTeacherPage({
+    super.key,
+    required this.academyId,
+    required this.todosParticipantesDaAcademia,
+    required this.user,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -871,6 +926,7 @@ class CheckinTeacherPage extends StatelessWidget {
                   builder: (_) => BulkCheckinPage(
                     academyId: academyId,
                     todosParticipantesDaAcademia: todosParticipantesDaAcademia,
+                    user: user,
                   ),
                 ),
               );
@@ -911,6 +967,7 @@ class CheckinTeacherPage extends StatelessWidget {
                   builder: (_) => RetroactiveCheckinPage(
                     academyId: academyId,
                     todosParticipantesDaAcademia: todosParticipantesDaAcademia,
+                    user: user,
                   ),
                 ),
               );
@@ -1306,11 +1363,13 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
 class BulkCheckinPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
+  final UserModel user;
 
   const BulkCheckinPage({
     super.key,
     required this.academyId,
     required this.todosParticipantesDaAcademia,
+    required this.user,
   });
 
   @override
@@ -1322,11 +1381,24 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
   bool _isLoading = false;
   final _searchController = TextEditingController();
   List<Aluno> _filteredParticipants = [];
+  // --- NOVOS ESTADOS PARA O FILTRO DE UNIDADE ---
+  List<DocumentSnapshot> _units = [];
+  String? _selectedUnitId;
+  bool _isLoadingUnits = true;
 
   @override
   void initState() {
     super.initState();
-    _filteredParticipants = widget.todosParticipantesDaAcademia;
+    _fetchUnits().then((_) {
+      final lastUnitId = widget.user.lastSelectedUnitId;
+      if (lastUnitId != null && _units.any((u) => u.id == lastUnitId)) {
+        _selectedUnitId = lastUnitId;
+      } else {
+        _selectedUnitId = widget.user.unitId ?? 'all';
+      }
+      _filterParticipants();
+      setState(() {});
+    });
     _searchController.addListener(_filterParticipants);
   }
 
@@ -1337,12 +1409,49 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
     super.dispose();
   }
 
+  Future<void> _fetchUnits() async {
+    setState(() => _isLoadingUnits = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('units')
+          .orderBy('name')
+          .get();
+      if (mounted) {
+        setState(() {
+          _units = snapshot.docs;
+          _isLoadingUnits = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingUnits = false);
+      }
+    }
+  }
+
+  Future<void> _saveLastSelectedUnit(String? unitId) async {
+    if (unitId == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.user.uid)
+          .update({'lastSelectedUnitId': unitId});
+    } catch (e) {
+      debugPrint("Erro ao salvar a preferência de unidade: $e");
+    }
+  }
+
   void _filterParticipants() {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredParticipants =
           widget.todosParticipantesDaAcademia.where((aluno) {
-        return aluno.nome.toLowerCase().contains(query);
+        final nameMatches = aluno.nome.toLowerCase().contains(query);
+        final unitMatches =
+            _selectedUnitId == 'all' || aluno.unitId == _selectedUnitId;
+        return nameMatches && unitMatches;
       }).toList();
     });
   }
@@ -1431,22 +1540,55 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
         child: SafeArea(
           child: Column(
             children: [
+              // --- FILTRO DE UNIDADE E PESQUISA ---
               Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    labelText: 'Buscar por nome...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                            },
-                          )
-                        : null,
-                  ),
+                child: Column(
+                  children: [
+                    if (_isLoadingUnits)
+                      const LinearProgressIndicator()
+                    else
+                      DropdownButtonFormField<String>(
+                        value: _selectedUnitId,
+                        items: [
+                          const DropdownMenuItem(
+                            value: 'all',
+                            child: Text("Todas as Unidades"),
+                          ),
+                          ..._units.map((unit) {
+                            return DropdownMenuItem(
+                              value: unit.id,
+                              child: Text(unit['name']),
+                            );
+                          }),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedUnitId = value;
+                            _filterParticipants();
+                          });
+                          _saveLastSelectedUnit(value);
+                        },
+                        decoration:
+                            const InputDecoration(labelText: 'Filtrar Unidade'),
+                      ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        labelText: 'Buscar por nome...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                },
+                              )
+                            : null,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -1506,11 +1648,13 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
 class RetroactiveCheckinPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
+  final UserModel user;
 
   const RetroactiveCheckinPage({
     super.key,
     required this.academyId,
     required this.todosParticipantesDaAcademia,
+    required this.user,
   });
 
   @override
@@ -1523,11 +1667,24 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
   bool _isLoading = false;
   final _searchController = TextEditingController();
   List<Aluno> _filteredParticipants = [];
+  // --- NOVOS ESTADOS PARA O FILTRO DE UNIDADE ---
+  List<DocumentSnapshot> _units = [];
+  String? _selectedUnitId;
+  bool _isLoadingUnits = true;
 
   @override
   void initState() {
     super.initState();
-    _filteredParticipants = widget.todosParticipantesDaAcademia;
+    _fetchUnits().then((_) {
+      final lastUnitId = widget.user.lastSelectedUnitId;
+      if (lastUnitId != null && _units.any((u) => u.id == lastUnitId)) {
+        _selectedUnitId = lastUnitId;
+      } else {
+        _selectedUnitId = widget.user.unitId ?? 'all';
+      }
+      _filterParticipants();
+      setState(() {});
+    });
     _searchController.addListener(_filterParticipants);
   }
 
@@ -1538,12 +1695,49 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
     super.dispose();
   }
 
+  Future<void> _fetchUnits() async {
+    setState(() => _isLoadingUnits = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('units')
+          .orderBy('name')
+          .get();
+      if (mounted) {
+        setState(() {
+          _units = snapshot.docs;
+          _isLoadingUnits = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingUnits = false);
+      }
+    }
+  }
+
+  Future<void> _saveLastSelectedUnit(String? unitId) async {
+    if (unitId == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.user.uid)
+          .update({'lastSelectedUnitId': unitId});
+    } catch (e) {
+      debugPrint("Erro ao salvar a preferência de unidade: $e");
+    }
+  }
+
   void _filterParticipants() {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredParticipants =
           widget.todosParticipantesDaAcademia.where((aluno) {
-        return aluno.nome.toLowerCase().contains(query);
+        final nameMatches = aluno.nome.toLowerCase().contains(query);
+        final unitMatches =
+            _selectedUnitId == 'all' || aluno.unitId == _selectedUnitId;
+        return nameMatches && unitMatches;
       }).toList();
     });
   }
@@ -1659,22 +1853,55 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
                   onTap: _pickDate,
                 ),
               ),
+              // --- FILTRO DE UNIDADE E PESQUISA ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    labelText: 'Buscar por nome...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: _searchController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear),
-                            onPressed: () {
-                              _searchController.clear();
-                            },
-                          )
-                        : null,
-                  ),
+                child: Column(
+                  children: [
+                    if (_isLoadingUnits)
+                      const LinearProgressIndicator()
+                    else
+                      DropdownButtonFormField<String>(
+                        value: _selectedUnitId,
+                        items: [
+                          const DropdownMenuItem(
+                            value: 'all',
+                            child: Text("Todas as Unidades"),
+                          ),
+                          ..._units.map((unit) {
+                            return DropdownMenuItem(
+                              value: unit.id,
+                              child: Text(unit['name']),
+                            );
+                          }),
+                        ],
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedUnitId = value;
+                            _filterParticipants();
+                          });
+                          _saveLastSelectedUnit(value);
+                        },
+                        decoration:
+                            const InputDecoration(labelText: 'Filtrar Unidade'),
+                      ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        labelText: 'Buscar por nome...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear),
+                                onPressed: () {
+                                  _searchController.clear();
+                                },
+                              )
+                            : null,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -1926,6 +2153,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
 }
 
 class SorteioTeacherPage extends StatefulWidget {
+  final UserModel user;
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
   final bool isSparringMode;
@@ -1935,6 +2163,7 @@ class SorteioTeacherPage extends StatefulWidget {
 
   const SorteioTeacherPage({
     super.key,
+    required this.user,
     required this.academyId,
     required this.todosParticipantesDaAcademia,
     required this.isSparringMode,
@@ -1951,6 +2180,47 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
   List<List<Map<String, String>>> _rodadasGeradas = [];
   String _tipoGeracao = 'Aleatório';
   final List<String> _opcoesGeracao = ['Aleatório', 'Por Faixa', 'Por Peso'];
+  // --- NOVOS ESTADOS PARA O FILTRO DE UNIDADE ---
+  List<DocumentSnapshot> _units = [];
+  String? _selectedUnitId;
+  bool _isLoadingUnits = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUnits().then((_) {
+      // Usa a última unidade selecionada pelo usuário como padrão
+      final lastUnitId = widget.user.lastSelectedUnitId;
+      if (lastUnitId != null && _units.any((u) => u.id == lastUnitId)) {
+        _selectedUnitId = lastUnitId;
+      } else {
+        _selectedUnitId = widget.user.unitId ?? 'all';
+      }
+      setState(() {});
+    });
+  }
+
+  Future<void> _fetchUnits() async {
+    setState(() => _isLoadingUnits = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('units')
+          .orderBy('name')
+          .get();
+      if (mounted) {
+        setState(() {
+          _units = snapshot.docs;
+          _isLoadingUnits = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingUnits = false);
+      }
+    }
+  }
 
   void _atualizarAlunosParticipantes(List<Aluno> novosParticipantes) {
     setState(() {
@@ -1960,9 +2230,14 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
   }
 
   Future<void> _navegarParaSelecaoAlunos() async {
+    // Filtra os alunos antes de navegar
+    final alunosDaUnidade = widget.todosParticipantesDaAcademia.where((aluno) {
+      return _selectedUnitId == 'all' || aluno.unitId == _selectedUnitId;
+    }).toList();
+
     final List<Aluno>? r = await Navigator.of(context).push(MaterialPageRoute(
       builder: (context) => SelecaoAlunosTeacherPage(
-        todosOsAlunos: widget.todosParticipantesDaAcademia,
+        todosOsAlunos: alunosDaUnidade, // Passa a lista já filtrada
         alunosSelecionadosIniciais: _alunosParticipantes,
       ),
     ));
@@ -2137,6 +2412,38 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  // --- FILTRO DE UNIDADE ADICIONADO ---
+                  if (_isLoadingUnits)
+                    const LinearProgressIndicator()
+                  else
+                    DropdownButtonFormField<String>(
+                      value: _selectedUnitId,
+                      items: [
+                        const DropdownMenuItem(
+                          value: 'all',
+                          child: Text("Todas as Unidades"),
+                        ),
+                        ..._units.map((unit) {
+                          return DropdownMenuItem(
+                            value: unit.id,
+                            child: Text(unit['name']),
+                          );
+                        }),
+                      ],
+                      onChanged: widget.isSparringMode
+                          ? null
+                          : (value) {
+                              setState(() {
+                                _selectedUnitId = value;
+                                // Limpa a seleção ao trocar de unidade
+                                _alunosParticipantes.clear();
+                                _rodadasGeradas.clear();
+                              });
+                            },
+                      decoration:
+                          const InputDecoration(labelText: 'Filtrar Unidade'),
+                    ),
+                  const SizedBox(height: 16),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.group_add_outlined),
                     label: Text(

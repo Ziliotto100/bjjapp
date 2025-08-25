@@ -29,6 +29,9 @@ class _SchedulePageState extends State<SchedulePage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   late Future<List<Aluno>> _allStudentsFuture;
+  List<DocumentSnapshot> _units = [];
+  String? _selectedUnitId; // Inicia como nulo
+
   final List<String> _daysOfWeek = [
     'Seg',
     'Ter',
@@ -52,10 +55,52 @@ class _SchedulePageState extends State<SchedulePage>
   void initState() {
     super.initState();
     _allStudentsFuture = _fetchAllStudents();
+    // Inicia o fetch das unidades e então define a unidade padrão
+    _fetchUnits().then((_) {
+      final lastUnitId = widget.user.lastSelectedUnitId;
+      // Verifica se a unidade salva existe na lista de unidades da academia
+      if (lastUnitId != null && _units.any((u) => u.id == lastUnitId)) {
+        _selectedUnitId = lastUnitId;
+      } else {
+        // Caso contrário, usa a unidade do próprio usuário ou 'todas'
+        _selectedUnitId = widget.user.unitId ?? 'all';
+      }
+      setState(() {}); // Atualiza a UI com a unidade correta
+    });
+
     _tabController = TabController(length: _daysOfWeek.length, vsync: this);
-    // Move para a aba do dia atual
     final todayIndex = DateTime.now().weekday - 1;
-    _tabController.animateTo(todayIndex);
+    if (todayIndex >= 0 && todayIndex < _daysOfWeek.length) {
+      _tabController.animateTo(todayIndex);
+    }
+  }
+
+  Future<void> _fetchUnits() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('units')
+        .orderBy('name')
+        .get();
+    if (mounted) {
+      setState(() {
+        _units = snapshot.docs;
+      });
+    }
+  }
+
+  // <<< NOVA FUNÇÃO PARA SALVAR A PREFERÊNCIA DO USUÁRIO >>>
+  Future<void> _saveLastSelectedUnit(String? unitId) async {
+    if (unitId == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(widget.user.uid)
+          .update({'lastSelectedUnitId': unitId});
+    } catch (e) {
+      // Erro silencioso para não impactar a experiência do usuário
+      debugPrint("Erro ao salvar a preferência de unidade: $e");
+    }
   }
 
   Future<List<Aluno>> _fetchAllStudents() async {
@@ -75,6 +120,41 @@ class _SchedulePageState extends State<SchedulePage>
     super.dispose();
   }
 
+  Widget _buildUnitFilter() {
+    // Se não houver unidades ou estiver carregando, não mostra o filtro
+    if (_units.isEmpty || _selectedUnitId == null) {
+      return const SizedBox(height: 8);
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: darkSurface,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedUnitId,
+          isExpanded: true,
+          items: [
+            const DropdownMenuItem(
+              value: 'all',
+              child: Text("Todas as Unidades"),
+            ),
+            ..._units.map((unit) {
+              return DropdownMenuItem(
+                value: unit.id,
+                child: Text(unit['name']),
+              );
+            }),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedUnitId = value;
+            });
+            _saveLastSelectedUnit(value); // Salva a escolha do usuário
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isManager = widget.user.role == UserRole.manager;
@@ -89,75 +169,86 @@ class _SchedulePageState extends State<SchedulePage>
       ),
       body: AppBackground(
         child: SafeArea(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('academies')
-                .doc(widget.user.academyId)
-                .collection('schedule')
-                .orderBy('startTime')
-                .snapshots(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Center(child: Text("Erro: ${snapshot.error}"));
-              }
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const EmptyStateWidget(
-                  icon: Icons.event_note_rounded,
-                  title: 'Grade de Horários Vazia',
-                  message:
-                      'O gerente ainda não configurou os horários de treino.',
-                );
-              }
-
-              final allClasses = snapshot.data!.docs
-                  .map((doc) => TrainingClass.fromFirestore(doc))
-                  .toList();
-
-              // Se o usuário for um aluno, precisamos do ID do registro de aluno dele.
-              // Se for professor ou gerente, podemos usar o UID como fallback (embora não deva ser convidado para aulas)
-              final studentRecordId =
-                  widget.user.studentRecordId ?? widget.user.uid;
-
-              // Filtra as aulas visíveis para o usuário atual
-              final visibleClasses = allClasses.where((c) {
-                // Aulas públicas são sempre visíveis
-                if (!c.isPrivate) return true;
-                // Aulas privadas são visíveis para gerentes, professores e alunos explicitamente permitidos
-                return isManager ||
-                    isTeacher ||
-                    c.allowedStudentIds.contains(studentRecordId);
-              }).toList();
-
-              return TabBarView(
-                controller: _tabController,
-                children: _daysOfWeekFull.map((day) {
-                  final classesForDay =
-                      visibleClasses.where((c) => c.dayOfWeek == day).toList();
-                  if (classesForDay.isEmpty) {
-                    return const EmptyStateWidget(
-                        icon: Icons.calendar_today_rounded,
-                        title: 'Nenhuma aula neste dia');
-                  }
-                  return FutureBuilder<List<Aluno>>(
-                    future: _allStudentsFuture,
-                    builder: (context, studentSnapshot) {
-                      if (!studentSnapshot.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      return _ScheduleDayView(
-                        classes: classesForDay,
-                        user: widget.user,
-                        teachers: widget.teachers,
-                        allStudents: studentSnapshot.data ?? [],
+          child: Column(
+            children: [
+              _buildUnitFilter(),
+              Expanded(
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('academies')
+                      .doc(widget.user.academyId)
+                      .collection('schedule')
+                      .orderBy('startTime')
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(child: Text("Erro: ${snapshot.error}"));
+                    }
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return const EmptyStateWidget(
+                        icon: Icons.event_note_rounded,
+                        title: 'Grade de Horários Vazia',
+                        message:
+                            'O gerente ainda não configurou os horários de treino.',
                       );
-                    },
-                  );
-                }).toList(),
-              );
-            },
+                    }
+
+                    final allClasses = snapshot.data!.docs
+                        .map((doc) => TrainingClass.fromFirestore(doc))
+                        .toList();
+
+                    final studentRecordId =
+                        widget.user.studentRecordId ?? widget.user.uid;
+
+                    final visibleClasses = allClasses.where((c) {
+                      // Filtro de unidade
+                      if (_selectedUnitId != 'all' &&
+                          c.unitId != _selectedUnitId) {
+                        return false;
+                      }
+                      // Filtro de aula privada
+                      if (!c.isPrivate) return true;
+                      return isManager ||
+                          isTeacher ||
+                          c.allowedStudentIds.contains(studentRecordId);
+                    }).toList();
+
+                    return TabBarView(
+                      controller: _tabController,
+                      children: _daysOfWeekFull.map((day) {
+                        final classesForDay = visibleClasses
+                            .where((c) => c.dayOfWeek == day)
+                            .toList();
+                        if (classesForDay.isEmpty) {
+                          return const EmptyStateWidget(
+                              icon: Icons.calendar_today_rounded,
+                              title: 'Nenhuma aula neste dia');
+                        }
+                        return FutureBuilder<List<Aluno>>(
+                          future: _allStudentsFuture,
+                          builder: (context, studentSnapshot) {
+                            if (!studentSnapshot.hasData) {
+                              return const Center(
+                                  child: CircularProgressIndicator());
+                            }
+                            return _ScheduleDayView(
+                              classes: classesForDay,
+                              user: widget.user,
+                              teachers: widget.teachers,
+                              allStudents: studentSnapshot.data ?? [],
+                              selectedUnitId: _selectedUnitId,
+                            );
+                          },
+                        );
+                      }).toList(),
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
         ),
       ),
@@ -181,18 +272,20 @@ class _SchedulePageState extends State<SchedulePage>
   }
 }
 
-// --- WIDGET DE VISUALIZAÇÃO PARA UM DIA ESPECÍFICO ---
 class _ScheduleDayView extends StatelessWidget {
   final List<TrainingClass> classes;
   final UserModel user;
   final List<UserModel> teachers;
   final List<Aluno> allStudents;
+  final String? selectedUnitId;
 
-  const _ScheduleDayView(
-      {required this.classes,
-      required this.user,
-      required this.teachers,
-      required this.allStudents});
+  const _ScheduleDayView({
+    required this.classes,
+    required this.user,
+    required this.teachers,
+    required this.allStudents,
+    required this.selectedUnitId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -206,24 +299,27 @@ class _ScheduleDayView extends StatelessWidget {
           user: user,
           teachers: teachers,
           allStudents: allStudents,
+          selectedUnitId: selectedUnitId,
         );
       },
     );
   }
 }
 
-// --- CARD DE AULA CONVERTIDO PARA STATEFULWIDGET ---
 class _ClassCard extends StatefulWidget {
   final TrainingClass trainingClass;
   final UserModel user;
   final List<UserModel> teachers;
   final List<Aluno> allStudents;
+  final String? selectedUnitId;
 
-  const _ClassCard(
-      {required this.trainingClass,
-      required this.user,
-      required this.teachers,
-      required this.allStudents});
+  const _ClassCard({
+    required this.trainingClass,
+    required this.user,
+    required this.teachers,
+    required this.allStudents,
+    required this.selectedUnitId,
+  });
 
   @override
   State<_ClassCard> createState() => _ClassCardState();
@@ -235,7 +331,6 @@ class _ClassCardState extends State<_ClassCard> {
   @override
   void initState() {
     super.initState();
-    // Inicia o stream para ouvir o status do check-in apenas se for um aluno
     if (widget.user.role == UserRole.student &&
         widget.user.studentRecordId != null) {
       _listenToCheckinStatus();
@@ -247,7 +342,6 @@ class _ClassCardState extends State<_ClassCard> {
     final today = DateTime(now.year, now.month, now.day);
     final studentId = widget.user.studentRecordId;
 
-    // Procura por um check-in específico para este aluno no dia de hoje
     setState(() {
       _checkinStatusStream = FirebaseFirestore.instance
           .collection('academies')
@@ -386,13 +480,11 @@ class _ClassCardState extends State<_ClassCard> {
     return StreamBuilder<DocumentSnapshot?>(
       stream: _checkinStatusStream,
       builder: (context, snapshot) {
-        // Enquanto carrega, não mostra nada
         if (snapshot.connectionState == ConnectionState.waiting &&
             !snapshot.hasData) {
-          return const SizedBox(height: 28); // Espaço reservado para o chip
+          return const SizedBox(height: 28);
         }
 
-        // Se já existe um check-in para hoje
         if (snapshot.hasData && snapshot.data != null) {
           final checkin = CheckinEntry.fromJson(
               snapshot.data!.id, snapshot.data!.data() as Map<String, dynamic>);
@@ -412,7 +504,6 @@ class _ClassCardState extends State<_ClassCard> {
           }
         }
 
-        // Se não houver check-in, mostra o botão
         return InkWell(
           onTap: () => _showCheckinDialog(context),
           borderRadius: BorderRadius.circular(20),
@@ -529,14 +620,28 @@ class _ClassCardState extends State<_ClassCard> {
                       text: "Prof. ${widget.trainingClass.teacherName}",
                     ),
                   ),
-                  _buildCheckinWidget(),
+                  const SizedBox(width: 8),
+                  // *** LÓGICA DE VISIBILIDADE CORRIGIDA AQUI ***
+                  if (widget.selectedUnitId == 'all' &&
+                      widget.trainingClass.unitName != null &&
+                      widget.trainingClass.unitName!.isNotEmpty)
+                    Flexible(
+                      child: _InfoChip(
+                        label: widget.trainingClass.unitName!,
+                        icon: Icons.store_mall_directory_outlined,
+                      ),
+                    ),
                   if (isPrivate && widget.user.role != UserRole.student)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8.0),
+                    const Padding(
+                      padding: EdgeInsets.only(left: 8.0),
                       child:
                           Icon(Icons.lock_person, color: errorColor, size: 24),
                     ),
                 ],
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: _buildCheckinWidget(),
               ),
             ],
           ),
@@ -546,7 +651,6 @@ class _ClassCardState extends State<_ClassCard> {
   }
 }
 
-// Widget auxiliar para os chips de informação
 class _InfoChip extends StatelessWidget {
   final String label;
   final IconData? icon;
@@ -594,7 +698,6 @@ class _InfoChip extends StatelessWidget {
   }
 }
 
-// Widget auxiliar para linhas de informação
 class _InfoRow extends StatelessWidget {
   final IconData icon;
   final String text;
@@ -621,7 +724,6 @@ class _InfoRow extends StatelessWidget {
   }
 }
 
-// --- DIÁLOGO DE DETALHES DA AULA ---
 class _ClassDetailDialog extends StatelessWidget {
   final TrainingClass trainingClass;
   const _ClassDetailDialog({required this.trainingClass});
@@ -633,6 +735,11 @@ class _ClassDetailDialog extends StatelessWidget {
       content: SingleChildScrollView(
         child: ListBody(
           children: <Widget>[
+            // --- INFORMAÇÃO DA UNIDADE ADICIONADA ---
+            if (trainingClass.unitName != null &&
+                trainingClass.unitName!.isNotEmpty)
+              _buildInfoRow(context, Icons.store_mall_directory_outlined,
+                  "Unidade", trainingClass.unitName!),
             _buildInfoRow(context, Icons.shield_outlined, "Categoria",
                 trainingClass.level),
             if (trainingClass.audience != null)
@@ -698,7 +805,7 @@ class EditSchedulePage extends StatefulWidget {
   final String academyId;
   final List<UserModel> teachers;
   final List<Aluno> allStudents;
-  final TrainingClass? classToEdit; // Aula opcional para edição
+  final TrainingClass? classToEdit;
 
   const EditSchedulePage({
     super.key,
@@ -731,9 +838,14 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
   List<String> _classAudiences = [];
   bool _isLoadingAudiences = true;
 
-  // NOVOS CAMPOS PARA AULAS PARTICULARES
   bool _isPrivate = false;
   List<String> _selectedStudentIds = [];
+
+  // CAMPOS PARA UNIDADE
+  List<DocumentSnapshot> _units = [];
+  bool _isLoadingUnits = true;
+  String? _selectedUnitId;
+  String? _selectedUnitName;
 
   bool get _isEditing => widget.classToEdit != null;
 
@@ -768,13 +880,41 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
       _selectedAudience = c.audience;
       _isPrivate = c.isPrivate;
       _selectedStudentIds = List<String>.from(c.allowedStudentIds);
+      _selectedUnitId = c.unitId;
+      _selectedUnitName = c.unitName;
     }
   }
 
   Future<void> _fetchDropdownOptions() async {
-    await _fetchClassLevels();
-    await _fetchClassLocations();
-    await _fetchClassAudiences();
+    await Future.wait([
+      _fetchClassLevels(),
+      _fetchClassLocations(),
+      _fetchClassAudiences(),
+      _fetchUnits(),
+    ]);
+  }
+
+  Future<void> _fetchUnits() async {
+    setState(() => _isLoadingUnits = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('units')
+          .orderBy('name')
+          .get();
+      if (mounted) {
+        setState(() {
+          _units = snapshot.docs;
+          _isLoadingUnits = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, "Erro ao carregar unidades.", type: 'error');
+        setState(() => _isLoadingUnits = false);
+      }
+    }
   }
 
   Future<void> _fetchClassLevels() async {
@@ -786,11 +926,9 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
           .collection('class_levels')
           .orderBy('name')
           .get();
-
       final levels =
           snapshot.docs.map((doc) => doc.data()['name'] as String).toList();
       if (!mounted) return;
-
       if (_isEditing &&
           _selectedLevel != null &&
           !levels.contains(_selectedLevel)) {
@@ -817,11 +955,9 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
           .collection('class_locations')
           .orderBy('name')
           .get();
-
       final locations =
           snapshot.docs.map((doc) => doc.data()['name'] as String).toList();
       if (!mounted) return;
-
       if (_isEditing &&
           _selectedLocation != null &&
           !locations.contains(_selectedLocation)) {
@@ -848,15 +984,11 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
           .collection('class_audiences')
           .orderBy('name')
           .get();
-
       final audiences =
           snapshot.docs.map((doc) => doc.data()['name'] as String).toList();
       if (!mounted) return;
-
-      // Adiciona opções padrão se estiverem faltando
       if (!audiences.contains('Adulto')) audiences.insert(0, 'Adulto');
       if (!audiences.contains('Kids')) audiences.add('Kids');
-
       if (_isEditing &&
           _selectedAudience != null &&
           !audiences.contains(_selectedAudience)) {
@@ -901,7 +1033,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
                     child: Text('Adicionar')),
               ],
             ));
-
     if (newOption != null) {
       final existingOptions = collection == 'class_levels'
           ? _classLevels
@@ -919,7 +1050,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
           .doc(widget.academyId)
           .collection(collection)
           .add({'name': newOption});
-
       if (collection == 'class_levels') {
         await _fetchClassLevels();
         setState(() => _selectedLevel = newOption);
@@ -942,7 +1072,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
               collection: collection,
               title: title,
             )).then((_) {
-      // Recarrega as opções após o gerenciamento
       if (collection == 'class_levels') {
         _fetchClassLevels();
         setState(() => _selectedLevel = null);
@@ -1006,7 +1135,7 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
                   child: const Text('OK'),
                   onPressed: () {
                     Navigator.of(context).pop();
-                    setState(() {}); // Atualiza a tela principal
+                    setState(() {});
                   },
                 ),
               ],
@@ -1023,7 +1152,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
         initiallySelectedIds: _selectedStudentIds,
       ),
     );
-
     if (selectedIds != null) {
       setState(() {
         _selectedStudentIds = selectedIds;
@@ -1060,6 +1188,8 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
       'audience': _selectedAudience,
       'isPrivate': _isPrivate,
       'allowedStudentIds': _isPrivate ? _selectedStudentIds : [],
+      'unitId': _selectedUnitId,
+      'unitName': _selectedUnitName,
     };
 
     final collectionRef = FirebaseFirestore.instance
@@ -1103,7 +1233,7 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
     final originalClass = widget.classToEdit!;
     if (originalClass.recurringId != null) {
       final choice = await _showRecurringEditDialog();
-      if (choice == null) return; // User cancelled
+      if (choice == null) return;
 
       final batch = FirebaseFirestore.instance.batch();
       if (choice == 'all') {
@@ -1149,7 +1279,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
         .collection('academies')
         .doc(widget.academyId)
         .collection('schedule');
-
     String? choice = 'single';
     if (originalClass.recurringId != null) {
       choice = await showDialog<String>(
@@ -1217,6 +1346,34 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
             child: ListView(
               padding: const EdgeInsets.all(16.0),
               children: [
+                if (_isLoadingUnits)
+                  const Center(child: CircularProgressIndicator())
+                else
+                  DropdownButtonFormField<String>(
+                    value: _selectedUnitId,
+                    decoration: const InputDecoration(
+                      labelText: 'Unidade da Aula',
+                      prefixIcon: Icon(Icons.store_mall_directory_outlined),
+                    ),
+                    isExpanded: true,
+                    hint: const Text("Selecione a Unidade"),
+                    items: _units.map((unit) {
+                      return DropdownMenuItem<String>(
+                        value: unit.id,
+                        child: Text(unit['name']),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedUnitId = value;
+                        _selectedUnitName =
+                            _units.firstWhere((u) => u.id == value)['name'];
+                      });
+                    },
+                    validator: (v) =>
+                        v == null ? 'Selecione uma unidade' : null,
+                  ),
+                const SizedBox(height: 16),
                 InkWell(
                   onTap: _isEditing ? null : _showDaysSelectionDialog,
                   child: InputDecorator(
@@ -1458,7 +1615,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
   }
 }
 
-// --- NOVO WIDGET: DIÁLOGO PARA GERENCIAR OPÇÕES (CATEGORIAS/LOCAIS) ---
 class _ManageOptionsDialog extends StatefulWidget {
   final String academyId;
   final String collection;
@@ -1512,11 +1668,9 @@ class _ManageOptionsDialogState extends State<_ManageOptionsDialog> {
           .doc(widget.academyId);
       final batch = FirebaseFirestore.instance.batch();
 
-      // Atualiza o nome na coleção de opções
       batch
           .update(ref.collection(widget.collection).doc(id), {'name': newName});
 
-      // Atualiza todas as aulas que usam o nome antigo
       final fieldToUpdate = widget.collection == 'class_levels'
           ? 'level'
           : (widget.collection == 'class_locations' ? 'location' : 'audience');
@@ -1535,7 +1689,6 @@ class _ManageOptionsDialogState extends State<_ManageOptionsDialog> {
   }
 
   Future<void> _deleteOption(String id, String name) async {
-    // Verifica se a opção está em uso
     final fieldToCheck = widget.collection == 'class_levels'
         ? 'level'
         : (widget.collection == 'class_locations' ? 'location' : 'audience');

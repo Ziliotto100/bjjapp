@@ -143,7 +143,7 @@ class UserCard extends StatelessWidget {
                     builder: (_) => StudentDetailPage(
                       academyId: academyId,
                       student: user,
-                      currentUser: currentUser, // --- CORREÇÃO AQUI ---
+                      currentUser: currentUser,
                     ),
                   ));
                 } else {
@@ -151,7 +151,7 @@ class UserCard extends StatelessWidget {
                     builder: (_) => ProfessorDetailPage(
                       academyId: academyId,
                       professor: user,
-                      currentUser: currentUser, // --- CORREÇÃO AQUI ---
+                      currentUser: currentUser,
                     ),
                   ));
                 }
@@ -196,6 +196,8 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
             'dataNascimento': alunoAtualizado.dataNascimento != null
                 ? Timestamp.fromDate(alunoAtualizado.dataNascimento!)
                 : null,
+            'unitId': alunoAtualizado.unitId,
+            'unitName': alunoAtualizado.unitName,
             'lastUpdatedByUid': currentUser.uid,
             'lastUpdatedByName': currentUser.name,
             'updatedAt': FieldValue.serverTimestamp(),
@@ -208,11 +210,18 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
               .doc(alunoAtualizado.id)
               .update(dataToUpdate);
 
+          // *** CORREÇÃO APLICADA AQUI ***
+          // Atualiza o nome e os campos de auditoria no documento do usuário também
           if (alunoAtualizado.userId != null) {
             await FirebaseFirestore.instance
                 .collection('users')
                 .doc(alunoAtualizado.userId!)
-                .update({'name': alunoAtualizado.nome});
+                .update({
+              'name': alunoAtualizado.nome,
+              'lastUpdatedByUid': currentUser.uid,
+              'lastUpdatedByName': currentUser.name,
+              'updatedAt': FieldValue.serverTimestamp(),
+            });
           }
           if (context.mounted) {
             showBjjSnackBar(context, 'Aluno atualizado com sucesso!',

@@ -58,6 +58,10 @@ class UserModel {
   final DateTime? dataNascimento;
   final Map<String, int> monthlyTrainingGoals;
   final Timestamp? lastNotificationCheck;
+  // *** NOVOS CAMPOS PARA UNIDADES ***
+  final String? unitId;
+  final String? unitName;
+  final String? lastSelectedUnitId; // <<< NOVO CAMPO
 
   // [MELHORIA] Campos de Auditoria
   final Timestamp? createdAt;
@@ -83,6 +87,9 @@ class UserModel {
     this.dataNascimento,
     this.monthlyTrainingGoals = const {},
     this.lastNotificationCheck,
+    this.unitId,
+    this.unitName,
+    this.lastSelectedUnitId, // <<< NOVO CAMPO
     this.createdAt,
     this.updatedAt,
     this.createdByUid,
@@ -142,6 +149,9 @@ class UserModel {
       dataNascimento: (data['dataNascimento'] as Timestamp?)?.toDate(),
       monthlyTrainingGoals: goals,
       lastNotificationCheck: data['lastNotificationCheck'],
+      unitId: data['unitId'],
+      unitName: data['unitName'],
+      lastSelectedUnitId: data['lastSelectedUnitId'], // <<< NOVO CAMPO
       createdAt: data['createdAt'],
       updatedAt: data['updatedAt'],
       createdByUid: data['createdByUid'],
@@ -162,6 +172,9 @@ class Aluno {
   String? userId;
   PaymentStatus paymentStatus;
   bool isActive;
+  // *** NOVOS CAMPOS PARA UNIDADES ***
+  String? unitId;
+  String? unitName;
 
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
@@ -180,6 +193,8 @@ class Aluno {
     this.userId,
     this.paymentStatus = PaymentStatus.pendente,
     this.isActive = true,
+    this.unitId,
+    this.unitName,
     this.createdAt,
     this.updatedAt,
     this.createdByUid,
@@ -208,6 +223,8 @@ class Aluno {
     this.graus,
     this.dataNascimento,
     this.userId,
+    this.unitId,
+    this.unitName,
     this.createdByUid,
     this.createdByName,
   })  : paymentStatus = PaymentStatus.pendente,
@@ -227,6 +244,8 @@ class Aluno {
           dataNascimento != null ? Timestamp.fromDate(dataNascimento!) : null,
       'userId': userId,
       'isActive': isActive,
+      'unitId': unitId,
+      'unitName': unitName,
       'createdAt': createdAt ?? FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'createdByUid': createdByUid,
@@ -246,6 +265,8 @@ class Aluno {
       dataNascimento: (json['dataNascimento'] as Timestamp?)?.toDate(),
       userId: json['userId'],
       isActive: json['isActive'] ?? true,
+      unitId: json['unitId'],
+      unitName: json['unitName'],
       createdAt: json['createdAt'],
       updatedAt: json['updatedAt'],
       createdByUid: json['createdByUid'],
@@ -265,6 +286,8 @@ class Aluno {
       userId: user.uid,
       dataNascimento: user.dataNascimento,
       isActive: user.isActive,
+      unitId: user.unitId,
+      unitName: user.unitName,
     );
   }
 
@@ -822,9 +845,10 @@ class TrainingClass {
   final String? location;
   final String? recurringId;
   final String? audience;
-  // NOVOS CAMPOS PARA AULAS PARTICULARES
   final bool isPrivate;
   final List<String> allowedStudentIds;
+  final String? unitId;
+  final String? unitName;
 
   TrainingClass({
     required this.id,
@@ -839,8 +863,10 @@ class TrainingClass {
     this.location,
     this.recurringId,
     this.audience = 'Adulto',
-    this.isPrivate = false, // VALOR PADRÃO
-    this.allowedStudentIds = const [], // VALOR PADRÃO
+    this.isPrivate = false,
+    this.allowedStudentIds = const [],
+    this.unitId,
+    this.unitName,
   });
 
   factory TrainingClass.fromFirestore(DocumentSnapshot doc) {
@@ -858,9 +884,30 @@ class TrainingClass {
       location: data['location'],
       recurringId: data['recurringId'],
       audience: data['audience'] ?? 'Adulto',
-      isPrivate: data['isPrivate'] ?? false, // NOVO
-      allowedStudentIds:
-          List<String>.from(data['allowedStudentIds'] ?? []), // NOVO
+      isPrivate: data['isPrivate'] ?? false,
+      allowedStudentIds: List<String>.from(data['allowedStudentIds'] ?? []),
+      unitId: data['unitId'],
+      unitName: data['unitName'],
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'dayOfWeek': dayOfWeek,
+      'startTime': startTime,
+      'endTime': endTime,
+      'teacherId': teacherId,
+      'teacherName': teacherName,
+      'modality': modalityToString(modality),
+      'description': description,
+      'level': level,
+      'location': location,
+      'recurringId': recurringId,
+      'audience': audience,
+      'isPrivate': isPrivate,
+      'allowedStudentIds': allowedStudentIds,
+      'unitId': unitId,
+      'unitName': unitName,
+    };
   }
 }

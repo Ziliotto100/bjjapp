@@ -11,11 +11,13 @@ import 'common_widgets.dart'; // Import necessário para showBjjSnackBar
 class MatchSetupPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosAlunosDaAcademia;
+  final UserModel user; // PARÂMETRO ADICIONADO
 
   const MatchSetupPage({
     super.key,
     required this.academyId,
     required this.todosAlunosDaAcademia,
+    required this.user, // PARÂMETRO ADICIONADO
   });
 
   @override

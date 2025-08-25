@@ -8,7 +8,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/intl.dart';
-
 import 'models.dart';
 import 'common_widgets.dart';
 import 'app_theme.dart';
@@ -71,6 +70,8 @@ class UserManagementService {
           ? Timestamp.fromDate(aluno.dataNascimento!)
           : null,
       'studentRecordId': FieldValue.delete(),
+      'unitId': aluno.unitId,
+      'unitName': aluno.unitName,
       'updatedAt': FieldValue.serverTimestamp(),
       'lastUpdatedByUid': manager.uid,
       'lastUpdatedByName': manager.name,
@@ -113,6 +114,8 @@ class UserManagementService {
       'dataNascimento': teacher.dataNascimento != null
           ? Timestamp.fromDate(teacher.dataNascimento!)
           : null,
+      'unitId': teacher.unitId,
+      'unitName': teacher.unitName,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'createdByUid': manager.uid,
@@ -500,18 +503,243 @@ class ManagerDashboardPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView(
+      padding: const EdgeInsets.all(16.0),
       children: [
         UserProfileHeader(user: user),
-        Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Card(
-            child: ListTile(
-              leading: const Icon(Icons.business, color: primaryAccent),
-              title: const Text("ID da sua Academia"),
-              subtitle:
-                  Text(user.academyId, style: const TextStyle(fontSize: 16)),
-            ),
+        const SizedBox(height: 8),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            leading: const Icon(Icons.business, color: primaryAccent),
+            title: const Text("ID da sua Academia"),
+            subtitle:
+                Text(user.academyId, style: const TextStyle(fontSize: 16)),
           ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTile(
+            leading: const Icon(Icons.store_mall_directory_outlined,
+                color: infoColor),
+            title: const Text("Gerenciar Unidades"),
+            subtitle: const Text("Adicione ou edite suas filiais"),
+            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            onTap: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => ManageUnitsPage(academyId: user.academyId),
+              ));
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class ManageUnitsPage extends StatelessWidget {
+  final String academyId;
+  const ManageUnitsPage({super.key, required this.academyId});
+
+  void _showUnitDialog(BuildContext context, {DocumentSnapshot? unitDoc}) {
+    showDialog(
+      context: context,
+      builder: (_) =>
+          _AddEditUnitDialog(academyId: academyId, unitDoc: unitDoc),
+    );
+  }
+
+  void _confirmDelete(BuildContext context, DocumentSnapshot unitDoc) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar Exclusão'),
+        content: Text(
+            'Tem certeza que deseja excluir a unidade "${unitDoc['name']}"? Esta ação não pode ser desfeita.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop();
+              try {
+                await unitDoc.reference.delete();
+                showBjjSnackBar(context, 'Unidade excluída!', type: 'success');
+              } catch (e) {
+                showBjjSnackBar(context,
+                    'Erro ao excluir unidade. Verifique se ela não está em uso.',
+                    type: 'error');
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Gerenciar Unidades'),
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('academies')
+                .doc(academyId)
+                .collection('units')
+                .orderBy('name')
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return const EmptyStateWidget(
+                    icon: Icons.error, title: 'Erro ao carregar');
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.store_mall_directory_outlined,
+                  title: 'Nenhuma Unidade Cadastrada',
+                  message:
+                      'Clique no botão "+" para adicionar sua primeira unidade (ex: Matriz).',
+                );
+              }
+
+              final units = snapshot.data!.docs;
+
+              return ListView.builder(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+                itemCount: units.length,
+                itemBuilder: (context, index) {
+                  final unit = units[index];
+                  final unitName = unit['name'] ?? 'Sem nome';
+
+                  return Card(
+                    child: ListTile(
+                      title: Text(unitName),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined,
+                                color: primaryAccent),
+                            tooltip: 'Renomear',
+                            onPressed: () =>
+                                _showUnitDialog(context, unitDoc: unit),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                color: errorColor),
+                            tooltip: 'Excluir',
+                            onPressed: () => _confirmDelete(context, unit),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showUnitDialog(context),
+        tooltip: 'Adicionar Unidade',
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class _AddEditUnitDialog extends StatefulWidget {
+  final String academyId;
+  final DocumentSnapshot? unitDoc;
+
+  const _AddEditUnitDialog({required this.academyId, this.unitDoc});
+
+  @override
+  State<_AddEditUnitDialog> createState() => _AddEditUnitDialogState();
+}
+
+class _AddEditUnitDialogState extends State<_AddEditUnitDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  bool _isLoading = false;
+
+  bool get _isEditing => widget.unitDoc != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEditing) {
+      _nameController.text = widget.unitDoc!['name'];
+    }
+  }
+
+  Future<void> _saveUnit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isLoading = true);
+
+    final collectionRef = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('units');
+
+    final unitName = _nameController.text.trim().capitalizeWords();
+
+    try {
+      if (_isEditing) {
+        await collectionRef.doc(widget.unitDoc!.id).update({'name': unitName});
+      } else {
+        await collectionRef.add({'name': unitName});
+      }
+      Navigator.of(context).pop();
+      showBjjSnackBar(context, 'Unidade salva com sucesso!', type: 'success');
+    } catch (e) {
+      showBjjSnackBar(context, 'Erro ao salvar unidade.', type: 'error');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_isEditing ? 'Renomear Unidade' : 'Adicionar Unidade'),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _nameController,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Nome da Unidade'),
+          validator: (value) => (value == null || value.trim().isEmpty)
+              ? 'O nome é obrigatório'
+              : null,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _saveUnit,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 20, width: 20, child: CircularProgressIndicator())
+              : const Text('Salvar'),
         ),
       ],
     );
@@ -534,6 +762,7 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
   late Future<Map<String, UserModel>> _usersMapFuture;
 
   String? _beltFilter;
+  String? _unitFilter; // NOVO FILTRO
   String _sortOption = 'nome';
   final List<String> _beltOptions = [
     'Branca',
@@ -582,6 +811,41 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
     super.dispose();
   }
 
+  Future<void> _showUnitFilterDialog() async {
+    final unitsSnapshot = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('units')
+        .orderBy('name')
+        .get();
+    final units = unitsSnapshot.docs;
+
+    final selectedUnitId = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Filtrar por Unidade'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: units.length,
+            itemBuilder: (context, index) {
+              final unit = units[index];
+              return ListTile(
+                title: Text(unit['name']),
+                onTap: () => Navigator.of(context).pop(unit.id),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    if (selectedUnitId != null) {
+      setState(() => _unitFilter = selectedUnitId);
+    }
+  }
+
   Future<void> _showBeltFilterDialog() async {
     final selected = await showDialog<String>(
       context: context,
@@ -622,15 +886,22 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
   Widget _buildFilterSortMenu() {
     return PopupMenuButton<String>(
       icon: Icon(Icons.filter_list,
-          color: _beltFilter != null ? primaryAccent : null),
+          color: _beltFilter != null || _unitFilter != null
+              ? primaryAccent
+              : null),
       tooltip: 'Filtrar e Ordenar',
       onSelected: (value) {
         if (value.startsWith('sort_')) {
           setState(() => _sortOption = value.substring(5));
         } else if (value == 'filter_belt') {
           _showBeltFilterDialog();
+        } else if (value == 'filter_unit') {
+          _showUnitFilterDialog();
         } else if (value == 'clear_filter') {
-          setState(() => _beltFilter = null);
+          setState(() {
+            _beltFilter = null;
+            _unitFilter = null;
+          });
         }
       },
       itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -647,16 +918,20 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
           child: Text('Ordenar por: Peso'),
         ),
         const PopupMenuDivider(),
+        const PopupMenuItem<String>(
+          value: 'filter_unit',
+          child: Text('Filtrar por Unidade...'),
+        ),
         PopupMenuItem<String>(
           value: 'filter_belt',
           child: Text(_beltFilter == null
               ? 'Filtrar por Faixa...'
               : 'Filtrar: $_beltFilter'),
         ),
-        if (_beltFilter != null)
+        if (_beltFilter != null || _unitFilter != null)
           const PopupMenuItem<String>(
             value: 'clear_filter',
-            child: Text('Limpar Filtro'),
+            child: Text('Limpar Filtros'),
           ),
       ],
     );
@@ -746,6 +1021,11 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
                         .retainWhere((aluno) => aluno.faixa == _beltFilter);
                   }
 
+                  if (_unitFilter != null) {
+                    processedAlunos
+                        .retainWhere((aluno) => aluno.unitId == _unitFilter);
+                  }
+
                   processedAlunos.sort((a, b) {
                     switch (_sortOption) {
                       case 'faixa':
@@ -811,6 +1091,7 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
   String _searchQuery = '';
 
   String? _beltFilter;
+  String? _unitFilter; // NOVO FILTRO
   String _sortOption = 'nome';
   final List<String> _beltOptions = [
     'Branca',
@@ -846,6 +1127,41 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _showUnitFilterDialog() async {
+    final unitsSnapshot = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('units')
+        .orderBy('name')
+        .get();
+    final units = unitsSnapshot.docs;
+
+    final selectedUnitId = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Filtrar por Unidade'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: units.length,
+            itemBuilder: (context, index) {
+              final unit = units[index];
+              return ListTile(
+                title: Text(unit['name']),
+                onTap: () => Navigator.of(context).pop(unit.id),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+
+    if (selectedUnitId != null) {
+      setState(() => _unitFilter = selectedUnitId);
+    }
   }
 
   Future<void> _showBeltFilterDialog() async {
@@ -888,15 +1204,22 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
   Widget _buildFilterSortMenu() {
     return PopupMenuButton<String>(
       icon: Icon(Icons.filter_list,
-          color: _beltFilter != null ? primaryAccent : null),
+          color: _beltFilter != null || _unitFilter != null
+              ? primaryAccent
+              : null),
       tooltip: 'Filtrar e Ordenar',
       onSelected: (value) {
         if (value.startsWith('sort_')) {
           setState(() => _sortOption = value.substring(5));
         } else if (value == 'filter_belt') {
           _showBeltFilterDialog();
+        } else if (value == 'filter_unit') {
+          _showUnitFilterDialog();
         } else if (value == 'clear_filter') {
-          setState(() => _beltFilter = null);
+          setState(() {
+            _beltFilter = null;
+            _unitFilter = null;
+          });
         }
       },
       itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
@@ -909,16 +1232,20 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
           child: Text('Ordenar por: Faixa'),
         ),
         const PopupMenuDivider(),
+        const PopupMenuItem<String>(
+          value: 'filter_unit',
+          child: Text('Filtrar por Unidade...'),
+        ),
         PopupMenuItem<String>(
           value: 'filter_belt',
           child: Text(_beltFilter == null
               ? 'Filtrar por Faixa...'
               : 'Filtrar: $_beltFilter'),
         ),
-        if (_beltFilter != null)
+        if (_beltFilter != null || _unitFilter != null)
           const PopupMenuItem<String>(
             value: 'clear_filter',
-            child: Text('Limpar Filtro'),
+            child: Text('Limpar Filtros'),
           ),
       ],
     );
@@ -991,6 +1318,11 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
               if (_beltFilter != null) {
                 processedProfessores
                     .retainWhere((prof) => prof.faixa == _beltFilter);
+              }
+
+              if (_unitFilter != null) {
+                processedProfessores
+                    .retainWhere((prof) => prof.unitId == _unitFilter);
               }
 
               processedProfessores.sort((a, b) {
@@ -1231,6 +1563,11 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
       dNascC = TextEditingController();
   String? fS;
   int? gS;
+  String? selectedUnitId;
+  String? selectedUnitName;
+  List<DocumentSnapshot> units = [];
+  bool isLoadingUnits = true;
+
   final List<String> faixasList = [
     'Branca',
     'Cinza/Branca',
@@ -1258,16 +1595,41 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
   @override
   void initState() {
     super.initState();
+    _fetchUnits();
     if (isEditing) {
       final aluno = widget.alunoParaEditar!;
       nC.text = aluno.nome;
       pC.text = aluno.peso.toString();
       fS = aluno.faixa;
       gS = aluno.graus;
+      selectedUnitId = aluno.unitId;
+      selectedUnitName = aluno.unitName;
       if (aluno.dataNascimento != null) {
         dNascC.text = DateFormat('dd/MM/yyyy').format(aluno.dataNascimento!);
       }
       grausList = _getGrausForFaixa(fS);
+    }
+  }
+
+  Future<void> _fetchUnits() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.currentUser.academyId)
+          .collection('units')
+          .orderBy('name')
+          .get();
+      if (mounted) {
+        setState(() {
+          units = snapshot.docs;
+          isLoadingUnits = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => isLoadingUnits = false);
+        showBjjSnackBar(context, 'Erro ao carregar unidades.', type: 'error');
+      }
     }
   }
 
@@ -1371,6 +1733,33 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                   validator: (v) =>
                       (v == null || v.trim().isEmpty) ? 'Nome inválido' : null),
               const SizedBox(height: 16),
+              if (isLoadingUnits)
+                const Center(child: CircularProgressIndicator())
+              else
+                DropdownButtonFormField<String>(
+                  value: selectedUnitId,
+                  decoration: const InputDecoration(
+                    labelText: 'Unidade (Matriz/Filial)',
+                    prefixIcon: Icon(Icons.store_mall_directory_outlined),
+                  ),
+                  isExpanded: true,
+                  hint: const Text("Selecione a Unidade"),
+                  items: units.map((unit) {
+                    return DropdownMenuItem<String>(
+                      value: unit.id,
+                      child: Text(unit['name']),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedUnitId = value;
+                      selectedUnitName =
+                          units.firstWhere((u) => u.id == value)['name'];
+                    });
+                  },
+                  validator: (v) => v == null ? 'Selecione uma unidade' : null,
+                ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: dNascC,
                 decoration: const InputDecoration(
@@ -1461,11 +1850,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                   label: const Text("Criar Acesso de Login",
                       style: TextStyle(color: infoColor)),
                   onPressed: () async {
-                    // --- CORREÇÃO APLICADA AQUI ---
                     final currentContext = context;
-                    // Primeiro, fecha o diálogo de edição
                     Navigator.of(currentContext).pop();
-                    // Depois, inicia o fluxo de criação de acesso
                     _showCreateAccessDialog(
                         currentContext,
                         widget.alunoParaEditar!,
@@ -1474,70 +1860,83 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                   },
                 )
               ],
-              if (isEditing &&
-                  widget.alunoParaEditar?.userId != null &&
-                  widget.currentUser.role == UserRole.manager) ...[
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.school_rounded, color: primaryAccent),
-                  label: const Text("Promover para Professor",
-                      style: TextStyle(color: primaryAccent)),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Confirmar Promoção'),
-                        content: Text(
-                            'Você tem certeza que deseja promover ${widget.alunoParaEditar!.nome} para Professor?'),
-                        actions: [
-                          TextButton(
-                            child: const Text('Cancelar'),
-                            onPressed: () => Navigator.of(ctx).pop(),
-                          ),
-                          ElevatedButton(
-                            child: const Text('Promover'),
-                            onPressed: () {
-                              Navigator.of(ctx).pop();
-                              UserManagementService.promoteToTeacher(
-                                context,
-                                academyId: widget.academyId!,
-                                aluno: widget.alunoParaEditar!,
-                                manager: widget.currentUser,
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                )
-              ],
               if (isEditing) ...[
                 const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.military_tech_rounded,
-                      color: successColor),
-                  label: const Text("Graduar",
-                      style: TextStyle(color: successColor)),
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Close current dialog
-                    showDialog(
-                      context: context,
-                      builder: (_) => GraduationDialog(
-                        academyId: widget.academyId!,
-                        user: widget.alunoParaEditar!,
-                        currentUser: widget.currentUser,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (widget.alunoParaEditar?.userId != null &&
+                        widget.currentUser.role == UserRole.manager)
+                      Expanded(
+                        child: TextButton.icon(
+                          icon: const Icon(Icons.school_rounded, size: 18),
+                          label: const Text("Promover"),
+                          style: TextButton.styleFrom(
+                              foregroundColor: primaryAccent,
+                              textStyle: const TextStyle(
+                                  fontSize: 14)), // Reduzindo a fonte
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            showDialog(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Confirmar Promoção'),
+                                content: Text(
+                                    'Você tem certeza que deseja promover ${widget.alunoParaEditar!.nome} para Professor?'),
+                                actions: [
+                                  TextButton(
+                                    child: const Text('Cancelar'),
+                                    onPressed: () => Navigator.of(ctx).pop(),
+                                  ),
+                                  ElevatedButton(
+                                    child: const Text('Promover'),
+                                    onPressed: () {
+                                      Navigator.of(ctx).pop();
+                                      UserManagementService.promoteToTeacher(
+                                        context,
+                                        academyId: widget.academyId!,
+                                        aluno: widget.alunoParaEditar!,
+                                        manager: widget.currentUser,
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                       ),
-                    );
-                  },
+                    if (widget.alunoParaEditar?.userId != null &&
+                        widget.currentUser.role == UserRole.manager)
+                      const SizedBox(width: 8),
+                    Expanded(
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.military_tech_rounded, size: 18),
+                        label: const Text("Graduar"),
+                        style: TextButton.styleFrom(
+                            foregroundColor: successColor,
+                            textStyle: const TextStyle(
+                                fontSize: 14)), // Reduzindo a fonte
+                        onPressed: () {
+                          Navigator.of(context).pop(); // Close current dialog
+                          showDialog(
+                            context: context,
+                            builder: (_) => GraduationDialog(
+                              academyId: widget.academyId!,
+                              user: widget.alunoParaEditar!,
+                              currentUser: widget.currentUser,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ],
-              const SizedBox(height: 24), // Espaço antes dos botões
+              const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // *** ALTERAÇÃO PRINCIPAL AQUI ***
                   if (isEditing && widget.currentUser.role == UserRole.manager)
                     TextButton.icon(
                       icon: const Icon(Icons.delete_outline_rounded,
@@ -1548,7 +1947,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                           _confirmDeleteAluno(widget.alunoParaEditar!),
                     )
                   else
-                    const SizedBox(), // Placeholder para manter o alinhamento
+                    const SizedBox(),
                   ElevatedButton.icon(
                       icon: const Icon(Icons.save_outlined, size: 18),
                       label: Text(isEditing ? 'Salvar' : 'Adicionar'),
@@ -1579,6 +1978,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                               userId: isEditing
                                   ? widget.alunoParaEditar!.userId
                                   : null,
+                              unitId: selectedUnitId,
+                              unitName: selectedUnitName,
                               createdByUid: isEditing
                                   ? widget.alunoParaEditar!.createdByUid
                                   : widget.currentUser.uid,
@@ -1622,6 +2023,10 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
   late final TextEditingController _pesoController;
   String? _faixa;
   int? _graus;
+  String? selectedUnitId;
+  String? selectedUnitName;
+  List<DocumentSnapshot> units = [];
+  bool isLoadingUnits = true;
   bool _isLoading = false;
 
   final List<String> _faixasList = [
@@ -1648,13 +2053,38 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
   @override
   void initState() {
     super.initState();
+    _fetchUnits();
     _nameController = TextEditingController(text: widget.professor.name);
     _pesoController =
         TextEditingController(text: widget.professor.peso?.toString() ?? '');
     _faixa = widget.professor.faixa;
     _graus = widget.professor.graus;
+    selectedUnitId = widget.professor.unitId;
+    selectedUnitName = widget.professor.unitName;
     if (_faixa != null) {
       _grausList = _getGrausForFaixa(_faixa);
+    }
+  }
+
+  Future<void> _fetchUnits() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('units')
+          .orderBy('name')
+          .get();
+      if (mounted) {
+        setState(() {
+          units = snapshot.docs;
+          isLoadingUnits = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => isLoadingUnits = false);
+        showBjjSnackBar(context, 'Erro ao carregar unidades.', type: 'error');
+      }
     }
   }
 
@@ -1728,6 +2158,8 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
       'faixa': _faixa,
       'graus': _graus,
       'peso': pesoStr.isNotEmpty ? double.tryParse(pesoStr) : null,
+      'unitId': selectedUnitId,
+      'unitName': selectedUnitName,
       'lastUpdatedByUid': widget.manager.uid,
       'lastUpdatedByName': widget.manager.name,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -1785,6 +2217,33 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Nome inválido' : null,
               ),
+              const SizedBox(height: 16),
+              if (isLoadingUnits)
+                const Center(child: CircularProgressIndicator())
+              else
+                DropdownButtonFormField<String>(
+                  value: selectedUnitId,
+                  decoration: const InputDecoration(
+                    labelText: 'Unidade (Matriz/Filial)',
+                    prefixIcon: Icon(Icons.store_mall_directory_outlined),
+                  ),
+                  isExpanded: true,
+                  hint: const Text("Selecione a Unidade"),
+                  items: units.map((unit) {
+                    return DropdownMenuItem<String>(
+                      value: unit.id,
+                      child: Text(unit['name']),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedUnitId = value;
+                      selectedUnitName =
+                          units.firstWhere((u) => u.id == value)['name'];
+                    });
+                  },
+                  validator: (v) => v == null ? 'Selecione uma unidade' : null,
+                ),
               if (!isSelf) ...[
                 const SizedBox(height: 16),
                 DropdownButtonFormField<String>(
@@ -1848,58 +2307,71 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
               ],
               if (!isSelf) ...[
                 const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.person_remove_outlined,
-                      color: warningColor),
-                  label: const Text("Reverter para Aluno",
-                      style: TextStyle(color: warningColor)),
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Close edit dialog
-                    showDialog(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Confirmar Reversão'),
-                        content: Text(
-                            'Tem certeza que deseja reverter ${widget.professor.name} para a função de Aluno?'),
-                        actions: [
-                          TextButton(
-                            child: const Text('Cancelar'),
-                            onPressed: () => Navigator.of(ctx).pop(),
-                          ),
-                          ElevatedButton(
-                            child: const Text('Confirmar'),
-                            onPressed: () {
-                              Navigator.of(ctx).pop(); // Close confirmation
-                              UserManagementService.demoteToStudent(
-                                context,
-                                academyId: widget.academyId,
-                                teacher: widget.professor,
-                                manager: widget.manager,
-                              );
-                            },
-                          ),
-                        ],
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: TextButton.icon(
+                        icon:
+                            const Icon(Icons.person_remove_outlined, size: 18),
+                        label: const Text("Reverter"),
+                        style: TextButton.styleFrom(
+                            foregroundColor: warningColor,
+                            textStyle: const TextStyle(fontSize: 14)),
+                        onPressed: () {
+                          Navigator.of(context).pop(); // Close edit dialog
+                          showDialog(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Confirmar Reversão'),
+                              content: Text(
+                                  'Tem certeza que deseja reverter ${widget.professor.name} para a função de Aluno?'),
+                              actions: [
+                                TextButton(
+                                  child: const Text('Cancelar'),
+                                  onPressed: () => Navigator.of(ctx).pop(),
+                                ),
+                                ElevatedButton(
+                                  child: const Text('Confirmar'),
+                                  onPressed: () {
+                                    Navigator.of(ctx)
+                                        .pop(); // Close confirmation
+                                    UserManagementService.demoteToStudent(
+                                      context,
+                                      academyId: widget.academyId,
+                                      teacher: widget.professor,
+                                      manager: widget.manager,
+                                    );
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.military_tech_rounded,
-                      color: successColor),
-                  label: const Text("Graduar",
-                      style: TextStyle(color: successColor)),
-                  onPressed: () {
-                    Navigator.of(context).pop(); // Close current dialog
-                    showDialog(
-                      context: context,
-                      builder: (_) => GraduationDialog(
-                        academyId: widget.academyId,
-                        user: widget.professor,
-                        currentUser: widget.manager,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: TextButton.icon(
+                        icon: const Icon(Icons.military_tech_rounded, size: 18),
+                        label: const Text("Graduar"),
+                        style: TextButton.styleFrom(
+                            foregroundColor: successColor,
+                            textStyle: const TextStyle(fontSize: 14)),
+                        onPressed: () {
+                          Navigator.of(context).pop(); // Close current dialog
+                          showDialog(
+                            context: context,
+                            builder: (_) => GraduationDialog(
+                              academyId: widget.academyId,
+                              user: widget.professor,
+                              currentUser: widget.manager,
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 ),
               ],
               const SizedBox(height: 24), // Espaço antes dos botões
@@ -1964,6 +2436,10 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
   bool _isLoading = false;
   String? _faixa;
   int? _graus;
+  String? selectedUnitId;
+  String? selectedUnitName;
+  List<DocumentSnapshot> units = [];
+  bool isLoadingUnits = true;
   final List<String> _faixasList = [
     'Branca',
     'Cinza/Branca',
@@ -1984,6 +2460,34 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
     'Preta'
   ];
   List<int> _grausList = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUnits();
+  }
+
+  Future<void> _fetchUnits() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('units')
+          .orderBy('name')
+          .get();
+      if (mounted) {
+        setState(() {
+          units = snapshot.docs;
+          isLoadingUnits = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => isLoadingUnits = false);
+        showBjjSnackBar(context, 'Erro ao carregar unidades.', type: 'error');
+      }
+    }
+  }
 
   List<int> _getGrausForFaixa(String? faixa) {
     if (faixa == 'Preta') return List.generate(10, (i) => i + 1);
@@ -2029,6 +2533,8 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
         'faixa': _faixa,
         'graus': _graus,
         'peso': null,
+        'unitId': selectedUnitId,
+        'unitName': selectedUnitName,
         'mustChangePassword': true,
         'isActive': true,
         'createdAt': FieldValue.serverTimestamp(),
@@ -2108,6 +2614,33 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                 validator: (v) =>
                     (v == null || !v.contains('@')) ? 'E-mail inválido' : null,
               ),
+              const SizedBox(height: 16),
+              if (isLoadingUnits)
+                const Center(child: CircularProgressIndicator())
+              else
+                DropdownButtonFormField<String>(
+                  value: selectedUnitId,
+                  decoration: const InputDecoration(
+                    labelText: 'Unidade (Matriz/Filial)',
+                    prefixIcon: Icon(Icons.store_mall_directory_outlined),
+                  ),
+                  isExpanded: true,
+                  hint: const Text("Selecione a Unidade"),
+                  items: units.map((unit) {
+                    return DropdownMenuItem<String>(
+                      value: unit.id,
+                      child: Text(unit['name']),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      selectedUnitId = value;
+                      selectedUnitName =
+                          units.firstWhere((u) => u.id == value)['name'];
+                    });
+                  },
+                  validator: (v) => v == null ? 'Selecione uma unidade' : null,
+                ),
               const SizedBox(height: 16),
               DropdownButtonFormField<String>(
                 isExpanded: true,
