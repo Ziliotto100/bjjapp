@@ -12,6 +12,8 @@ import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
 import 'auth_gate.dart';
+// ADICIONADO PARA ACESSAR AS PÁGINAS DE DETALHES
+import 'manager_module.dart';
 
 // --- TELA CONTAINER DO SUPER ADMIN COM NAVEGAÇÃO ---
 class SuperAdminPage extends StatefulWidget {
@@ -565,6 +567,48 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
     );
   }
 
+  // NOVA FUNÇÃO para abrir o diálogo de edição de usuário
+  void _showEditUserDialog(BuildContext context, dynamic user) {
+    showDialog(
+      context: context,
+      builder: (_) => _EditUserDialog(user: user),
+    );
+  }
+
+  // **INÍCIO DA NOVA FUNÇÃO**
+  void _navigateToDetailPage(BuildContext context, dynamic user) {
+    // Cria um UserModel 'fake' para o Super Admin, pois as telas de detalhes
+    // esperam um 'currentUser' para checar permissões, mesmo que não seja usado aqui.
+    final superAdminUser = UserModel(
+      uid: FirebaseAuth.instance.currentUser!.uid,
+      name: 'Super Admin',
+      email: '',
+      academyId: '', // Não é relevante aqui
+      role: UserRole.manager, // Dando permissão máxima
+      mustChangePassword: false,
+      isActive: true,
+    );
+
+    if (user is Aluno) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => StudentDetailPage(
+          academyId: widget.academyDoc.id,
+          student: user,
+          currentUser: superAdminUser,
+        ),
+      ));
+    } else if (user is UserModel) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ProfessorDetailPage(
+          academyId: widget.academyDoc.id,
+          professor: user,
+          currentUser: superAdminUser,
+        ),
+      ));
+    }
+  }
+  // **FIM DA NOVA FUNÇÃO**
+
   @override
   Widget build(BuildContext context) {
     final academyName =
@@ -679,17 +723,152 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
                       : null,
                 ),
                 title: Text(name),
+                // **MUDANÇA AQUI**
+                onTap: () => _navigateToDetailPage(context, user),
                 trailing: (uid.isNotEmpty)
-                    ? IconButton(
-                        icon: const Icon(Icons.theater_comedy_outlined,
-                            color: warningColor),
-                        tooltip: 'Entrar como $name',
-                        onPressed: () => _startImpersonation(uid),
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined,
+                                color: primaryAccent),
+                            tooltip: 'Editar E-mail do Usuário',
+                            onPressed: () => _showEditUserDialog(context, user),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.theater_comedy_outlined,
+                                color: warningColor),
+                            tooltip: 'Entrar como $name',
+                            onPressed: () => _startImpersonation(uid),
+                          ),
+                        ],
                       )
                     : null,
               ),
             );
           },
+        ),
+      ],
+    );
+  }
+}
+
+// NOVO WIDGET: Diálogo para editar o e-mail do usuário
+class _EditUserDialog extends StatefulWidget {
+  final dynamic user; // Pode ser Aluno ou UserModel
+
+  const _EditUserDialog({required this.user});
+
+  @override
+  State<_EditUserDialog> createState() => _EditUserDialogState();
+}
+
+class _EditUserDialogState extends State<_EditUserDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  bool _isLoading = true;
+  String _userName = '';
+  String _targetUid = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    String? currentEmail;
+    if (widget.user is Aluno) {
+      final aluno = widget.user as Aluno;
+      _userName = aluno.nome;
+      if (aluno.userId != null) {
+        _targetUid = aluno.userId!;
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_targetUid)
+            .get();
+        if (userDoc.exists) {
+          currentEmail = userDoc.data()?['email'];
+        }
+      }
+    } else if (widget.user is UserModel) {
+      final userModel = widget.user as UserModel;
+      _userName = userModel.name;
+      _targetUid = userModel.uid;
+      currentEmail = userModel.email;
+    }
+
+    if (mounted) {
+      setState(() {
+        _emailController.text = currentEmail ?? '';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _saveEmail() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_targetUid.isEmpty) {
+      showBjjSnackBar(context, 'Este usuário não possui um login para editar.',
+          type: 'error');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    final newEmail = _emailController.text.trim();
+
+    try {
+      // Cria um pedido na coleção 'emailChangeRequests'
+      await FirebaseFirestore.instance
+          .collection('emailChangeRequests')
+          .add({'targetUid': _targetUid, 'newEmail': newEmail});
+
+      Navigator.of(context).pop();
+      showBjjSnackBar(context,
+          'Solicitação de alteração de e-mail enviada com sucesso! A alteração pode levar um minuto.',
+          type: 'success');
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao solicitar alteração: $e',
+            type: 'error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Editar E-mail de $_userName'),
+      content: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Form(
+              key: _formKey,
+              child: TextFormField(
+                controller: _emailController,
+                autofocus: true,
+                decoration: const InputDecoration(labelText: 'Novo E-mail'),
+                keyboardType: TextInputType.emailAddress,
+                validator: (v) =>
+                    (v == null || !v.contains('@')) ? 'E-mail inválido' : null,
+              ),
+            ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _saveEmail,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Salvar'),
         ),
       ],
     );

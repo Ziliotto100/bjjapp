@@ -1,7 +1,7 @@
 // lib/dev_quick_login.dart
 // ignore_for_file: use_build_context_synchronously
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; // <<< A CORREÇÃO ESTÁ AQUI
 import 'package:firebase_auth/firebase_auth.dart';
 import 'app_theme.dart';
 import 'auth_gate.dart';
@@ -55,10 +55,21 @@ class _DevQuickLoginPageState extends State<DevQuickLoginPage> {
       if (FirebaseAuth.instance.currentUser != null) {
         await FirebaseAuth.instance.signOut();
       }
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
+
+      UserCredential userCredential =
+          await FirebaseAuth.instance.signInWithEmailAndPassword(
         email: account['email']!,
         password: account['password']!,
       );
+
+      // Se o login for bem-sucedido, navega para a AuthGate para o redirecionamento correto.
+      if (userCredential.user != null && mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => const AuthGate()),
+        );
+        // Não precisamos mais setar _isLoading como false aqui, pois a tela será substituída.
+        return;
+      }
     } on FirebaseAuthException catch (e) {
       String message = 'Erro ao fazer login como $role.';
       if (e.code == 'user-not-found' ||
