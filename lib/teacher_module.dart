@@ -897,7 +897,8 @@ class TeacherDashboardPage extends StatelessWidget {
   }
 }
 
-class CheckinTeacherPage extends StatelessWidget {
+// SOLUÇÃO: CONVERTER PARA STATEFUL WIDGET E CARREGAR DADOS
+class CheckinTeacherPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
   final UserModel user;
@@ -910,6 +911,44 @@ class CheckinTeacherPage extends StatelessWidget {
   });
 
   @override
+  State<CheckinTeacherPage> createState() => _CheckinTeacherPageState();
+}
+
+class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
+  // SOLUÇÃO: ESTADO PARA ARMAZENAR AS UNIDADES E O LOADING
+  List<DocumentSnapshot> _units = [];
+  bool _isLoadingUnits = true;
+
+  @override
+  void initState() {
+    super.initState();
+    // SOLUÇÃO: BUSCAR AS UNIDADES AO INICIAR A TELA
+    _fetchUnits();
+  }
+
+  Future<void> _fetchUnits() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('units')
+          .orderBy('name')
+          .get();
+      if (mounted) {
+        setState(() {
+          _units = snapshot.docs;
+          _isLoadingUnits = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingUnits = false);
+        showBjjSnackBar(context, 'Erro ao carregar unidades.', type: 'error');
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(8.0),
@@ -919,26 +958,37 @@ class CheckinTeacherPage extends StatelessWidget {
             leading:
                 const Icon(Icons.checklist_rtl_rounded, color: successColor),
             title: const Text("Fazer Chamada (Presencial)"),
-            trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-            onTap: () async {
-              final checkedInCount = await Navigator.of(context).push<int>(
-                MaterialPageRoute(
-                  builder: (_) => BulkCheckinPage(
-                    academyId: academyId,
-                    todosParticipantesDaAcademia: todosParticipantesDaAcademia,
-                    user: user,
-                  ),
-                ),
-              );
+            trailing: _isLoadingUnits
+                ? SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            onTap: _isLoadingUnits
+                ? null // SOLUÇÃO: DESABILITA O BOTÃO ENQUANTO CARREGA
+                : () async {
+                    // SOLUÇÃO: NAVEGA PASSANDO AS UNIDADES JÁ CARREGADAS
+                    final checkedInCount =
+                        await Navigator.of(context).push<int>(
+                      MaterialPageRoute(
+                        builder: (_) => BulkCheckinPage(
+                          academyId: widget.academyId,
+                          todosParticipantesDaAcademia:
+                              widget.todosParticipantesDaAcademia,
+                          user: widget.user,
+                          units: _units, // << PASSA AS UNIDADES
+                        ),
+                      ),
+                    );
 
-              if (checkedInCount != null &&
-                  checkedInCount > 0 &&
-                  context.mounted) {
-                showBjjSnackBar(
-                    context, '$checkedInCount presenças confirmadas!',
-                    type: 'success');
-              }
-            },
+                    if (checkedInCount != null &&
+                        checkedInCount > 0 &&
+                        context.mounted) {
+                      showBjjSnackBar(
+                          context, '$checkedInCount presenças confirmadas!',
+                          type: 'success');
+                    }
+                  },
           ),
         ),
         Card(
@@ -950,7 +1000,8 @@ class CheckinTeacherPage extends StatelessWidget {
             trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
             onTap: () {
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => ApproveCheckinsPage(academyId: academyId),
+                builder: (_) =>
+                    ApproveCheckinsPage(academyId: widget.academyId),
               ));
             },
           ),
@@ -965,9 +1016,10 @@ class CheckinTeacherPage extends StatelessWidget {
               final checkedInCount = await Navigator.of(context).push<int>(
                 MaterialPageRoute(
                   builder: (_) => RetroactiveCheckinPage(
-                    academyId: academyId,
-                    todosParticipantesDaAcademia: todosParticipantesDaAcademia,
-                    user: user,
+                    academyId: widget.academyId,
+                    todosParticipantesDaAcademia:
+                        widget.todosParticipantesDaAcademia,
+                    user: widget.user,
                   ),
                 ),
               );
@@ -994,8 +1046,8 @@ class CheckinTeacherPage extends StatelessWidget {
             onTap: () {
               Navigator.of(context).push(MaterialPageRoute(
                 builder: (_) => CheckinHistoryPage(
-                  academyId: academyId,
-                  allParticipants: todosParticipantesDaAcademia,
+                  academyId: widget.academyId,
+                  allParticipants: widget.todosParticipantesDaAcademia,
                 ),
               ));
             },
@@ -1007,14 +1059,15 @@ class CheckinTeacherPage extends StatelessWidget {
             title: const Text("Ranking de Presença"),
             trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
             onTap: () {
-              if (todosParticipantesDaAcademia.isEmpty) {
+              if (widget.todosParticipantesDaAcademia.isEmpty) {
                 showBjjSnackBar(context, 'Cadastre participantes primeiro.',
                     type: 'info');
                 return;
               }
               Navigator.of(context).push(
                 MaterialPageRoute(
-                  builder: (_) => RankingTeacherPage(academyId: academyId),
+                  builder: (_) =>
+                      RankingTeacherPage(academyId: widget.academyId),
                 ),
               );
             },
@@ -1360,16 +1413,19 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
   }
 }
 
+// SOLUÇÃO: RECEBE A LISTA DE UNIDADES NO CONSTRUTOR
 class BulkCheckinPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
   final UserModel user;
+  final List<DocumentSnapshot> units; // << NOVO PARÂMETRO
 
   const BulkCheckinPage({
     super.key,
     required this.academyId,
     required this.todosParticipantesDaAcademia,
     required this.user,
+    required this.units, // << NOVO PARÂMETRO
   });
 
   @override
@@ -1381,24 +1437,19 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
   bool _isLoading = false;
   final _searchController = TextEditingController();
   List<Aluno> _filteredParticipants = [];
-  // --- NOVOS ESTADOS PARA O FILTRO DE UNIDADE ---
-  List<DocumentSnapshot> _units = [];
   String? _selectedUnitId;
-  bool _isLoadingUnits = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchUnits().then((_) {
-      final lastUnitId = widget.user.lastSelectedUnitId;
-      if (lastUnitId != null && _units.any((u) => u.id == lastUnitId)) {
-        _selectedUnitId = lastUnitId;
-      } else {
-        _selectedUnitId = widget.user.unitId ?? 'all';
-      }
-      _filterParticipants();
-      setState(() {});
-    });
+    // SOLUÇÃO: NÃO BUSCA MAIS AS UNIDADES AQUI
+    final lastUnitId = widget.user.lastSelectedUnitId;
+    if (lastUnitId != null && widget.units.any((u) => u.id == lastUnitId)) {
+      _selectedUnitId = lastUnitId;
+    } else {
+      _selectedUnitId = widget.user.unitId ?? 'all';
+    }
+    _filterParticipants();
     _searchController.addListener(_filterParticipants);
   }
 
@@ -1407,28 +1458,6 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
     _searchController.removeListener(_filterParticipants);
     _searchController.dispose();
     super.dispose();
-  }
-
-  Future<void> _fetchUnits() async {
-    setState(() => _isLoadingUnits = true);
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('academies')
-          .doc(widget.academyId)
-          .collection('units')
-          .orderBy('name')
-          .get();
-      if (mounted) {
-        setState(() {
-          _units = snapshot.docs;
-          _isLoadingUnits = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoadingUnits = false);
-      }
-    }
   }
 
   Future<void> _saveLastSelectedUnit(String? unitId) async {
@@ -1540,38 +1569,36 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
         child: SafeArea(
           child: Column(
             children: [
-              // --- FILTRO DE UNIDADE E PESQUISA ---
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    if (_isLoadingUnits)
-                      const LinearProgressIndicator()
-                    else
-                      DropdownButtonFormField<String>(
-                        value: _selectedUnitId,
-                        items: [
-                          const DropdownMenuItem(
-                            value: 'all',
-                            child: Text("Todas as Unidades"),
-                          ),
-                          ..._units.map((unit) {
-                            return DropdownMenuItem(
-                              value: unit.id,
-                              child: Text(unit['name']),
-                            );
-                          }),
-                        ],
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedUnitId = value;
-                            _filterParticipants();
-                          });
-                          _saveLastSelectedUnit(value);
-                        },
-                        decoration:
-                            const InputDecoration(labelText: 'Filtrar Unidade'),
-                      ),
+                    // SOLUÇÃO: REMOVIDO O INDICADOR DE PROGRESSO DAQUI
+                    DropdownButtonFormField<String>(
+                      value: _selectedUnitId,
+                      items: [
+                        const DropdownMenuItem(
+                          value: 'all',
+                          child: Text("Todas as Unidades"),
+                        ),
+                        // SOLUÇÃO: USA A LISTA DE UNIDADES RECEBIDA
+                        ...widget.units.map((unit) {
+                          return DropdownMenuItem(
+                            value: unit.id,
+                            child: Text(unit['name']),
+                          );
+                        }),
+                      ],
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedUnitId = value;
+                          _filterParticipants();
+                        });
+                        _saveLastSelectedUnit(value);
+                      },
+                      decoration:
+                          const InputDecoration(labelText: 'Filtrar Unidade'),
+                    ),
                     const SizedBox(height: 12),
                     TextField(
                       controller: _searchController,

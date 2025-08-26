@@ -181,13 +181,21 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 return TabBarView(
                   controller: _tabController,
                   children: _categories.map((category) {
-                    final filteredProducts = category == 'Todos'
-                        ? searchedProducts
-                        : searchedProducts
-                            .where((p) =>
-                                p.category.toLowerCase() ==
-                                category.toLowerCase())
-                            .toList();
+                    // LÓGICA DE FILTRAGEM ALTERADA AQUI
+                    final List<Product> filteredProducts;
+                    if (category == 'Todos') {
+                      // Se for a aba 'Todos', remove os produtos que já estão em destaque
+                      filteredProducts =
+                          searchedProducts.where((p) => !p.isFeatured).toList();
+                    } else {
+                      // Para outras abas, mantém o comportamento normal
+                      filteredProducts = searchedProducts
+                          .where((p) =>
+                              p.category.toLowerCase() ==
+                              category.toLowerCase())
+                          .toList();
+                    }
+                    // FIM DA ALTERAÇÃO
 
                     if (filteredProducts.isEmpty) {
                       return EmptyStateWidget(

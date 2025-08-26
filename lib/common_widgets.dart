@@ -127,8 +127,7 @@ class EmptyStateWidget extends StatelessWidget {
 /// Retorna o caminho do asset da imagem da faixa com base no nome da faixa.
 String getBeltImagePath(String? beltName) {
   if (beltName == null || beltName.isEmpty) {
-    // CAMINHO CORRIGIDO SEM 'assets/'
-    return 'images/faixas/branca.png';
+    return 'assets/images/faixas/branca.png';
   }
 
   const Map<String, String> beltToFileMap = {
@@ -154,12 +153,10 @@ String getBeltImagePath(String? beltName) {
   final fileName = beltToFileMap[beltName];
 
   if (fileName != null) {
-    // CAMINHO CORRIGIDO SEM 'assets/'
-    return 'images/faixas/$fileName.png';
+    return 'assets/images/faixas/$fileName.png';
   }
 
-  // CAMINHO CORRIGIDO SEM 'assets/'
-  return 'images/faixas/branca.png';
+  return 'assets/images/faixas/branca.png';
 }
 
 /// Cabeçalho de perfil reutilizável.
