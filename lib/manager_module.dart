@@ -18,6 +18,35 @@ import 'app_drawer.dart';
 import 'user_card_widget.dart';
 import 'graduation_timeline_page.dart';
 
+// --- FUNÇÃO DE LOG DE AUDITORIA ---
+/// Função auxiliar para criar uma entrada no log de auditoria.
+Future<void> _createAuditLog({
+  required String academyId,
+  required UserModel actor,
+  required String actionType,
+  required String description,
+  String? targetUid,
+  String? targetName,
+}) async {
+  try {
+    await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(academyId)
+        .collection('audit_log')
+        .add({
+      'actorUid': actor.uid,
+      'actorName': actor.name,
+      'actionType': actionType,
+      'description': description,
+      'timestamp': FieldValue.serverTimestamp(),
+      'targetUid': targetUid,
+      'targetName': targetName,
+    });
+  } catch (e) {
+    debugPrint("Erro ao criar log de auditoria: $e");
+  }
+}
+
 // --- FUNÇÃO AUXILIAR PARA ORDENAÇÃO DE FAIXAS ---
 int _getBeltIndex(String faixa) {
   const List<String> ordemFaixas = [
@@ -41,7 +70,7 @@ int _getBeltIndex(String faixa) {
   ];
   final index =
       ordemFaixas.indexWhere((f) => f.toLowerCase() == faixa.toLowerCase());
-  return index == -1 ? 99 : index; // Retorna um número alto se não encontrar
+  return index == -1 ? 99 : index;
 }
 
 // --- LÓGICA DE GERENCIAMENTO DE USUÁRIOS ---
@@ -86,6 +115,17 @@ class UserManagementService {
 
     try {
       await batch.commit();
+
+      await _createAuditLog(
+        academyId: academyId,
+        actor: manager,
+        actionType: 'PROMOTE_USER',
+        description:
+            '${manager.name} promoveu o aluno ${aluno.nome} para professor.',
+        targetUid: aluno.userId,
+        targetName: aluno.nome,
+      );
+
       showBjjSnackBar(context, '${aluno.nome} foi promovido a professor!',
           type: 'success');
     } catch (e) {
@@ -135,6 +175,17 @@ class UserManagementService {
 
     try {
       await batch.commit();
+
+      await _createAuditLog(
+        academyId: academyId,
+        actor: manager,
+        actionType: 'DEMOTE_USER',
+        description:
+            '${manager.name} reverteu o professor ${teacher.name} para aluno.',
+        targetUid: teacher.uid,
+        targetName: teacher.name,
+      );
+
       showBjjSnackBar(context, '${teacher.name} agora é um aluno!',
           type: 'success');
     } catch (e) {
@@ -426,6 +477,15 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
                         .collection('graduation_history')
                         .add(historyEntry.toMap());
 
+                    await _createAuditLog(
+                      academyId: widget.user.academyId,
+                      actor: widget.user,
+                      actionType: 'CREATE_STUDENT',
+                      description:
+                          '${widget.user.name} adicionou o aluno ${novoAluno.nome}.',
+                      targetName: novoAluno.nome,
+                    );
+
                     if (mounted) {
                       showBjjSnackBar(
                           context, '${novoAluno.nome} adicionado com sucesso!',
@@ -493,6 +553,53 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       );
     }
     return null;
+  }
+}
+
+// --- **INÍCIO DA CORREÇÃO** ---
+// A função foi tornada pública (removido o `_`)
+void showCreateAccessDialog(BuildContext context, Aluno aluno, String academyId,
+    UserModel manager) async {
+  final result = await showDialog<Map<String, dynamic>?>(
+    context: context,
+    builder: (_) => CreateStudentAccessDialog(
+      academyId: academyId,
+      aluno: aluno,
+      manager: manager,
+    ),
+  );
+
+  if (result?['success'] == true && context.mounted) {
+    final email = result!['email'];
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Acesso Criado!"),
+        content: RichText(
+          text: TextSpan(
+            style: Theme.of(context).textTheme.bodyLarge,
+            children: <TextSpan>[
+              TextSpan(
+                  text:
+                      'A conta para ${aluno.nome} foi criada com sucesso!\n\n'),
+              const TextSpan(
+                text: 'A senha padrão é mudar123\n\n',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              TextSpan(text: 'E-mail de acesso: $email\n\n'),
+              const TextSpan(
+                  text:
+                      'O aluno deverá usar esta senha temporária no primeiro login e será solicitado a criar uma nova senha.'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text("OK"))
+        ],
+      ),
+    );
   }
 }
 
@@ -762,7 +869,7 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
   late Future<Map<String, UserModel>> _usersMapFuture;
 
   String? _beltFilter;
-  String? _unitFilter; // NOVO FILTRO
+  String? _unitFilter;
   String _sortOption = 'nome';
   final List<String> _beltOptions = [
     'Branca',
@@ -1091,7 +1198,7 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
   String _searchQuery = '';
 
   String? _beltFilter;
-  String? _unitFilter; // NOVO FILTRO
+  String? _unitFilter;
   String _sortOption = 'nome';
   final List<String> _beltOptions = [
     'Branca',
@@ -1486,6 +1593,17 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
       await batch.commit();
       await tempApp.delete();
 
+      // **LOG DE AUDITORIA**
+      await _createAuditLog(
+        academyId: widget.academyId,
+        actor: widget.manager,
+        actionType: 'CREATE_USER_ACCESS',
+        description:
+            '${widget.manager.name} criou um acesso de login para o aluno ${widget.aluno.nome}.',
+        targetUid: newUser.uid,
+        targetName: widget.aluno.nome,
+      );
+
       if (mounted) {
         Navigator.of(context).pop({'success': true, 'email': email});
       }
@@ -1665,6 +1783,16 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
         batch.delete(userDocRef);
       }
       await batch.commit();
+
+      await _createAuditLog(
+        academyId: widget.academyId!,
+        actor: widget.currentUser,
+        actionType: 'DELETE_STUDENT',
+        description:
+            '${widget.currentUser.name} excluiu o aluno ${aluno.nome}.',
+        targetName: aluno.nome,
+        targetUid: aluno.userId,
+      );
 
       if (mounted) {
         showBjjSnackBar(context, 'Aluno ${aluno.nome} excluído com sucesso.',
@@ -2171,6 +2299,17 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
           .doc(widget.professor.uid)
           .update(updatedData);
 
+      // **LOG DE AUDITORIA**
+      await _createAuditLog(
+        academyId: widget.academyId,
+        actor: widget.manager,
+        actionType: 'UPDATE_TEACHER',
+        description:
+            '${widget.manager.name} editou os dados do professor ${widget.professor.name}.',
+        targetUid: widget.professor.uid,
+        targetName: widget.professor.name,
+      );
+
       if (mounted) {
         showBjjSnackBar(context, 'Professor atualizado com sucesso!',
             type: 'success');
@@ -2559,6 +2698,16 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
       await batch.commit();
 
       await tempApp.delete();
+
+      // **LOG DE AUDITORIA**
+      await _createAuditLog(
+        academyId: widget.academyId,
+        actor: widget.manager,
+        actionType: 'CREATE_TEACHER',
+        description: '${widget.manager.name} adicionou o professor $name.',
+        targetUid: newUser.uid,
+        targetName: name,
+      );
 
       if (mounted) {
         Navigator.of(context).pop({

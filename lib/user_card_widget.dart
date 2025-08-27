@@ -7,6 +7,36 @@ import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'manager_module.dart';
 
+// **INÍCIO DA NOVA FUNÇÃO DE LOG**
+/// Função auxiliar para criar uma entrada no log de auditoria.
+Future<void> _createAuditLog({
+  required String academyId,
+  required UserModel actor,
+  required String actionType,
+  required String description,
+  String? targetUid,
+  String? targetName,
+}) async {
+  try {
+    await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(academyId)
+        .collection('audit_log')
+        .add({
+      'actorUid': actor.uid,
+      'actorName': actor.name,
+      'actionType': actionType,
+      'description': description,
+      'timestamp': FieldValue.serverTimestamp(),
+      'targetUid': targetUid,
+      'targetName': targetName,
+    });
+  } catch (e) {
+    debugPrint("Erro ao criar log de auditoria: $e");
+  }
+}
+// **FIM DA NOVA FUNÇÃO DE LOG**
+
 /// Página para visualizar uma imagem em tela cheia com zoom.
 class PhotoViewPage extends StatelessWidget {
   final String imageUrl;
@@ -210,8 +240,6 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
               .doc(alunoAtualizado.id)
               .update(dataToUpdate);
 
-          // *** CORREÇÃO APLICADA AQUI ***
-          // Atualiza o nome e os campos de auditoria no documento do usuário também
           if (alunoAtualizado.userId != null) {
             await FirebaseFirestore.instance
                 .collection('users')
@@ -223,6 +251,18 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
               'updatedAt': FieldValue.serverTimestamp(),
             });
           }
+
+          // **LOG DE AUDITORIA PARA EDIÇÃO**
+          await _createAuditLog(
+            academyId: academyId,
+            actor: currentUser,
+            actionType: 'UPDATE_STUDENT',
+            description:
+                '${currentUser.name} editou os dados do aluno ${aluno.nome}.',
+            targetName: aluno.nome,
+            targetUid: aluno.userId,
+          );
+
           if (context.mounted) {
             showBjjSnackBar(context, 'Aluno atualizado com sucesso!',
                 type: 'success');

@@ -12,7 +12,6 @@ import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
 import 'auth_gate.dart';
-// ADICIONADO PARA ACESSAR AS PÁGINAS DE DETALHES
 import 'manager_module.dart';
 
 // --- TELA CONTAINER DO SUPER ADMIN COM NAVEGAÇÃO ---
@@ -186,7 +185,601 @@ class _AcademyListPageState extends State<AcademyListPage> {
   }
 }
 
-// --- NOVA TELA PARA GERENCIAR AVISOS GLOBAIS ENVIADOS ---
+// --- TELA DE DETALHES DA ACADEMIA ---
+class AcademyDetailPage extends StatefulWidget {
+  final DocumentSnapshot academyDoc;
+  const AcademyDetailPage({super.key, required this.academyDoc});
+
+  @override
+  State<AcademyDetailPage> createState() => _AcademyDetailPageState();
+}
+
+class _AcademyDetailPageState extends State<AcademyDetailPage> {
+  late Future<List<dynamic>> _usersFuture;
+  late Future<UserModel?> _managerFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _usersFuture = _fetchUsers();
+    _managerFuture = _fetchManager();
+  }
+
+  Future<UserModel?> _fetchManager() async {
+    final data = widget.academyDoc.data() as Map<String, dynamic>;
+    final ownerId = data['ownerId'];
+    if (ownerId == null) return null;
+
+    final doc =
+        await FirebaseFirestore.instance.collection('users').doc(ownerId).get();
+    if (doc.exists) {
+      return UserModel.fromFirestore(doc);
+    }
+    return null;
+  }
+
+  Future<List<dynamic>> _fetchUsers() async {
+    final academyId = widget.academyDoc.id;
+    final List<dynamic> allUsers = [];
+
+    final teachersSnapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .where('academyId', isEqualTo: academyId)
+        .where('role', isEqualTo: 'teacher')
+        .get();
+    allUsers.addAll(
+        teachersSnapshot.docs.map((doc) => UserModel.fromFirestore(doc)));
+
+    final studentsSnapshot = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(academyId)
+        .collection('students')
+        .get();
+    allUsers.addAll(
+        studentsSnapshot.docs.map((doc) => Aluno.fromJson(doc.id, doc.data())));
+
+    return allUsers;
+  }
+
+  Future<void> _startImpersonation(String targetUid) async {
+    final superAdminUid = FirebaseAuth.instance.currentUser?.uid;
+    if (superAdminUid == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('impersonation_sessions')
+          .doc(superAdminUid)
+          .set({'targetUid': targetUid});
+      await FirebaseAuth.instance.signOut();
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const AuthGate()),
+          (route) => false,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao iniciar a personificação: $e',
+            type: 'error');
+      }
+    }
+  }
+
+  void _showAcademyInfoDialog(BuildContext context, UserModel? manager) {
+    showDialog(
+      context: context,
+      builder: (_) =>
+          _AcademyInfoDialog(academyDoc: widget.academyDoc, manager: manager),
+    );
+  }
+
+  void _showEditUserDialog(BuildContext context, dynamic user) {
+    showDialog(
+      context: context,
+      builder: (_) => _EditUserDialog(user: user),
+    );
+  }
+
+  void _navigateToDetailPage(BuildContext context, dynamic user) {
+    final superAdminUser = UserModel(
+      uid: FirebaseAuth.instance.currentUser!.uid,
+      name: 'Super Admin',
+      email: '',
+      academyId: '',
+      role: UserRole.manager,
+      mustChangePassword: false,
+      isActive: true,
+    );
+
+    if (user is Aluno) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => StudentDetailPage(
+          academyId: widget.academyDoc.id,
+          student: user,
+          currentUser: superAdminUser,
+        ),
+      ));
+    } else if (user is UserModel) {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ProfessorDetailPage(
+          academyId: widget.academyDoc.id,
+          professor: user,
+          currentUser: superAdminUser,
+        ),
+      ));
+    }
+  }
+
+  void _showCreateAccessDialog(BuildContext context, Aluno aluno) async {
+    final manager = await _managerFuture;
+    if (manager == null) {
+      showBjjSnackBar(context, 'Gerente da academia não encontrado.',
+          type: 'error');
+      return;
+    }
+
+    showCreateAccessDialog(context, aluno, widget.academyDoc.id, manager);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final academyName =
+        (widget.academyDoc.data() as Map<String, dynamic>)['name'] ??
+            'Academia';
+    final academyId = widget.academyDoc.id;
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(academyName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history_toggle_off_rounded),
+            tooltip: 'Histórico de Atividades',
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => AcademyAuditLogPage(
+                  academyId: academyId,
+                  academyName: academyName,
+                ),
+              ));
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.receipt_long_rounded, color: successColor),
+            tooltip: 'Histórico de Pagamentos',
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => AcademyPaymentHistoryPage(
+                    academyId: academyId, academyName: academyName),
+              ));
+            },
+          ),
+          FutureBuilder<UserModel?>(
+              future: _managerFuture,
+              builder: (context, managerSnapshot) {
+                return IconButton(
+                  icon: const Icon(Icons.info_outline, color: infoColor),
+                  tooltip: 'Ver Informações',
+                  onPressed: () =>
+                      _showAcademyInfoDialog(context, managerSnapshot.data),
+                );
+              }),
+          IconButton(
+            icon: const Icon(Icons.edit_note, color: primaryAccent),
+            tooltip: 'Editar Assinatura',
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (_) => EditAcademySubscriptionDialog(
+                    academyDoc: widget.academyDoc),
+              );
+            },
+          ),
+        ],
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: FutureBuilder<List<dynamic>>(
+            future: _usersFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError || !snapshot.hasData) {
+                return const EmptyStateWidget(
+                    icon: Icons.error, title: 'Erro ao carregar usuários');
+              }
+              final users = snapshot.data!;
+              final teachers = users.whereType<UserModel>().toList();
+              final students = users.whereType<Aluno>().toList();
+
+              return FutureBuilder<UserModel?>(
+                  future: _managerFuture,
+                  builder: (context, managerSnapshot) {
+                    final manager = managerSnapshot.data;
+                    return ListView(
+                      children: [
+                        if (manager != null)
+                          _buildUserSection("Gerente", [manager]),
+                        if (teachers.isNotEmpty)
+                          _buildUserSection("Professores", teachers),
+                        if (students.isNotEmpty)
+                          _buildUserSection("Alunos", students),
+                      ],
+                    );
+                  });
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserSection(String title, List<dynamic> users) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
+        ),
+        ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: users.length,
+          itemBuilder: (context, index) {
+            final user = users[index];
+            final bool isStudent = user is Aluno;
+            final String name = isStudent ? user.nome : user.name;
+            final String? image =
+                isStudent ? null : (user as UserModel).profileImagePath;
+
+            Widget? trailingWidget;
+            if (isStudent) {
+              final aluno = user as Aluno;
+              if (aluno.userId != null && aluno.userId!.isNotEmpty) {
+                trailingWidget = Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon:
+                          const Icon(Icons.edit_outlined, color: primaryAccent),
+                      tooltip: 'Editar E-mail do Usuário',
+                      onPressed: () => _showEditUserDialog(context, user),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.theater_comedy_outlined,
+                          color: warningColor),
+                      tooltip: 'Entrar como $name',
+                      onPressed: () => _startImpersonation(aluno.userId!),
+                    ),
+                  ],
+                );
+              } else {
+                trailingWidget = IconButton(
+                  icon: const Icon(Icons.login_rounded, color: infoColor),
+                  tooltip: 'Criar Acesso de Login',
+                  onPressed: () => _showCreateAccessDialog(context, aluno),
+                );
+              }
+            } else {
+              final userModel = user as UserModel;
+              trailingWidget = Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, color: primaryAccent),
+                    tooltip: 'Editar E-mail do Usuário',
+                    onPressed: () => _showEditUserDialog(context, user),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.theater_comedy_outlined,
+                        color: warningColor),
+                    tooltip: 'Entrar como $name',
+                    onPressed: () => _startImpersonation(userModel.uid),
+                  ),
+                ],
+              );
+            }
+
+            return Card(
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundImage: (image != null && image.isNotEmpty)
+                      ? CachedNetworkImageProvider(image)
+                      : null,
+                  child: (image == null || image.isEmpty)
+                      ? const Icon(Icons.person)
+                      : null,
+                ),
+                title: Text(name),
+                onTap: () => _navigateToDetailPage(context, user),
+                trailing: trailingWidget,
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+// --- TELA DE LOG DE AUDITORIA ---
+class AcademyAuditLogPage extends StatelessWidget {
+  final String academyId;
+  final String academyName;
+
+  const AcademyAuditLogPage({
+    super.key,
+    required this.academyId,
+    required this.academyName,
+  });
+
+  IconData _getIconForAction(String actionType) {
+    if (actionType.contains('CREATE')) return Icons.add_circle_outline;
+    if (actionType.contains('DELETE')) return Icons.remove_circle_outline;
+    if (actionType.contains('UPDATE')) return Icons.edit_note_rounded;
+    return Icons.info_outline;
+  }
+
+  Color _getColorForAction(String actionType) {
+    if (actionType.contains('CREATE')) return successColor;
+    if (actionType.contains('DELETE')) return errorColor;
+    if (actionType.contains('UPDATE')) return warningColor;
+    return textHint;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text('Histórico de $academyName'),
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('academies')
+                .doc(academyId)
+                .collection('audit_log')
+                .orderBy('timestamp', descending: true)
+                .limit(100)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return const EmptyStateWidget(
+                  icon: Icons.error,
+                  title: 'Erro ao carregar histórico',
+                );
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.history,
+                  title: 'Nenhuma Atividade Registrada',
+                  message:
+                      'As ações realizadas nesta academia aparecerão aqui.',
+                );
+              }
+
+              final logs = snapshot.data!.docs
+                  .map((doc) => AuditLogEntry.fromFirestore(doc))
+                  .toList();
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(8.0),
+                itemCount: logs.length,
+                itemBuilder: (context, index) {
+                  final log = logs[index];
+                  return Card(
+                    child: ListTile(
+                      leading: Icon(
+                        _getIconForAction(log.actionType),
+                        color: _getColorForAction(log.actionType),
+                      ),
+                      title: Text(log.description),
+                      subtitle: Text(
+                        'Por: ${log.actorName} em ${DateFormat.yMd('pt_BR').add_Hm().format(log.timestamp.toDate())}',
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- WIDGET DE DIÁLOGO PARA EDITAR USUÁRIO (COM BOTÃO DE RESET) ---
+class _EditUserDialog extends StatefulWidget {
+  final dynamic user;
+
+  const _EditUserDialog({required this.user});
+
+  @override
+  State<_EditUserDialog> createState() => _EditUserDialogState();
+}
+
+class _EditUserDialogState extends State<_EditUserDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
+  bool _isLoading = true;
+  String _userName = '';
+  String _targetUid = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialData();
+  }
+
+  Future<void> _loadInitialData() async {
+    String? currentEmail;
+    if (widget.user is Aluno) {
+      final aluno = widget.user as Aluno;
+      _userName = aluno.nome;
+      if (aluno.userId != null) {
+        _targetUid = aluno.userId!;
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_targetUid)
+            .get();
+        if (userDoc.exists) {
+          currentEmail = userDoc.data()?['email'];
+        }
+      }
+    } else if (widget.user is UserModel) {
+      final userModel = widget.user as UserModel;
+      _userName = userModel.name;
+      _targetUid = userModel.uid;
+      currentEmail = userModel.email;
+    }
+
+    if (mounted) {
+      setState(() {
+        _emailController.text = currentEmail ?? '';
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _saveEmail() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_targetUid.isEmpty) {
+      showBjjSnackBar(context, 'Este usuário não possui um login para editar.',
+          type: 'error');
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    final newEmail = _emailController.text.trim();
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('emailChangeRequests')
+          .add({'targetUid': _targetUid, 'newEmail': newEmail});
+
+      Navigator.of(context).pop();
+      showBjjSnackBar(context,
+          'Solicitação de alteração de e-mail enviada! Pode levar um minuto.',
+          type: 'success');
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao solicitar alteração: $e',
+            type: 'error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _resetPassword() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar Reset de Senha'),
+        content: Text(
+            'Tem certeza que deseja resetar a senha de $_userName? A nova senha será "mudar123" e ele(a) será forçado(a) a alterá-la no próximo login.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: warningColor),
+            child: const Text('Resetar Senha',
+                style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('passwordResetRequests')
+          .add({'targetUid': _targetUid});
+
+      Navigator.of(context).pop();
+      showBjjSnackBar(context,
+          'Solicitação de reset de senha enviada! Pode levar um minuto.',
+          type: 'success');
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao solicitar reset: $e', type: 'error');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Gerenciar Acesso de $_userName'),
+      content: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Form(
+                  key: _formKey,
+                  child: TextFormField(
+                    controller: _emailController,
+                    autofocus: true,
+                    decoration:
+                        const InputDecoration(labelText: 'E-mail de Acesso'),
+                    keyboardType: TextInputType.emailAddress,
+                    validator: (v) => (v == null || !v.contains('@'))
+                        ? 'E-mail inválido'
+                        : null,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                OutlinedButton.icon(
+                  icon:
+                      const Icon(Icons.lock_reset_rounded, color: warningColor),
+                  label: const Text('Resetar Senha do Usuário',
+                      style: TextStyle(color: warningColor)),
+                  onPressed: _isLoading ? null : _resetPassword,
+                ),
+              ],
+            ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _saveEmail,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Salvar E-mail'),
+        ),
+      ],
+    );
+  }
+}
+
 class AdminSentNotificationsPage extends StatelessWidget {
   const AdminSentNotificationsPage({super.key});
 
@@ -294,7 +887,6 @@ class AdminSentNotificationsPage extends StatelessWidget {
   }
 }
 
-// --- DIÁLOGO PARA ENVIAR AVISO GLOBAL ---
 class _SendGlobalNotificationDialog extends StatefulWidget {
   const _SendGlobalNotificationDialog();
 
@@ -473,402 +1065,6 @@ class _SendGlobalNotificationDialogState
                   width: 20,
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('Enviar'),
-        ),
-      ],
-    );
-  }
-}
-
-class AcademyDetailPage extends StatefulWidget {
-  final DocumentSnapshot academyDoc;
-  const AcademyDetailPage({super.key, required this.academyDoc});
-
-  @override
-  State<AcademyDetailPage> createState() => _AcademyDetailPageState();
-}
-
-class _AcademyDetailPageState extends State<AcademyDetailPage> {
-  late Future<List<dynamic>> _usersFuture;
-  late Future<UserModel?> _managerFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _usersFuture = _fetchUsers();
-    _managerFuture = _fetchManager();
-  }
-
-  Future<UserModel?> _fetchManager() async {
-    final data = widget.academyDoc.data() as Map<String, dynamic>;
-    final ownerId = data['ownerId'];
-    if (ownerId == null) return null;
-
-    final doc =
-        await FirebaseFirestore.instance.collection('users').doc(ownerId).get();
-    if (doc.exists) {
-      return UserModel.fromFirestore(doc);
-    }
-    return null;
-  }
-
-  Future<List<dynamic>> _fetchUsers() async {
-    final academyId = widget.academyDoc.id;
-    final List<dynamic> allUsers = [];
-
-    final teachersSnapshot = await FirebaseFirestore.instance
-        .collection('users')
-        .where('academyId', isEqualTo: academyId)
-        .where('role', isEqualTo: 'teacher')
-        .get();
-    allUsers.addAll(
-        teachersSnapshot.docs.map((doc) => UserModel.fromFirestore(doc)));
-
-    final studentsSnapshot = await FirebaseFirestore.instance
-        .collection('academies')
-        .doc(academyId)
-        .collection('students')
-        .get();
-    allUsers.addAll(
-        studentsSnapshot.docs.map((doc) => Aluno.fromJson(doc.id, doc.data())));
-
-    return allUsers;
-  }
-
-  Future<void> _startImpersonation(String targetUid) async {
-    final superAdminUid = FirebaseAuth.instance.currentUser?.uid;
-    if (superAdminUid == null) return;
-
-    try {
-      await FirebaseFirestore.instance
-          .collection('impersonation_sessions')
-          .doc(superAdminUid)
-          .set({'targetUid': targetUid});
-      await FirebaseAuth.instance.signOut();
-
-      if (mounted) {
-        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const AuthGate()),
-          (route) => false,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        showBjjSnackBar(context, 'Erro ao iniciar a personificação: $e',
-            type: 'error');
-      }
-    }
-  }
-
-  void _showAcademyInfoDialog(BuildContext context, UserModel? manager) {
-    showDialog(
-      context: context,
-      builder: (_) =>
-          _AcademyInfoDialog(academyDoc: widget.academyDoc, manager: manager),
-    );
-  }
-
-  // NOVA FUNÇÃO para abrir o diálogo de edição de usuário
-  void _showEditUserDialog(BuildContext context, dynamic user) {
-    showDialog(
-      context: context,
-      builder: (_) => _EditUserDialog(user: user),
-    );
-  }
-
-  // **INÍCIO DA NOVA FUNÇÃO**
-  void _navigateToDetailPage(BuildContext context, dynamic user) {
-    // Cria um UserModel 'fake' para o Super Admin, pois as telas de detalhes
-    // esperam um 'currentUser' para checar permissões, mesmo que não seja usado aqui.
-    final superAdminUser = UserModel(
-      uid: FirebaseAuth.instance.currentUser!.uid,
-      name: 'Super Admin',
-      email: '',
-      academyId: '', // Não é relevante aqui
-      role: UserRole.manager, // Dando permissão máxima
-      mustChangePassword: false,
-      isActive: true,
-    );
-
-    if (user is Aluno) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => StudentDetailPage(
-          academyId: widget.academyDoc.id,
-          student: user,
-          currentUser: superAdminUser,
-        ),
-      ));
-    } else if (user is UserModel) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProfessorDetailPage(
-          academyId: widget.academyDoc.id,
-          professor: user,
-          currentUser: superAdminUser,
-        ),
-      ));
-    }
-  }
-  // **FIM DA NOVA FUNÇÃO**
-
-  @override
-  Widget build(BuildContext context) {
-    final academyName =
-        (widget.academyDoc.data() as Map<String, dynamic>)['name'] ??
-            'Academia';
-    final academyId = widget.academyDoc.id;
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: Text(academyName),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.receipt_long_rounded, color: successColor),
-            tooltip: 'Histórico de Pagamentos',
-            onPressed: () {
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => AcademyPaymentHistoryPage(
-                    academyId: academyId, academyName: academyName),
-              ));
-            },
-          ),
-          FutureBuilder<UserModel?>(
-              future: _managerFuture,
-              builder: (context, managerSnapshot) {
-                return IconButton(
-                  icon: const Icon(Icons.info_outline, color: infoColor),
-                  tooltip: 'Ver Informações',
-                  onPressed: () =>
-                      _showAcademyInfoDialog(context, managerSnapshot.data),
-                );
-              }),
-          IconButton(
-            icon: const Icon(Icons.edit_note, color: primaryAccent),
-            tooltip: 'Editar Assinatura',
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (_) => EditAcademySubscriptionDialog(
-                    academyDoc: widget.academyDoc),
-              );
-            },
-          ),
-        ],
-      ),
-      body: AppBackground(
-        child: SafeArea(
-          child: FutureBuilder<List<dynamic>>(
-            future: _usersFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError || !snapshot.hasData) {
-                return const EmptyStateWidget(
-                    icon: Icons.error, title: 'Erro ao carregar usuários');
-              }
-              final users = snapshot.data!;
-              final teachers = users.whereType<UserModel>().toList();
-              final students = users.whereType<Aluno>().toList();
-
-              return FutureBuilder<UserModel?>(
-                  future: _managerFuture,
-                  builder: (context, managerSnapshot) {
-                    final manager = managerSnapshot.data;
-                    return ListView(
-                      children: [
-                        if (manager != null)
-                          _buildUserSection("Gerente", [manager]),
-                        if (teachers.isNotEmpty)
-                          _buildUserSection("Professores", teachers),
-                        if (students.isNotEmpty)
-                          _buildUserSection("Alunos", students),
-                      ],
-                    );
-                  });
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildUserSection(String title, List<dynamic> users) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
-          child: Text(title, style: Theme.of(context).textTheme.titleLarge),
-        ),
-        ListView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: users.length,
-          itemBuilder: (context, index) {
-            final user = users[index];
-            final bool isStudent = user is Aluno;
-            final String name = isStudent ? user.nome : user.name;
-            final String uid = isStudent ? user.userId ?? '' : user.uid;
-            final String? image =
-                isStudent ? null : (user as UserModel).profileImagePath;
-
-            return Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundImage: (image != null && image.isNotEmpty)
-                      ? CachedNetworkImageProvider(image)
-                      : null,
-                  child: (image == null || image.isEmpty)
-                      ? const Icon(Icons.person)
-                      : null,
-                ),
-                title: Text(name),
-                // **MUDANÇA AQUI**
-                onTap: () => _navigateToDetailPage(context, user),
-                trailing: (uid.isNotEmpty)
-                    ? Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined,
-                                color: primaryAccent),
-                            tooltip: 'Editar E-mail do Usuário',
-                            onPressed: () => _showEditUserDialog(context, user),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.theater_comedy_outlined,
-                                color: warningColor),
-                            tooltip: 'Entrar como $name',
-                            onPressed: () => _startImpersonation(uid),
-                          ),
-                        ],
-                      )
-                    : null,
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
-// NOVO WIDGET: Diálogo para editar o e-mail do usuário
-class _EditUserDialog extends StatefulWidget {
-  final dynamic user; // Pode ser Aluno ou UserModel
-
-  const _EditUserDialog({required this.user});
-
-  @override
-  State<_EditUserDialog> createState() => _EditUserDialogState();
-}
-
-class _EditUserDialogState extends State<_EditUserDialog> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
-  bool _isLoading = true;
-  String _userName = '';
-  String _targetUid = '';
-
-  @override
-  void initState() {
-    super.initState();
-    _loadInitialData();
-  }
-
-  Future<void> _loadInitialData() async {
-    String? currentEmail;
-    if (widget.user is Aluno) {
-      final aluno = widget.user as Aluno;
-      _userName = aluno.nome;
-      if (aluno.userId != null) {
-        _targetUid = aluno.userId!;
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(_targetUid)
-            .get();
-        if (userDoc.exists) {
-          currentEmail = userDoc.data()?['email'];
-        }
-      }
-    } else if (widget.user is UserModel) {
-      final userModel = widget.user as UserModel;
-      _userName = userModel.name;
-      _targetUid = userModel.uid;
-      currentEmail = userModel.email;
-    }
-
-    if (mounted) {
-      setState(() {
-        _emailController.text = currentEmail ?? '';
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _saveEmail() async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_targetUid.isEmpty) {
-      showBjjSnackBar(context, 'Este usuário não possui um login para editar.',
-          type: 'error');
-      return;
-    }
-
-    setState(() => _isLoading = true);
-    final newEmail = _emailController.text.trim();
-
-    try {
-      // Cria um pedido na coleção 'emailChangeRequests'
-      await FirebaseFirestore.instance
-          .collection('emailChangeRequests')
-          .add({'targetUid': _targetUid, 'newEmail': newEmail});
-
-      Navigator.of(context).pop();
-      showBjjSnackBar(context,
-          'Solicitação de alteração de e-mail enviada com sucesso! A alteração pode levar um minuto.',
-          type: 'success');
-    } catch (e) {
-      if (mounted) {
-        showBjjSnackBar(context, 'Erro ao solicitar alteração: $e',
-            type: 'error');
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('Editar E-mail de $_userName'),
-      content: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: TextFormField(
-                controller: _emailController,
-                autofocus: true,
-                decoration: const InputDecoration(labelText: 'Novo E-mail'),
-                keyboardType: TextInputType.emailAddress,
-                validator: (v) =>
-                    (v == null || !v.contains('@')) ? 'E-mail inválido' : null,
-              ),
-            ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        ElevatedButton(
-          onPressed: _isLoading ? null : _saveEmail,
-          child: _isLoading
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Salvar'),
         ),
       ],
     );

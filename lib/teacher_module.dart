@@ -20,6 +20,35 @@ import 'navigation_service.dart';
 import 'app_drawer.dart';
 import 'user_card_widget.dart';
 
+// --- FUNÇÃO DE LOG DE AUDITORIA ---
+/// Função auxiliar para criar uma entrada no log de auditoria.
+Future<void> _createAuditLog({
+  required String academyId,
+  required UserModel actor,
+  required String actionType,
+  required String description,
+  String? targetUid,
+  String? targetName,
+}) async {
+  try {
+    await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(academyId)
+        .collection('audit_log')
+        .add({
+      'actorUid': actor.uid,
+      'actorName': actor.name,
+      'actionType': actionType,
+      'description': description,
+      'timestamp': FieldValue.serverTimestamp(),
+      'targetUid': targetUid,
+      'targetName': targetName,
+    });
+  } catch (e) {
+    debugPrint("Erro ao criar log de auditoria: $e");
+  }
+}
+
 // --- FUNÇÃO AUXILIAR PARA ORDENAÇÃO DE FAIXAS ---
 int _getBeltIndex(String faixa) {
   const List<String> ordemFaixas = [
@@ -241,6 +270,15 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           .collection('state')
           .doc('sparring')
           .set(stateData);
+
+      // **LOG DE AUDITORIA**
+      await _createAuditLog(
+        academyId: widget.user.academyId,
+        actor: widget.user,
+        actionType: 'START_SPARRING',
+        description:
+            '${widget.user.name} iniciou um treino de sparring com ${participants.length} participantes.',
+      );
     } catch (e) {
       if (mounted) {
         showBjjSnackBar(context, 'Erro ao iniciar o treino: $e', type: 'error');
@@ -285,6 +323,16 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     }
     if (newCheckins > 0) {
       await batch.commit();
+
+      // **LOG DE AUDITORIA**
+      await _createAuditLog(
+        academyId: widget.user.academyId,
+        actor: widget.user,
+        actionType: 'BULK_CHECKIN',
+        description:
+            '${widget.user.name} fez check-in para $newCheckins alunos.',
+      );
+
       if (mounted) {
         showBjjSnackBar(context, '$newCheckins presenças confirmadas!',
             type: 'success');
@@ -482,6 +530,15 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
                         .collection('graduation_history')
                         .add(historyEntry.toMap());
 
+                    await _createAuditLog(
+                      academyId: widget.user.academyId,
+                      actor: widget.user,
+                      actionType: 'CREATE_STUDENT',
+                      description:
+                          '${widget.user.name} adicionou o aluno ${novoAluno.nome}.',
+                      targetName: novoAluno.nome,
+                    );
+
                     if (mounted) {
                       showBjjSnackBar(
                           context, '${novoAluno.nome} adicionado com sucesso!',
@@ -521,7 +578,7 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
   late Future<Map<String, UserModel>> _usersMapFuture;
 
   String? _beltFilter;
-  String? _unitFilter; // NOVO FILTRO
+  String? _unitFilter;
   String _sortOption = 'nome';
   final List<String> _beltOptions = [
     'Branca',
@@ -897,7 +954,6 @@ class TeacherDashboardPage extends StatelessWidget {
   }
 }
 
-// SOLUÇÃO: CONVERTER PARA STATEFUL WIDGET E CARREGAR DADOS
 class CheckinTeacherPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
@@ -915,14 +971,12 @@ class CheckinTeacherPage extends StatefulWidget {
 }
 
 class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
-  // SOLUÇÃO: ESTADO PARA ARMAZENAR AS UNIDADES E O LOADING
   List<DocumentSnapshot> _units = [];
   bool _isLoadingUnits = true;
 
   @override
   void initState() {
     super.initState();
-    // SOLUÇÃO: BUSCAR AS UNIDADES AO INICIAR A TELA
     _fetchUnits();
   }
 
@@ -959,15 +1013,14 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
                 const Icon(Icons.checklist_rtl_rounded, color: successColor),
             title: const Text("Fazer Chamada (Presencial)"),
             trailing: _isLoadingUnits
-                ? SizedBox(
+                ? const SizedBox(
                     width: 24,
                     height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2))
-                : Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                : const Icon(Icons.arrow_forward_ios_rounded, size: 16),
             onTap: _isLoadingUnits
-                ? null // SOLUÇÃO: DESABILITA O BOTÃO ENQUANTO CARREGA
+                ? null
                 : () async {
-                    // SOLUÇÃO: NAVEGA PASSANDO AS UNIDADES JÁ CARREGADAS
                     final checkedInCount =
                         await Navigator.of(context).push<int>(
                       MaterialPageRoute(
@@ -976,7 +1029,7 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
                           todosParticipantesDaAcademia:
                               widget.todosParticipantesDaAcademia,
                           user: widget.user,
-                          units: _units, // << PASSA AS UNIDADES
+                          units: _units,
                         ),
                       ),
                     );
@@ -1413,19 +1466,18 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
   }
 }
 
-// SOLUÇÃO: RECEBE A LISTA DE UNIDADES NO CONSTRUTOR
 class BulkCheckinPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
   final UserModel user;
-  final List<DocumentSnapshot> units; // << NOVO PARÂMETRO
+  final List<DocumentSnapshot> units;
 
   const BulkCheckinPage({
     super.key,
     required this.academyId,
     required this.todosParticipantesDaAcademia,
     required this.user,
-    required this.units, // << NOVO PARÂMETRO
+    required this.units,
   });
 
   @override
@@ -1442,7 +1494,6 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
   @override
   void initState() {
     super.initState();
-    // SOLUÇÃO: NÃO BUSCA MAIS AS UNIDADES AQUI
     final lastUnitId = widget.user.lastSelectedUnitId;
     if (lastUnitId != null && widget.units.any((u) => u.id == lastUnitId)) {
       _selectedUnitId = lastUnitId;
@@ -1573,7 +1624,6 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
                   children: [
-                    // SOLUÇÃO: REMOVIDO O INDICADOR DE PROGRESSO DAQUI
                     DropdownButtonFormField<String>(
                       value: _selectedUnitId,
                       items: [
@@ -1581,7 +1631,6 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
                           value: 'all',
                           child: Text("Todas as Unidades"),
                         ),
-                        // SOLUÇÃO: USA A LISTA DE UNIDADES RECEBIDA
                         ...widget.units.map((unit) {
                           return DropdownMenuItem(
                             value: unit.id,
@@ -1880,7 +1929,6 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
                   onTap: _pickDate,
                 ),
               ),
-              // --- FILTRO DE UNIDADE E PESQUISA ---
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Column(
@@ -2439,7 +2487,6 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // --- FILTRO DE UNIDADE ADICIONADO ---
                   if (_isLoadingUnits)
                     const LinearProgressIndicator()
                   else
@@ -2462,7 +2509,6 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
                           : (value) {
                               setState(() {
                                 _selectedUnitId = value;
-                                // Limpa a seleção ao trocar de unidade
                                 _alunosParticipantes.clear();
                                 _rodadasGeradas.clear();
                               });

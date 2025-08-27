@@ -911,3 +911,52 @@ class TrainingClass {
     };
   }
 }
+
+// NOVO MODELO PARA O HISTÓRICO DE AUDITORIA
+class AuditLogEntry {
+  final String id;
+  final String actorUid;
+  final String actorName;
+  final String actionType; // ex: 'CREATE_STUDENT', 'DELETE_STUDENT'
+  final String description;
+  final Timestamp timestamp;
+  final String? targetUid;
+  final String? targetName;
+
+  AuditLogEntry({
+    required this.id,
+    required this.actorUid,
+    required this.actorName,
+    required this.actionType,
+    required this.description,
+    required this.timestamp,
+    this.targetUid,
+    this.targetName,
+  });
+
+  factory AuditLogEntry.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return AuditLogEntry(
+      id: doc.id,
+      actorUid: data['actorUid'] ?? '',
+      actorName: data['actorName'] ?? '',
+      actionType: data['actionType'] ?? 'UNKNOWN',
+      description: data['description'] ?? '',
+      timestamp: data['timestamp'] ?? Timestamp.now(),
+      targetUid: data['targetUid'],
+      targetName: data['targetName'],
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'actorUid': actorUid,
+      'actorName': actorName,
+      'actionType': actionType,
+      'description': description,
+      'timestamp': timestamp,
+      'targetUid': targetUid,
+      'targetName': targetName,
+    };
+  }
+}
