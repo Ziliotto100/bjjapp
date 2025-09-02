@@ -204,12 +204,10 @@ class _SchedulePageState extends State<SchedulePage>
                         widget.user.studentRecordId ?? widget.user.uid;
 
                     final visibleClasses = allClasses.where((c) {
-                      // Filtro de unidade
                       if (_selectedUnitId != 'all' &&
                           c.unitId != _selectedUnitId) {
                         return false;
                       }
-                      // Filtro de aula privada
                       if (!c.isPrivate) return true;
                       return isManager ||
                           isTeacher ||
@@ -254,6 +252,7 @@ class _SchedulePageState extends State<SchedulePage>
       ),
       floatingActionButton: isManager || isTeacher
           ? FloatingActionButton(
+              heroTag: 'schedule_fab', // CORREÇÃO AQUI
               onPressed: () async {
                 final students = await _allStudentsFuture;
                 Navigator.of(context).push(MaterialPageRoute(

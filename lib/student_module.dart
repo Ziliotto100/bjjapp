@@ -12,6 +12,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'models.dart';
 import 'common_widgets.dart';
@@ -181,35 +182,44 @@ class _StudentHomePageState extends State<StudentHomePage> {
     }
 
     final allUserModules = _navService.getModulesForCurrentUser();
+    final userModuleIds = allUserModules.map((m) => m.id).toSet();
     final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
     final List<String> visibleIds =
         List<String>.from(settings['visible'] ?? []);
 
+    // Garante que todos os módulos do usuário existam na lista de ordem
     for (var module in allUserModules) {
       if (!savedOrder.contains(module.id)) {
         savedOrder.add(module.id);
       }
     }
-    savedOrder.removeWhere((id) => !allUserModules.any((m) => m.id == id));
+
+    // Filtra a ordem salva para remover módulos que não existem mais
+    final cleanSavedOrder =
+        savedOrder.where((id) => userModuleIds.contains(id)).toList();
 
     if (mounted) {
       setState(() {
-        _allModules = savedOrder
-            .map((id) => allUserModules.firstWhere((m) => m.id == id,
-                orElse: () => allUserModules.first))
+        _allModules = cleanSavedOrder
+            .map((id) => allUserModules.firstWhere((m) => m.id == id))
             .toList();
 
         _visibleModules =
             _allModules.where((m) => visibleIds.contains(m.id)).toList();
 
-        if (_paginaAtual >= _allModules.length) {
-          _paginaAtual = 0;
-        }
-
         _telas = _allModules
             .map((module) =>
                 module.pageBuilder(widget.user, _teachers, _students))
             .toList();
+
+        // *** ALTERAÇÃO AQUI: Força a página inicial para "Meu Perfil" ***
+        int profileIndex =
+            _allModules.indexWhere((m) => m.id == 'student_profile');
+
+        // Se o módulo de perfil for encontrado, define-o como a página atual.
+        // Caso contrário (o que seria raro), mantém a página 0 como padrão seguro.
+        _paginaAtual = (profileIndex != -1) ? profileIndex : 0;
+
         _isLoading = false;
       });
     }
@@ -802,13 +812,68 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
   }
 }
 
-class SettingsPage extends StatelessWidget {
+class SettingsPage extends StatefulWidget {
   final UserModel user;
 
   const SettingsPage({
     super.key,
     required this.user,
   });
+
+  @override
+  State<SettingsPage> createState() => _SettingsPageState();
+}
+
+class _SettingsPageState extends State<SettingsPage> {
+  String? _supportPhoneNumber;
+  bool _isLoadingSupportNumber = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSupportNumber();
+  }
+
+  Future<void> _fetchSupportNumber() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('global_settings')
+          .doc('support')
+          .get();
+      if (mounted && doc.exists && doc.data() != null) {
+        setState(() {
+          _supportPhoneNumber = doc.data()!['whatsapp_number'];
+        });
+      }
+    } catch (e) {
+      debugPrint("Could not fetch support number: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingSupportNumber = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _launchWhatsApp() async {
+    if (_supportPhoneNumber == null || _supportPhoneNumber!.isEmpty) {
+      showBjjSnackBar(context, 'Número de suporte não configurado.',
+          type: 'error');
+      return;
+    }
+    final message = Uri.encodeComponent(
+        'Olá, preciso de ajuda com minha conta no Match BJJ.');
+    final whatsappUrl =
+        Uri.parse("https://wa.me/$_supportPhoneNumber?text=$message");
+
+    if (await canLaunchUrl(whatsappUrl)) {
+      await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+    } else {
+      showBjjSnackBar(context, 'Não foi possível abrir o WhatsApp.',
+          type: 'error');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -824,13 +889,13 @@ class SettingsPage extends StatelessWidget {
             children: [
               Card(
                 child: ListTile(
-                  leading: const Icon(Icons.person_outline_rounded),
-                  title: const Text("Meu Perfil"),
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text("Editar Perfil"),
                   trailing:
                       const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: () {
                     Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => UserProfilePage(user: user),
+                      builder: (_) => EditStudentProfilePage(user: widget.user),
                     ));
                   },
                 ),
@@ -861,6 +926,17 @@ class SettingsPage extends StatelessWidget {
                   },
                 ),
               ),
+              if (!_isLoadingSupportNumber && _supportPhoneNumber != null)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.support_agent_rounded,
+                        color: infoColor),
+                    title: const Text("Falar com o Suporte"),
+                    trailing:
+                        const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                    onTap: _launchWhatsApp,
+                  ),
+                ),
               const SizedBox(height: 20),
               Card(
                 child: ListTile(

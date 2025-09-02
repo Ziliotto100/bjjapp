@@ -1,10 +1,11 @@
 // lib/auth_gate.dart
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use, unused_import
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, unused_import, unnecessary_import, unnecessary_brace_in_string_interps
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'models.dart';
 import 'common_widgets.dart';
@@ -193,17 +194,74 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
-class SuspendedAcademyPage extends StatelessWidget {
+class SuspendedAcademyPage extends StatefulWidget {
   final bool isSubscriptionExpired;
   const SuspendedAcademyPage({super.key, this.isSubscriptionExpired = false});
 
   @override
+  State<SuspendedAcademyPage> createState() => _SuspendedAcademyPageState();
+}
+
+class _SuspendedAcademyPageState extends State<SuspendedAcademyPage> {
+  String? _supportPhoneNumber;
+  bool _isLoadingSupportNumber = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSupportNumber();
+  }
+
+  Future<void> _fetchSupportNumber() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('global_settings')
+          .doc('support')
+          .get();
+      if (mounted && doc.exists && doc.data() != null) {
+        setState(() {
+          _supportPhoneNumber = doc.data()!['whatsapp_number'];
+        });
+      }
+    } catch (e) {
+      // Fail silently, the button just won't appear
+      debugPrint("Could not fetch support number: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingSupportNumber = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _launchWhatsApp() async {
+    if (_supportPhoneNumber == null || _supportPhoneNumber!.isEmpty) {
+      showBjjSnackBar(context, 'Número de suporte não configurado.',
+          type: 'error');
+      return;
+    }
+    final message = Uri.encodeComponent(
+        'Olá, preciso de ajuda para acessar minha conta no Match BJJ.');
+    final whatsappUrl =
+        Uri.parse("https://wa.me/${_supportPhoneNumber}?text=$message");
+
+    if (await canLaunchUrl(whatsappUrl)) {
+      await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+    } else {
+      showBjjSnackBar(context, 'Não foi possível abrir o WhatsApp.',
+          type: 'error');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final title =
-        isSubscriptionExpired ? 'Assinatura Expirada' : 'Acesso Suspenso';
-    final message = isSubscriptionExpired
+    final title = widget.isSubscriptionExpired
+        ? 'Assinatura Expirada'
+        : 'Acesso Suspenso';
+    final message = widget.isSubscriptionExpired
         ? 'A assinatura da sua academia expirou. Por favor, peça ao administrador para regularizar a situação.'
-        : 'O acesso para sua academia foi suspenso. Por favor, peça ao administrador para entrar em contato com o suporte.';
+        : 'O acesso para sua academia foi suspenso. Por favor, entre em contato com o suporte para mais informações.';
 
     return Scaffold(
       body: AppBackground(
@@ -229,6 +287,21 @@ class SuspendedAcademyPage extends StatelessWidget {
                   style: const TextStyle(color: textHint, fontSize: 16),
                 ),
                 const SizedBox(height: 32),
+                if (!_isLoadingSupportNumber &&
+                    _supportPhoneNumber != null &&
+                    _supportPhoneNumber!.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16.0),
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.support_agent),
+                      label: const Text('Falar com o Suporte'),
+                      onPressed: _launchWhatsApp,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: successColor,
+                        side: const BorderSide(color: successColor),
+                      ),
+                    ),
+                  ),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.logout),
                   label: const Text('Sair'),

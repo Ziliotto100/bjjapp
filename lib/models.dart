@@ -568,8 +568,6 @@ class StudyNote {
   }
 }
 
-// --- MODELO DE PRODUTOS DA LOJA ATUALIZADO ---
-
 enum ProductStatus { disponivel, esgotado, sobEncomenda }
 
 String productStatusToString(ProductStatus status) {
@@ -602,8 +600,8 @@ class Product {
   final List<String> imageUrls;
   final String category;
   final bool isFeatured;
-  final bool isPromo; // NOVO CAMPO
-  final ProductStatus status; // NOVO CAMPO
+  final bool isPromo;
+  final ProductStatus status;
   final Timestamp createdAt;
 
   Product({
@@ -614,8 +612,8 @@ class Product {
     required this.imageUrls,
     required this.category,
     this.isFeatured = false,
-    this.isPromo = false, // NOVO
-    required this.status, // NOVO
+    this.isPromo = false,
+    required this.status,
     required this.createdAt,
   });
 
@@ -641,8 +639,8 @@ class Product {
       imageUrls: urls,
       category: data['category'] ?? 'Geral',
       isFeatured: data['isFeatured'] ?? false,
-      isPromo: data['isPromo'] ?? false, // NOVO
-      status: productStatusFromString(data['status']), // NOVO
+      isPromo: data['isPromo'] ?? false,
+      status: productStatusFromString(data['status']),
       createdAt: data['createdAt'] ?? Timestamp.now(),
     );
   }
@@ -655,14 +653,13 @@ class Product {
       'imageUrls': imageUrls,
       'category': category,
       'isFeatured': isFeatured,
-      'isPromo': isPromo, // NOVO
-      'status': productStatusToString(status), // NOVO
+      'isPromo': isPromo,
+      'status': productStatusToString(status),
       'createdAt': createdAt,
     };
   }
 }
 
-// --- NOVO MODELO PARA NOTIFICAÇÕES ---
 class NotificationModel {
   final String id;
   final String title;
@@ -672,7 +669,7 @@ class NotificationModel {
   final String senderRole;
   final String academyId;
   final Timestamp createdAt;
-  final List<String> readBy; // <-- NOVO CAMPO
+  final List<String> readBy;
 
   NotificationModel({
     required this.id,
@@ -683,7 +680,7 @@ class NotificationModel {
     required this.senderRole,
     required this.academyId,
     required this.createdAt,
-    this.readBy = const [], // <-- NOVO PARÂMETRO
+    this.readBy = const [],
   });
 
   factory NotificationModel.fromFirestore(DocumentSnapshot doc) {
@@ -697,7 +694,7 @@ class NotificationModel {
       senderRole: data['senderRole'] ?? '',
       academyId: data['academyId'] ?? '',
       createdAt: data['createdAt'] ?? Timestamp.now(),
-      readBy: List<String>.from(data['readBy'] ?? []), // <-- NOVA ATRIBUIÇÃO
+      readBy: List<String>.from(data['readBy'] ?? []),
     );
   }
 
@@ -710,12 +707,11 @@ class NotificationModel {
       'senderRole': senderRole,
       'academyId': academyId,
       'createdAt': createdAt,
-      'readBy': readBy, // <-- NOVO CAMPO
+      'readBy': readBy,
     };
   }
 }
 
-// --- NOVO MODELO PARA HISTÓRICO DE GRADUAÇÃO ---
 class GraduationHistory {
   final String id;
   final String belt;
@@ -756,17 +752,14 @@ class GraduationHistory {
   }
 }
 
-// --- FUNÇÃO MOVIDA PARA CÁ ---
 extension StringExtension on String {
   String capitalize() {
     if (isEmpty) return this;
     return "${this[0].toUpperCase()}${substring(1)}";
   }
 
-  // *** FUNÇÃO ADICIONADA AQUI ***
   String capitalizeWords() {
     if (trim().isEmpty) return '';
-    // Lida com múltiplos espaços entre as palavras
     return trim().split(RegExp(r'\s+')).map((word) {
       if (word.isEmpty) return '';
       return word[0].toUpperCase() + word.substring(1).toLowerCase();
@@ -774,7 +767,6 @@ extension StringExtension on String {
   }
 }
 
-// --- NOVO MODELO PARA REGISTRO DE PAGAMENTO ---
 class PaymentRecord {
   final String id;
   final double amount;
@@ -815,7 +807,6 @@ class PaymentRecord {
   }
 }
 
-// --- MODELOS DE DADOS DA GRADE DE HORÁRIOS ---
 enum TrainingModality {
   gi,
   nogi,
@@ -912,12 +903,11 @@ class TrainingClass {
   }
 }
 
-// NOVO MODELO PARA O HISTÓRICO DE AUDITORIA
 class AuditLogEntry {
   final String id;
   final String actorUid;
   final String actorName;
-  final String actionType; // ex: 'CREATE_STUDENT', 'DELETE_STUDENT'
+  final String actionType;
   final String description;
   final Timestamp timestamp;
   final String? targetUid;
@@ -957,6 +947,125 @@ class AuditLogEntry {
       'timestamp': timestamp,
       'targetUid': targetUid,
       'targetName': targetName,
+    };
+  }
+}
+
+enum VideoType { youtube, uploaded }
+
+class VideoPlaylist {
+  final String id;
+  final String name;
+  final Timestamp createdAt;
+
+  VideoPlaylist({
+    required this.id,
+    required this.name,
+    required this.createdAt,
+  });
+
+  factory VideoPlaylist.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return VideoPlaylist(
+      id: doc.id,
+      name: data['name'] ?? '',
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'createdAt': createdAt,
+    };
+  }
+}
+
+class VideoItem {
+  final String id;
+  final String title;
+  final String description;
+  final String videoUrl;
+  final VideoType videoType;
+  final String thumbnailUrl;
+  final String uploadedByUid;
+  final String uploadedByName;
+  final Timestamp createdAt;
+  final List<String> tags;
+  final String? playlistId;
+  final Map<String, dynamic> watchedBy; // Alterado para Map
+  final int? fileSizeBytes; // NOVO CAMPO
+
+  VideoItem({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.videoUrl,
+    required this.videoType,
+    required this.thumbnailUrl,
+    required this.uploadedByUid,
+    required this.uploadedByName,
+    required this.createdAt,
+    required this.tags,
+    this.playlistId,
+    this.watchedBy = const {},
+    this.fileSizeBytes, // NOVO CAMPO
+  });
+
+  factory VideoItem.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+
+    Map<String, dynamic> parsedWatchedBy = {};
+    final watchedByData = data['watchedBy'];
+
+    if (watchedByData is Map) {
+      // Formato novo ou intermediário, apenas converte
+      parsedWatchedBy = Map<String, dynamic>.from(watchedByData);
+    } else if (watchedByData is List) {
+      // Formato antigo (List<String>), converte para o novo
+      for (var userId in watchedByData) {
+        if (userId is String) {
+          parsedWatchedBy[userId] = {
+            'count': 1,
+            'lastWatched': null,
+          };
+        }
+      }
+    }
+
+    return VideoItem(
+      id: doc.id,
+      title: data['title'] ?? '',
+      description: data['description'] ?? '',
+      videoUrl: data['videoUrl'] ?? '',
+      videoType: (data['videoType'] == 'uploaded')
+          ? VideoType.uploaded
+          : VideoType.youtube,
+      thumbnailUrl: data['thumbnailUrl'] ?? '',
+      uploadedByUid: data['uploadedByUid'] ?? '',
+      uploadedByName: data['uploadedByName'] ?? '',
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+      tags: List<String>.from(data['tags'] ?? []),
+      playlistId: data['playlistId'],
+      watchedBy: parsedWatchedBy,
+      fileSizeBytes: data['fileSizeBytes'], // NOVO CAMPO
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'description': description,
+      'videoUrl': videoUrl,
+      'videoType': videoType == VideoType.uploaded ? 'uploaded' : 'youtube',
+      'thumbnailUrl': thumbnailUrl,
+      'uploadedByUid': uploadedByUid,
+      'uploadedByName': uploadedByName,
+      'createdAt': createdAt,
+      'tags': tags,
+      'playlistId': playlistId,
+      'watchedBy': watchedBy,
+      'fileSizeBytes': fileSizeBytes, // NOVO CAMPO
     };
   }
 }

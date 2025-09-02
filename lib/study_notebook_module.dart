@@ -18,7 +18,6 @@ class StudyNoteService {
 
   StudyNoteService({required this.userId});
 
-  // Caminhos das coleções
   CollectionReference get _subjectsCollection => FirebaseFirestore.instance
       .collection('users')
       .doc(userId)
@@ -32,7 +31,6 @@ class StudyNoteService {
       .doc(userId)
       .collection('study_notes');
 
-  // --- MÉTODOS PARA ASSUNTOS (SUBJECTS) ---
   Stream<QuerySnapshot> getSubjectsStream() {
     return _subjectsCollection
         .orderBy('createdAt', descending: true)
@@ -50,9 +48,7 @@ class StudyNoteService {
 
   Future<void> deleteSubject(String subjectId) async {
     final batch = FirebaseFirestore.instance.batch();
-    // Deleta o assunto
     batch.delete(_subjectsCollection.doc(subjectId));
-    // Deleta volumes e anotações associados (requer múltiplas leituras)
     final volumesSnapshot =
         await _volumesCollection.where('subjectId', isEqualTo: subjectId).get();
     for (var volDoc in volumesSnapshot.docs) {
@@ -66,10 +62,7 @@ class StudyNoteService {
     return batch.commit();
   }
 
-  // --- MÉTODOS PARA VOLUMES ---
   Stream<QuerySnapshot> getVolumesStream(String subjectId) {
-    // CORREÇÃO: Removida a ordenação do Firestore para evitar problemas de índice.
-    // A ordenação será feita no lado do cliente (no widget).
     return _volumesCollection
         .where('subjectId', isEqualTo: subjectId)
         .snapshots();
@@ -86,9 +79,7 @@ class StudyNoteService {
 
   Future<void> deleteVolume(String volumeId) async {
     final batch = FirebaseFirestore.instance.batch();
-    // Deleta o volume
     batch.delete(_volumesCollection.doc(volumeId));
-    // Deleta anotações associadas
     final notesSnapshot =
         await _notesCollection.where('volumeId', isEqualTo: volumeId).get();
     for (var doc in notesSnapshot.docs) {
@@ -97,7 +88,6 @@ class StudyNoteService {
     return batch.commit();
   }
 
-  // --- MÉTODOS PARA ANOTAÇÕES (NOTES) ---
   Stream<QuerySnapshot> getNotesStream(String volumeId) {
     return _notesCollection
         .where('volumeId', isEqualTo: volumeId)
@@ -118,7 +108,6 @@ class StudyNoteService {
     return _notesCollection.doc(noteId).delete();
   }
 
-  // --- UPLOAD DE IMAGEM (Inalterado) ---
   Future<String?> saveImage(XFile image) async {
     try {
       final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}.jpg';
@@ -275,6 +264,7 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
         },
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'study_subject_fab', // CORREÇÃO AQUI
         onPressed: () => _showSubjectDialog(),
         tooltip: 'Novo Assunto',
         child: const Icon(Icons.add),

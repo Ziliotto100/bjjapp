@@ -2,7 +2,7 @@ name: bjjapp
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.1.9+21
+version: 1.1.10+22
 
 environment:
   sdk: '>=3.4.0 <4.0.0' # Atualizado para a versão mais recente do Flutter
@@ -23,7 +23,7 @@ dependencies:
   flutter_staggered_animations: ^1.1.1
   smooth_page_indicator: ^1.1.0
   cached_network_image: ^3.3.1
-  fl_chart: ^0.68.0 # Adicione esta linha
+  fl_chart: ^1.1.0 # Adicione esta linha
 
   image_picker: ^1.1.2    # <-- ADICIONE/ATUALIZE ESTA
   path: ^1.9.0            # <-- ADICIONE/ATUALIZE ESTA
@@ -45,6 +45,7 @@ dependencies:
   firebase_messaging: ^16.0.0
   firebase_storage: ^13.0.0
   timeline_tile: ^2.0.0
+  video_player: ^2.10.0
 
 dev_dependencies:
   flutter_test:

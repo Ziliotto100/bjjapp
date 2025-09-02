@@ -271,7 +271,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           .doc('sparring')
           .set(stateData);
 
-      // **LOG DE AUDITORIA**
       await _createAuditLog(
         academyId: widget.user.academyId,
         actor: widget.user,
@@ -324,7 +323,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     if (newCheckins > 0) {
       await batch.commit();
 
-      // **LOG DE AUDITORIA**
       await _createAuditLog(
         academyId: widget.user.academyId,
         actor: widget.user,
@@ -501,6 +499,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     final currentModuleId = _allModules[_paginaAtual].id;
     if (currentModuleId == 'teacher_students') {
       return FloatingActionButton(
+        heroTag: 'teacher_add_student_fab', // CORREÇÃO AQUI
         onPressed: () {
           showDialog(
             context: context,

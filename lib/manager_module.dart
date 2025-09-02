@@ -8,6 +8,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'models.dart';
 import 'common_widgets.dart';
 import 'app_theme.dart';
@@ -449,6 +450,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
 
     if (currentModuleId == 'manager_students') {
       return FloatingActionButton(
+        heroTag: 'manager_add_student_fab', // CORREÇÃO AQUI
         onPressed: () {
           showDialog(
             context: context,
@@ -505,6 +507,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       );
     } else if (currentModuleId == 'manager_teachers') {
       return FloatingActionButton(
+        heroTag: 'manager_add_teacher_fab', // CORREÇÃO AQUI
         onPressed: () async {
           final result = await showDialog<Map<String, String>?>(
             context: context,
@@ -556,7 +559,6 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   }
 }
 
-// --- **INÍCIO DA CORREÇÃO** ---
 // A função foi tornada pública (removido o `_`)
 void showCreateAccessDialog(BuildContext context, Aluno aluno, String academyId,
     UserModel manager) async {
@@ -634,7 +636,10 @@ class ManagerDashboardPage extends StatelessWidget {
             trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
             onTap: () {
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => ManageUnitsPage(academyId: user.academyId),
+                builder: (_) => ManageUnitsPage(
+                  academyId: user.academyId,
+                  manager: user,
+                ),
               ));
             },
           ),
@@ -646,47 +651,9 @@ class ManagerDashboardPage extends StatelessWidget {
 
 class ManageUnitsPage extends StatelessWidget {
   final String academyId;
-  const ManageUnitsPage({super.key, required this.academyId});
-
-  void _showUnitDialog(BuildContext context, {DocumentSnapshot? unitDoc}) {
-    showDialog(
-      context: context,
-      builder: (_) =>
-          _AddEditUnitDialog(academyId: academyId, unitDoc: unitDoc),
-    );
-  }
-
-  void _confirmDelete(BuildContext context, DocumentSnapshot unitDoc) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirmar Exclusão'),
-        content: Text(
-            'Tem certeza que deseja excluir a unidade "${unitDoc['name']}"? Esta ação não pode ser desfeita.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              Navigator.of(ctx).pop();
-              try {
-                await unitDoc.reference.delete();
-                showBjjSnackBar(context, 'Unidade excluída!', type: 'success');
-              } catch (e) {
-                showBjjSnackBar(context,
-                    'Erro ao excluir unidade. Verifique se ela não está em uso.',
-                    type: 'error');
-              }
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
-            child: const Text('Excluir'),
-          ),
-        ],
-      ),
-    );
-  }
+  final UserModel manager;
+  const ManageUnitsPage(
+      {super.key, required this.academyId, required this.manager});
 
   @override
   Widget build(BuildContext context) {
@@ -733,24 +700,17 @@ class ManageUnitsPage extends StatelessWidget {
                   return Card(
                     child: ListTile(
                       title: Text(unitName),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit_outlined,
-                                color: primaryAccent),
-                            tooltip: 'Renomear',
-                            onPressed: () =>
-                                _showUnitDialog(context, unitDoc: unit),
+                      trailing:
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                      onTap: () {
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => UnitDetailPage(
+                            academyId: academyId,
+                            unitDoc: unit,
+                            manager: manager,
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.delete_outline,
-                                color: errorColor),
-                            tooltip: 'Excluir',
-                            onPressed: () => _confirmDelete(context, unit),
-                          ),
-                        ],
-                      ),
+                        ));
+                      },
                     ),
                   );
                 },
@@ -760,10 +720,343 @@ class ManageUnitsPage extends StatelessWidget {
         ),
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => _showUnitDialog(context),
+        onPressed: () {
+          showDialog(
+            context: context,
+            builder: (_) => _AddEditUnitDialog(academyId: academyId),
+          );
+        },
         tooltip: 'Adicionar Unidade',
         child: const Icon(Icons.add),
       ),
+    );
+  }
+}
+
+// --- TELA DE DETALHES DA UNIDADE (MODIFICADA) ---
+class UnitDetailPage extends StatefulWidget {
+  final String academyId;
+  final DocumentSnapshot unitDoc;
+  final UserModel manager;
+
+  const UnitDetailPage(
+      {super.key,
+      required this.academyId,
+      required this.unitDoc,
+      required this.manager});
+
+  @override
+  State<UnitDetailPage> createState() => _UnitDetailPageState();
+}
+
+class _UnitDetailPageState extends State<UnitDetailPage> {
+  late Future<Map<String, dynamic>> _detailsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _detailsFuture = _fetchUnitDetails();
+  }
+
+  Future<Map<String, dynamic>> _fetchUnitDetails() async {
+    final unitId = widget.unitDoc.id;
+    final firestore = FirebaseFirestore.instance;
+
+    // 1. Buscar Alunos da unidade
+    final studentsSnapshot = await firestore
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('students')
+        .where('unitId', isEqualTo: unitId)
+        .get();
+    final students = studentsSnapshot.docs
+        .map((doc) => Aluno.fromJson(doc.id, doc.data()))
+        .toList();
+
+    // 2. Buscar Professores da unidade
+    final teachersSnapshot = await firestore
+        .collection('users')
+        .where('academyId', isEqualTo: widget.academyId)
+        .where('role', isEqualTo: 'teacher')
+        .where('unitId', isEqualTo: unitId)
+        .get();
+    final teachers = teachersSnapshot.docs
+        .map((doc) => UserModel.fromFirestore(doc))
+        .toList();
+
+    // 3. Buscar Dados Financeiros dos alunos desta unidade
+    int paidCount = 0;
+    int pendingCount = 0;
+    int overdueCount = 0;
+    final now = DateTime.now();
+    final studentIdsInUnit = students.map((s) => s.id).toList();
+
+    if (studentIdsInUnit.isNotEmpty) {
+      final paymentsSnapshot = await firestore
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('payment_history')
+          .where('paymentDate',
+              isGreaterThanOrEqualTo: DateTime(now.year, now.month, 1))
+          .get();
+
+      final paidStudentNames = <String>{};
+      for (var doc in paymentsSnapshot.docs) {
+        final note = doc.data()['notes'] as String?;
+        if (note != null) {
+          paidStudentNames.add(note.replaceAll('Mensalidade de ', ''));
+        }
+      }
+
+      for (final student in students) {
+        if (paidStudentNames.contains(student.nome)) {
+          paidCount++;
+        } else {
+          // A lógica de vencimento (dia 10) pode ser ajustada
+          if (now.day > 10) {
+            overdueCount++;
+          } else {
+            pendingCount++;
+          }
+        }
+      }
+    }
+
+    // 4. Retornar todos os dados
+    return {
+      'students': students,
+      'teachers': teachers,
+      'paidCount': paidCount,
+      'pendingCount': pendingCount,
+      'overdueCount': overdueCount,
+    };
+  }
+
+  void _showUnitDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (_) => _AddEditUnitDialog(
+          academyId: widget.academyId, unitDoc: widget.unitDoc),
+    ).then((_) {
+      // Recarrega os detalhes caso o nome mude
+      if (mounted) {
+        setState(() {
+          _detailsFuture = _fetchUnitDetails();
+        });
+      }
+    });
+  }
+
+  void _confirmDelete(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar Exclusão'),
+        content: Text(
+            'Tem certeza que deseja excluir a unidade "${widget.unitDoc['name']}"? Esta ação não pode ser desfeita.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.of(ctx).pop(); // Fecha o dialog de confirmação
+              try {
+                await widget.unitDoc.reference.delete();
+                if (context.mounted) {
+                  Navigator.of(context).pop(); // Volta para a lista de unidades
+                  showBjjSnackBar(context, 'Unidade excluída!',
+                      type: 'success');
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  showBjjSnackBar(context,
+                      'Erro ao excluir unidade. Verifique se ela não está em uso.',
+                      type: 'error');
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMetricCard(
+      String title, String value, IconData icon, Color color) {
+    return Expanded(
+      child: Card(
+        elevation: 1,
+        child: Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, color: color, size: 24),
+              const SizedBox(height: 8),
+              Text(value,
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(fontWeight: FontWeight.bold)),
+              Text(title, style: const TextStyle(color: textHint)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // CORREÇÃO: O nome da unidade agora é lido a partir do widget.unitDoc e atualizado
+    // quando o FutureBuilder reconstrói.
+    final unitName =
+        (widget.unitDoc.data() as Map<String, dynamic>?)?['name'] ??
+            'Detalhes da Unidade';
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(unitName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Renomear',
+            onPressed: () => _showUnitDialog(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: errorColor),
+            tooltip: 'Excluir',
+            onPressed: () => _confirmDelete(context),
+          ),
+        ],
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: FutureBuilder<Map<String, dynamic>>(
+            future: _detailsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return EmptyStateWidget(
+                    icon: Icons.error,
+                    title: 'Erro',
+                    message: snapshot.error.toString());
+              }
+              if (!snapshot.hasData) {
+                return const EmptyStateWidget(
+                    icon: Icons.search_off, title: 'Sem Dados');
+              }
+
+              final data = snapshot.data!;
+              final students = data['students'] as List<Aluno>;
+              final teachers = data['teachers'] as List<UserModel>;
+
+              return ListView(
+                padding: const EdgeInsets.all(12.0),
+                children: [
+                  Row(
+                    children: [
+                      _buildMetricCard("Alunos", students.length.toString(),
+                          Icons.people_alt_rounded, primaryAccent),
+                      const SizedBox(width: 12),
+                      _buildMetricCard(
+                          "Professores",
+                          teachers.length.toString(),
+                          Icons.school_rounded,
+                          infoColor),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Financeiro (Mês Atual)",
+                              style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            children: [
+                              _FinancialStatusChip(
+                                  label: 'Pagas',
+                                  count: data['paidCount'],
+                                  color: successColor),
+                              _FinancialStatusChip(
+                                  label: 'Pendentes',
+                                  count: data['pendingCount'],
+                                  color: warningColor),
+                              _FinancialStatusChip(
+                                  label: 'Atrasadas',
+                                  count: data['overdueCount'],
+                                  color: errorColor),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (teachers.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.only(top: 24.0, left: 4, bottom: 8),
+                      child: Text("Professores da Unidade",
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                    ...teachers.map((teacher) => UserCard(
+                        user: teacher,
+                        academyId: widget.academyId,
+                        currentUser: widget.manager))
+                  ],
+                  if (students.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.only(top: 24.0, left: 4, bottom: 8),
+                      child: Text("Alunos da Unidade",
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold)),
+                    ),
+                    ...students.map((student) => UserCard(
+                        user: student,
+                        academyId: widget.academyId,
+                        currentUser: widget.manager))
+                  ],
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FinancialStatusChip extends StatelessWidget {
+  final String label;
+  final int count;
+  final Color color;
+
+  const _FinancialStatusChip(
+      {required this.label, required this.count, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Text(count.toString(),
+            style: Theme.of(context)
+                .textTheme
+                .headlineSmall
+                ?.copyWith(color: color, fontWeight: FontWeight.bold)),
+        Text(label, style: TextStyle(color: color)),
+      ],
     );
   }
 }
@@ -3718,9 +4011,64 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
   }
 }
 
-class ManagerSettingsPage extends StatelessWidget {
+class ManagerSettingsPage extends StatefulWidget {
   final UserModel user;
   const ManagerSettingsPage({super.key, required this.user});
+
+  @override
+  State<ManagerSettingsPage> createState() => _ManagerSettingsPageState();
+}
+
+class _ManagerSettingsPageState extends State<ManagerSettingsPage> {
+  String? _supportPhoneNumber;
+  bool _isLoadingSupportNumber = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchSupportNumber();
+  }
+
+  Future<void> _fetchSupportNumber() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('global_settings')
+          .doc('support')
+          .get();
+      if (mounted && doc.exists && doc.data() != null) {
+        setState(() {
+          _supportPhoneNumber = doc.data()!['whatsapp_number'];
+        });
+      }
+    } catch (e) {
+      debugPrint("Could not fetch support number: $e");
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingSupportNumber = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _launchWhatsApp() async {
+    if (_supportPhoneNumber == null || _supportPhoneNumber!.isEmpty) {
+      showBjjSnackBar(context, 'Número de suporte não configurado.',
+          type: 'error');
+      return;
+    }
+    final message = Uri.encodeComponent(
+        'Olá, preciso de ajuda com a minha conta de gerente no Match BJJ.');
+    final whatsappUrl =
+        Uri.parse("https://wa.me/$_supportPhoneNumber?text=$message");
+
+    if (await canLaunchUrl(whatsappUrl)) {
+      await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+    } else {
+      showBjjSnackBar(context, 'Não foi possível abrir o WhatsApp.',
+          type: 'error');
+    }
+  }
 
   void _showChangeAcademyNameDialog(BuildContext context) {
     final nameController = TextEditingController();
@@ -3756,7 +4104,7 @@ class ManagerSettingsPage extends StatelessWidget {
                   try {
                     await FirebaseFirestore.instance
                         .collection('academies')
-                        .doc(user.academyId)
+                        .doc(widget.user.academyId)
                         .update({'name': newName});
                     Navigator.of(context).pop();
                     showBjjSnackBar(context, 'Nome da academia atualizado!',
@@ -3816,7 +4164,7 @@ class ManagerSettingsPage extends StatelessWidget {
                   try {
                     await FirebaseFirestore.instance
                         .collection('academies')
-                        .doc(user.academyId)
+                        .doc(widget.user.academyId)
                         .set({'contactPhoneNumber': newNumber},
                             SetOptions(merge: true));
                     Navigator.of(context).pop();
@@ -3848,7 +4196,7 @@ class ManagerSettingsPage extends StatelessWidget {
           child: FutureBuilder<DocumentSnapshot>(
             future: FirebaseFirestore.instance
                 .collection('academies')
-                .doc(user.academyId)
+                .doc(widget.user.academyId)
                 .get(),
             builder: (context, snapshot) {
               if (!snapshot.hasData) {
@@ -3893,7 +4241,8 @@ class ManagerSettingsPage extends StatelessWidget {
                           const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                       onTap: () {
                         Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => EditUserProfilePage(user: user),
+                          builder: (_) =>
+                              EditUserProfilePage(user: widget.user),
                         ));
                       },
                     ),
@@ -3924,6 +4273,17 @@ class ManagerSettingsPage extends StatelessWidget {
                       },
                     ),
                   ),
+                  if (!_isLoadingSupportNumber && _supportPhoneNumber != null)
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.support_agent_rounded,
+                            color: infoColor),
+                        title: const Text("Falar com o Suporte"),
+                        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 16),
+                        onTap: _launchWhatsApp,
+                      ),
+                    ),
                   const SizedBox(height: 20),
                   Card(
                     child: ListTile(

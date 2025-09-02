@@ -1,11 +1,13 @@
 // lib/super_admin_module.dart
-// ignore_for_file: use_build_context_synchronously, prefer_final_fields, unnecessary_to_list_in_spreads
+// ignore_for_file: use_build_context_synchronously, prefer_final_fields, unnecessary_to_list_in_spreads, unnecessary_cast
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'admin_dashboard_module.dart';
 import 'admin_financial_page.dart';
 import 'app_theme.dart';
@@ -13,6 +15,7 @@ import 'common_widgets.dart';
 import 'models.dart';
 import 'auth_gate.dart';
 import 'manager_module.dart';
+import 'video_library_module.dart';
 
 // --- TELA CONTAINER DO SUPER ADMIN COM NAVEGAÇÃO ---
 class SuperAdminPage extends StatefulWidget {
@@ -29,12 +32,14 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     const AdminDashboardPage(),
     const AdminFinancialPage(),
     const AcademyListPage(),
+    const VideoAuditPage(),
   ];
 
   final List<String> _pageTitles = [
     'Dashboard',
     'Financeiro',
-    'Gerenciar Academias',
+    'Academias',
+    'Vídeos',
   ];
 
   @override
@@ -44,17 +49,14 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       appBar: AppBar(
         title: Text(_pageTitles[_currentIndex]),
         actions: [
+          // BOTÃO DE CONFIGURAÇÕES NA BARRA SUPERIOR
           IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sair',
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-              if (mounted) {
-                Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const AuthGate()),
-                  (route) => false,
-                );
-              }
+            icon: const Icon(Icons.settings),
+            tooltip: 'Configurações',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const AdminSettingsPage()),
+              );
             },
           )
         ],
@@ -87,7 +89,152 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
             icon: Icon(Icons.business_rounded),
             label: 'Academias',
           ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.video_library_outlined),
+            label: 'Vídeos',
+          ),
         ],
+      ),
+    );
+  }
+}
+
+// --- NOVA TELA DE CONFIGURAÇÕES ---
+class AdminSettingsPage extends StatefulWidget {
+  const AdminSettingsPage({super.key});
+
+  @override
+  State<AdminSettingsPage> createState() => _AdminSettingsPageState();
+}
+
+class _AdminSettingsPageState extends State<AdminSettingsPage> {
+  final _whatsappController = TextEditingController();
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSupportNumber();
+  }
+
+  Future<void> _loadSupportNumber() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('global_settings')
+          .doc('support')
+          .get();
+      if (doc.exists && doc.data() != null) {
+        _whatsappController.text = doc.data()!['whatsapp_number'] ?? '';
+      }
+    } catch (e) {
+      // It's okay if it fails, maybe the document doesn't exist yet.
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _saveSupportNumber() async {
+    final number = _whatsappController.text.trim();
+    if (number.isEmpty) {
+      showBjjSnackBar(context, 'O número não pode estar vazio.', type: 'error');
+      return;
+    }
+    setState(() {
+      _isLoading = true;
+    });
+    try {
+      await FirebaseFirestore.instance
+          .collection('global_settings')
+          .doc('support')
+          .set({'whatsapp_number': number});
+      showBjjSnackBar(context, 'Número do suporte salvo com sucesso!',
+          type: 'success');
+    } catch (e) {
+      showBjjSnackBar(context, 'Erro ao salvar o número: $e', type: 'error');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Configurações'),
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: const EdgeInsets.all(8.0),
+                  children: [
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Configurações de Suporte',
+                                style: Theme.of(context).textTheme.titleLarge),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Insira o número de WhatsApp que será exibido para os usuários em telas de bloqueio.',
+                              style: TextStyle(color: textHint),
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _whatsappController,
+                              decoration: const InputDecoration(
+                                labelText: 'Número do WhatsApp para Suporte',
+                                hintText: 'Ex: 5511999998888',
+                                prefixIcon: Icon(Icons.support_agent),
+                              ),
+                              keyboardType: TextInputType.phone,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly
+                              ],
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton(
+                              onPressed: _saveSupportNumber,
+                              child: const Text('Salvar Número'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.logout, color: errorColor),
+                        title: const Text('Sair',
+                            style: TextStyle(color: errorColor)),
+                        onTap: () async {
+                          await FirebaseAuth.instance.signOut();
+                          if (mounted) {
+                            Navigator.of(context, rootNavigator: true)
+                                .pushAndRemoveUntil(
+                              MaterialPageRoute(
+                                  builder: (context) => const AuthGate()),
+                              (route) => false,
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
@@ -172,6 +319,7 @@ class _AcademyListPageState extends State<AcademyListPage> {
         },
       ),
       floatingActionButton: FloatingActionButton(
+        heroTag: 'super_admin_fab',
         onPressed: () {
           showDialog(
             context: context,
@@ -197,12 +345,60 @@ class AcademyDetailPage extends StatefulWidget {
 class _AcademyDetailPageState extends State<AcademyDetailPage> {
   late Future<List<dynamic>> _usersFuture;
   late Future<UserModel?> _managerFuture;
+  late Future<String> _dataUsageFuture; // NOVO FUTURE
 
   @override
   void initState() {
     super.initState();
     _usersFuture = _fetchUsers();
     _managerFuture = _fetchManager();
+    _dataUsageFuture = _fetchDataUsage(); // INICIA O NOVO FUTURE
+  }
+
+  // NOVA FUNÇÃO PARA CALCULAR O USO DE DADOS
+  Future<String> _fetchDataUsage() async {
+    try {
+      final videosSnapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyDoc.id)
+          .collection('videos')
+          .where('videoType', isEqualTo: 'uploaded')
+          .get();
+
+      if (videosSnapshot.docs.isEmpty) {
+        return "0 MB";
+      }
+
+      double totalBytes = 0;
+
+      for (var doc in videosSnapshot.docs) {
+        final video = VideoItem.fromFirestore(doc);
+        if (video.fileSizeBytes != null && video.fileSizeBytes! > 0) {
+          int totalViews = 0;
+          video.watchedBy.forEach((key, value) {
+            if (value is Map && value.containsKey('count')) {
+              totalViews += (value['count'] as num).toInt();
+            }
+          });
+          totalBytes += (video.fileSizeBytes! * totalViews);
+        }
+      }
+
+      if (totalBytes == 0) {
+        return "0 MB";
+      }
+
+      final megabytes = totalBytes / (1024 * 1024);
+      if (megabytes < 1024) {
+        return "${megabytes.toStringAsFixed(2)} MB";
+      } else {
+        final gigabytes = megabytes / 1024;
+        return "${gigabytes.toStringAsFixed(2)} GB";
+      }
+    } catch (e) {
+      debugPrint("Erro ao calcular uso de dados: $e");
+      return "Erro";
+    }
   }
 
   Future<UserModel?> _fetchManager() async {
@@ -269,8 +465,11 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
   void _showAcademyInfoDialog(BuildContext context, UserModel? manager) {
     showDialog(
       context: context,
-      builder: (_) =>
-          _AcademyInfoDialog(academyDoc: widget.academyDoc, manager: manager),
+      builder: (_) => _AcademyInfoDialog(
+        academyDoc: widget.academyDoc,
+        manager: manager,
+        dataUsageFuture: _dataUsageFuture, // PASSA O FUTURE PARA O DIALOG
+      ),
     );
   }
 
@@ -1074,8 +1273,10 @@ class _SendGlobalNotificationDialogState
 class _AcademyInfoDialog extends StatelessWidget {
   final DocumentSnapshot academyDoc;
   final UserModel? manager;
+  final Future<String> dataUsageFuture; // NOVO PARÂMETRO
 
-  const _AcademyInfoDialog({required this.academyDoc, this.manager});
+  const _AcademyInfoDialog(
+      {required this.academyDoc, this.manager, required this.dataUsageFuture});
 
   @override
   Widget build(BuildContext context) {
@@ -1107,6 +1308,19 @@ class _AcademyInfoDialog extends StatelessWidget {
                 subscriptionEndDate != null
                     ? DateFormat('dd/MM/yyyy').format(subscriptionEndDate)
                     : 'Vitalícia'),
+            // NOVO WIDGET PARA EXIBIR O CONSUMO
+            FutureBuilder<String>(
+              future: dataUsageFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return _buildInfoRow(context, Icons.data_usage_outlined,
+                      'Consumo de Vídeos', 'Calculando...');
+                }
+                final usage = snapshot.data ?? "N/D";
+                return _buildInfoRow(context, Icons.data_usage_outlined,
+                    'Consumo de Vídeos', usage);
+              },
+            ),
           ],
         ),
       ),
@@ -1157,6 +1371,7 @@ class _EditAcademySubscriptionDialogState
     extends State<EditAcademySubscriptionDialog> {
   late String _currentStatus;
   late DateTime _currentEndDate;
+  late bool _hasVideoAccess;
   bool _isLifetime = false;
   bool _isLoading = false;
 
@@ -1166,6 +1381,7 @@ class _EditAcademySubscriptionDialogState
     final data = widget.academyDoc.data() as Map<String, dynamic>;
     _currentStatus = data['status'] ?? 'active';
     final endDate = (data['subscriptionEndDate'] as Timestamp?)?.toDate();
+    _hasVideoAccess = data['hasVideoLibraryAccess'] ?? false;
 
     if (endDate == null) {
       _isLifetime = true;
@@ -1198,6 +1414,7 @@ class _EditAcademySubscriptionDialogState
         'status': _currentStatus,
         'subscriptionEndDate':
             _isLifetime ? null : Timestamp.fromDate(_currentEndDate),
+        'hasVideoLibraryAccess': _hasVideoAccess,
       };
 
       await widget.academyDoc.reference.update(updateData);
@@ -1249,6 +1466,16 @@ class _EditAcademySubscriptionDialogState
               onChanged: (value) {
                 setState(() {
                   _isLifetime = value;
+                });
+              },
+              contentPadding: EdgeInsets.zero,
+            ),
+            SwitchListTile(
+              title: const Text('Acesso à Videoteca'),
+              value: _hasVideoAccess,
+              onChanged: (value) {
+                setState(() {
+                  _hasVideoAccess = value;
                 });
               },
               contentPadding: EdgeInsets.zero,
@@ -1705,6 +1932,198 @@ class _EditPaymentRecordDialogState extends State<EditPaymentRecordDialog> {
         ElevatedButton(
             onPressed: _isLoading ? null : _saveChanges,
             child: const Text('Salvar')),
+      ],
+    );
+  }
+}
+
+// --- NOVA TELA DE AUDITORIA DE VÍDEOS ---
+class VideoAuditPage extends StatefulWidget {
+  const VideoAuditPage({super.key});
+
+  @override
+  State<VideoAuditPage> createState() => _VideoAuditPageState();
+}
+
+class _VideoAuditPageState extends State<VideoAuditPage> {
+  late Future<Map<String, String>> _academyNamesFuture;
+  late Future<List<UserModel>> _allUsersFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _academyNamesFuture = _fetchAcademyNames();
+    _allUsersFuture = _fetchAllUsers();
+  }
+
+  Future<Map<String, String>> _fetchAcademyNames() async {
+    final snapshot =
+        await FirebaseFirestore.instance.collection('academies').get();
+    return {
+      for (var doc in snapshot.docs) doc.id: doc.data()['name'] ?? 'Sem nome'
+    };
+  }
+
+  Future<List<UserModel>> _fetchAllUsers() async {
+    final snapshot = await FirebaseFirestore.instance.collection('users').get();
+    return snapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList();
+  }
+
+  // **NOVA FUNÇÃO PARA ASSISTIR O VÍDEO**
+  Future<void> _handleTap(BuildContext context, VideoItem video) async {
+    if (video.videoType == VideoType.youtube) {
+      final uri = Uri.parse(video.videoUrl);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        showBjjSnackBar(context, 'Não foi possível abrir o vídeo.',
+            type: 'error');
+      }
+    } else {
+      Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => VideoPlayerPage(video: video),
+      ));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder(
+        future: Future.wait([_academyNamesFuture, _allUsersFuture]),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return const EmptyStateWidget(
+                icon: Icons.error, title: 'Erro ao carregar dados');
+          }
+
+          final academyNames = snapshot.data![0] as Map<String, String>;
+          final allUsers = snapshot.data![1] as List<UserModel>;
+
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collectionGroup('videos')
+                .orderBy('createdAt', descending: true)
+                .snapshots(),
+            builder: (context, videoSnapshot) {
+              if (videoSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (!videoSnapshot.hasData || videoSnapshot.data!.docs.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.video_library_outlined,
+                  title: 'Nenhum vídeo publicado',
+                  message: 'Ainda não há vídeos em nenhuma academia.',
+                );
+              }
+
+              final videosWithContext = videoSnapshot.data!.docs.map((doc) {
+                return {
+                  'video': VideoItem.fromFirestore(doc),
+                  'academyId': doc.reference.parent.parent!.id,
+                };
+              }).toList();
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(8.0),
+                itemCount: videosWithContext.length,
+                itemBuilder: (context, index) {
+                  final itemData = videosWithContext[index];
+                  final video = itemData['video'] as VideoItem;
+                  final academyId = itemData['academyId'] as String;
+                  final academyName =
+                      academyNames[academyId] ?? 'Academia desconhecida';
+
+                  return Card(
+                    child: ListTile(
+                      title: Text(video.title),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Academia: $academyName'),
+                          Text(
+                              'Publicado em: ${DateFormat('dd/MM/yy').format(video.createdAt.toDate())}'),
+                        ],
+                      ),
+                      onTap: () => _handleTap(context, video),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.visibility_outlined,
+                            color: textHint),
+                        tooltip: 'Ver Visualizações',
+                        onPressed: () {
+                          showDialog(
+                            context: context,
+                            builder: (_) => _VideoViewersAuditDialog(
+                              watchedByMap: video.watchedBy,
+                              allUsers: allUsers,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          );
+        });
+  }
+}
+
+class _VideoViewersAuditDialog extends StatelessWidget {
+  final Map<String, dynamic> watchedByMap;
+  final List<UserModel> allUsers;
+
+  const _VideoViewersAuditDialog(
+      {required this.watchedByMap, required this.allUsers});
+
+  @override
+  Widget build(BuildContext context) {
+    final allUsersMap = {for (var user in allUsers) user.uid: user};
+
+    final viewers = watchedByMap.entries.map((entry) {
+      final user = allUsersMap[entry.key];
+      final viewData = entry.value as Map<String, dynamic>;
+      final lastWatched = (viewData['lastWatched'] as Timestamp?)?.toDate();
+      return {
+        'name': user?.name ?? 'Usuário desconhecido',
+        'count': viewData['count'] ?? 0,
+        'lastWatched': lastWatched,
+      };
+    }).toList()
+      ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
+
+    return AlertDialog(
+      title: const Text('Quem Assistiu'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: viewers.isEmpty
+            ? const Center(child: Text('Ninguém visualizou este vídeo ainda.'))
+            : ListView.builder(
+                shrinkWrap: true,
+                itemCount: viewers.length,
+                itemBuilder: (context, index) {
+                  final viewer = viewers[index];
+                  final lastWatchedDate = viewer['lastWatched'] as DateTime?;
+                  return ListTile(
+                    title: Text(viewer['name'] as String),
+                    subtitle: lastWatchedDate != null
+                        ? Text(
+                            'Última vez: ${DateFormat('dd/MM/yy \'às\' HH:mm').format(lastWatchedDate)}')
+                        : null,
+                    trailing: Text('${viewer['count']}x',
+                        style: const TextStyle(color: textHint)),
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Fechar'),
+        ),
       ],
     );
   }

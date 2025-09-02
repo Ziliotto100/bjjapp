@@ -12,6 +12,7 @@ import 'study_notebook_module.dart';
 import 'shop_module.dart';
 import 'notifications_module.dart';
 import 'birthdays_module.dart';
+import 'video_library_module.dart';
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -106,7 +107,7 @@ class NavigationService {
         icon: Icons.check_circle_outline_rounded,
         requiredRole: UserRole.teacher,
         pageBuilder: (user, teachers, students) => CheckinTeacherPage(
-            user: user, // <-- CORREÇÃO APLICADA AQUI
+            user: user,
             academyId: user.academyId,
             todosParticipantesDaAcademia: students),
       ),
@@ -170,6 +171,12 @@ class NavigationService {
         icon: Icons.calendar_month_rounded,
         pageBuilder: (user, teachers, students) =>
             SchedulePage(user: user, teachers: teachers),
+      ),
+      AppModule(
+        id: 'common_video_aulas',
+        title: 'Videoaulas',
+        icon: Icons.video_library_rounded,
+        pageBuilder: (user, teachers, students) => VideoLibraryPage(user: user),
       ),
       AppModule(
         id: 'common_shop',
