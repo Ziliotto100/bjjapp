@@ -2,7 +2,7 @@
 // ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'dart:async';
-import 'dart:io';
+import 'dart:io'; // <-- CORREÇÃO: IMPORT ADICIONADO
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,6 +12,8 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:video_player/video_player.dart';
+import 'package:chewie/chewie.dart';
+
 import 'models.dart';
 import 'common_widgets.dart';
 import 'app_theme.dart';
@@ -19,7 +21,7 @@ import 'app_theme.dart';
 // --- TELA PRINCIPAL QUE EXIBE PLAYLISTS E VÍDEOS ---
 class VideoLibraryPage extends StatefulWidget {
   final UserModel user;
-  final VideoPlaylist? currentPlaylist; // Playlist atual, nulo para a raiz
+  final VideoPlaylist? currentPlaylist;
 
   const VideoLibraryPage({super.key, required this.user, this.currentPlaylist});
 
@@ -372,6 +374,7 @@ class _VideoLibraryPageState extends State<VideoLibraryPage> {
                               child: FadeInAnimation(
                                 child: _PlaylistListItem(
                                   playlist: playlist,
+                                  user: widget.user,
                                   onTap: () => Navigator.of(context)
                                       .push(MaterialPageRoute(
                                     builder: (_) => VideoLibraryPage(
@@ -500,37 +503,43 @@ class _VideoLibraryPageState extends State<VideoLibraryPage> {
 
 class _PlaylistListItem extends StatelessWidget {
   final VideoPlaylist playlist;
+  final UserModel user;
   final VoidCallback onTap;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   const _PlaylistListItem(
       {required this.playlist,
+      required this.user,
       required this.onTap,
       required this.onEdit,
       required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
+    final bool canManage =
+        user.role == UserRole.manager || user.role == UserRole.teacher;
     return Card(
       child: ListTile(
         leading: const Icon(Icons.playlist_play_rounded,
             color: primaryAccent, size: 40),
         title:
             Text(playlist.name, style: Theme.of(context).textTheme.titleMedium),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) {
-            if (value == 'edit') {
-              onEdit();
-            } else if (value == 'delete') {
-              onDelete();
-            }
-          },
-          itemBuilder: (context) => [
-            const PopupMenuItem(value: 'edit', child: Text('Renomear')),
-            const PopupMenuItem(value: 'delete', child: Text('Excluir')),
-          ],
-        ),
+        trailing: canManage
+            ? PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'edit') {
+                    onEdit();
+                  } else if (value == 'delete') {
+                    onDelete();
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(value: 'edit', child: Text('Renomear')),
+                  const PopupMenuItem(value: 'delete', child: Text('Excluir')),
+                ],
+              )
+            : null,
         onTap: onTap,
       ),
     );
@@ -770,6 +779,93 @@ class _VideoListItem extends StatelessWidget {
   }
 }
 
+class VideoPlayerPage extends StatefulWidget {
+  final VideoItem video;
+  const VideoPlayerPage({super.key, required this.video});
+
+  @override
+  State<VideoPlayerPage> createState() => _VideoPlayerPageState();
+}
+
+class _VideoPlayerPageState extends State<VideoPlayerPage> {
+  late VideoPlayerController _videoPlayerController;
+  ChewieController? _chewieController;
+
+  @override
+  void initState() {
+    super.initState();
+    initializePlayer();
+  }
+
+  @override
+  void dispose() {
+    _videoPlayerController.dispose();
+    _chewieController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> initializePlayer() async {
+    _videoPlayerController =
+        VideoPlayerController.networkUrl(Uri.parse(widget.video.videoUrl));
+    await _videoPlayerController.initialize();
+    _createChewieController();
+    setState(() {});
+  }
+
+  void _createChewieController() {
+    _chewieController = ChewieController(
+      videoPlayerController: _videoPlayerController,
+      autoPlay: true,
+      looping: false,
+      materialProgressColors: ChewieProgressColors(
+        playedColor: primaryAccent,
+        handleColor: primaryAccent,
+        bufferedColor: Colors.grey.shade600,
+        backgroundColor: Colors.grey.shade800,
+      ),
+      placeholder: Container(
+        color: Colors.black,
+      ),
+      autoInitialize: true,
+      errorBuilder: (context, errorMessage) {
+        return Center(
+          child: Text(
+            errorMessage,
+            style: const TextStyle(color: Colors.white),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: Text(widget.video.title),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: Center(
+        child: _chewieController != null &&
+                _chewieController!.videoPlayerController.value.isInitialized
+            ? Chewie(
+                controller: _chewieController!,
+              )
+            : const Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 20),
+                  Text('Carregando Vídeo...'),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
 class AddVideoPage extends StatefulWidget {
   final UserModel user;
   final VideoItem? videoToEdit;
@@ -936,7 +1032,7 @@ class _AddVideoPageState extends State<AddVideoPage> {
         }
 
         if (_pickedVideo != null) {
-          videoSizeBytes = await _pickedVideo!.length(); // CAPTURA O TAMANHO
+          videoSizeBytes = await _pickedVideo!.length();
           final videoName = 'video_${DateTime.now().millisecondsSinceEpoch}';
           final videoPath =
               'academy_videos/${widget.user.academyId}/videos/$videoName';
@@ -968,7 +1064,7 @@ class _AddVideoPageState extends State<AddVideoPage> {
             ? widget.videoToEdit!.createdAt
             : FieldValue.serverTimestamp(),
         'watchedBy': isEditing ? widget.videoToEdit!.watchedBy : {},
-        'fileSizeBytes': videoSizeBytes, // SALVA O TAMANHO
+        'fileSizeBytes': videoSizeBytes,
       };
 
       final collectionRef = FirebaseFirestore.instance
@@ -1150,115 +1246,6 @@ class _AddVideoPageState extends State<AddVideoPage> {
   }
 }
 
-class VideoPlayerPage extends StatefulWidget {
-  final VideoItem video;
-  const VideoPlayerPage({super.key, required this.video});
-
-  @override
-  State<VideoPlayerPage> createState() => _VideoPlayerPageState();
-}
-
-class _VideoPlayerPageState extends State<VideoPlayerPage> {
-  late VideoPlayerController _controller;
-  late Future<void> _initializeVideoPlayerFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller =
-        VideoPlayerController.networkUrl(Uri.parse(widget.video.videoUrl));
-    _initializeVideoPlayerFuture = _controller.initialize();
-    _controller.setLooping(true);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        title: Text(widget.video.title),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: FutureBuilder(
-        future: _initializeVideoPlayerFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done) {
-            return Center(
-              child: AspectRatio(
-                aspectRatio: _controller.value.aspectRatio,
-                child: Stack(
-                  alignment: Alignment.bottomCenter,
-                  children: [
-                    VideoPlayer(_controller),
-                    VideoProgressIndicator(_controller, allowScrubbing: true),
-                    ControlsOverlay(controller: _controller),
-                  ],
-                ),
-              ),
-            );
-          } else {
-            return const Center(child: CircularProgressIndicator());
-          }
-        },
-      ),
-    );
-  }
-}
-
-class ControlsOverlay extends StatefulWidget {
-  const ControlsOverlay({super.key, required this.controller});
-
-  final VideoPlayerController controller;
-
-  @override
-  State<ControlsOverlay> createState() => _ControlsOverlayState();
-}
-
-class _ControlsOverlayState extends State<ControlsOverlay> {
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: <Widget>[
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 50),
-          reverseDuration: const Duration(milliseconds: 200),
-          child: widget.controller.value.isPlaying
-              ? const SizedBox.shrink()
-              : Container(
-                  color: Colors.black26,
-                  child: const Center(
-                    child: Icon(
-                      Icons.play_arrow,
-                      color: Colors.white,
-                      size: 100.0,
-                      semanticLabel: 'Play',
-                    ),
-                  ),
-                ),
-        ),
-        GestureDetector(
-          onTap: () {
-            setState(() {
-              if (widget.controller.value.isPlaying) {
-                widget.controller.pause();
-              } else {
-                widget.controller.play();
-              }
-            });
-          },
-        ),
-      ],
-    );
-  }
-}
-
 class _ViewersDialog extends StatelessWidget {
   final Map<String, dynamic> watchedByMap;
   final List<UserModel> allUsers;
@@ -1267,10 +1254,8 @@ class _ViewersDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Cria um mapa de UID -> UserModel para consulta rápida
     final allUsersMap = {for (var user in allUsers) user.uid: user};
 
-    // Cria uma lista de visualizadores com seus dados
     final viewers = watchedByMap.entries.map((entry) {
       final user = allUsersMap[entry.key];
       final viewData = entry.value as Map<String, dynamic>;
@@ -1281,8 +1266,7 @@ class _ViewersDialog extends StatelessWidget {
         'lastWatched': lastWatched,
       };
     }).toList()
-      ..sort((a, b) => (b['count'] as int)
-          .compareTo(a['count'] as int)); // Ordena por mais visualizações
+      ..sort((a, b) => (b['count'] as int).compareTo(a['count'] as int));
 
     return AlertDialog(
       title: const Text('Visualizações'),

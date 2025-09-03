@@ -85,8 +85,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
         .snapshots()
         .listen((snapshot) async {
       // Se não houver notificação nova ou um diálogo já estiver aberto, não faz nada
-      if (!mounted || snapshot.docs.isEmpty || _isNotificationDialogShowing)
+      if (!mounted || snapshot.docs.isEmpty || _isNotificationDialogShowing) {
         return;
+      }
 
       // Marca que um diálogo está sendo aberto
       setState(() {
@@ -625,8 +626,9 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                             keyboardType: const TextInputType.numberWithOptions(
                                 decimal: true),
                             validator: (v) {
-                              if (v == null || v.isEmpty)
+                              if (v == null || v.isEmpty) {
                                 return 'Peso inválido';
+                              }
                               final x = double.tryParse(v.replaceAll(',', '.'));
                               return (x == null || x <= 0)
                                   ? 'Peso inválido (deve ser > 0)'
@@ -894,8 +896,12 @@ class _SettingsPageState extends State<SettingsPage> {
                   trailing:
                       const Icon(Icons.arrow_forward_ios_rounded, size: 16),
                   onTap: () {
+                    final pageToPush = widget.user.role == UserRole.student
+                        ? EditStudentProfilePage(user: widget.user)
+                        : EditUserProfilePage(user: widget.user);
+
                     Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => EditStudentProfilePage(user: widget.user),
+                      builder: (_) => pageToPush,
                     ));
                   },
                 ),
@@ -962,7 +968,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         ],
                       ),
                     );
-                    if (confirm == true) {
+                    if (confirm == true && context.mounted) {
                       await FirebaseAuth.instance.signOut();
                       Navigator.of(context, rootNavigator: true)
                           .pushAndRemoveUntil(

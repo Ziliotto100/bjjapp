@@ -61,7 +61,8 @@ class UserModel {
   // *** NOVOS CAMPOS PARA UNIDADES ***
   final String? unitId;
   final String? unitName;
-  final String? lastSelectedUnitId; // <<< NOVO CAMPO
+  final String? lastSelectedUnitId;
+  final bool canUploadStudyVideos;
 
   // [MELHORIA] Campos de Auditoria
   final Timestamp? createdAt;
@@ -89,7 +90,8 @@ class UserModel {
     this.lastNotificationCheck,
     this.unitId,
     this.unitName,
-    this.lastSelectedUnitId, // <<< NOVO CAMPO
+    this.lastSelectedUnitId,
+    this.canUploadStudyVideos = false,
     this.createdAt,
     this.updatedAt,
     this.createdByUid,
@@ -151,7 +153,8 @@ class UserModel {
       lastNotificationCheck: data['lastNotificationCheck'],
       unitId: data['unitId'],
       unitName: data['unitName'],
-      lastSelectedUnitId: data['lastSelectedUnitId'], // <<< NOVO CAMPO
+      lastSelectedUnitId: data['lastSelectedUnitId'],
+      canUploadStudyVideos: data['canUploadStudyVideos'] ?? false,
       createdAt: data['createdAt'],
       updatedAt: data['updatedAt'],
       createdByUid: data['createdByUid'],
@@ -438,17 +441,20 @@ class StudySubject {
   final String id;
   String title;
   final DateTime createdAt;
+  final int orderIndex;
 
   StudySubject({
     required this.id,
     required this.title,
     required this.createdAt,
+    required this.orderIndex,
   });
 
   Map<String, dynamic> toJson() {
     return {
       'title': title,
       'createdAt': Timestamp.fromDate(createdAt),
+      'orderIndex': orderIndex,
     };
   }
 
@@ -458,6 +464,7 @@ class StudySubject {
       id: doc.id,
       title: data['title'] ?? 'Sem Título',
       createdAt: (data['createdAt'] as Timestamp).toDate(),
+      orderIndex: data['orderIndex'] ?? 0,
     );
   }
 }
@@ -467,12 +474,14 @@ class StudyVolume {
   String title;
   final String subjectId;
   final DateTime createdAt;
+  final int orderIndex;
 
   StudyVolume({
     required this.id,
     required this.title,
     required this.subjectId,
     required this.createdAt,
+    required this.orderIndex,
   });
 
   Map<String, dynamic> toJson() {
@@ -480,6 +489,7 @@ class StudyVolume {
       'title': title,
       'subjectId': subjectId,
       'createdAt': Timestamp.fromDate(createdAt),
+      'orderIndex': orderIndex,
     };
   }
 
@@ -490,37 +500,41 @@ class StudyVolume {
       title: data['title'] ?? 'Sem Título',
       subjectId: data['subjectId'] ?? '',
       createdAt: (data['createdAt'] as Timestamp).toDate(),
+      orderIndex: data['orderIndex'] ?? 0,
     );
   }
 }
 
 class StudyNote {
   final String id;
-  String title;
+  String? title; // ALTERADO PARA OPCIONAL
   String content;
   List<String> tags;
   String? videoUrl;
   String? imagePath;
   final DateTime createdAt;
   DateTime updatedAt;
-  final String volumeId;
+  final String? subjectId;
+  final String? volumeId;
 
   StudyNote({
     required this.id,
-    required this.title,
+    this.title, // ALTERADO PARA OPCIONAL
     required this.content,
     required this.tags,
     this.videoUrl,
     this.imagePath,
     required this.createdAt,
     required this.updatedAt,
-    required this.volumeId,
+    this.subjectId,
+    this.volumeId,
   });
 
   factory StudyNote.create({
-    required String title,
+    String? title, // ALTERADO PARA OPCIONAL
     required String content,
-    required String volumeId,
+    String? subjectId,
+    String? volumeId,
     List<String>? tags,
     String? videoUrl,
     String? imagePath,
@@ -535,6 +549,7 @@ class StudyNote {
       imagePath: imagePath,
       createdAt: now,
       updatedAt: now,
+      subjectId: subjectId,
       volumeId: volumeId,
     );
   }
@@ -548,6 +563,7 @@ class StudyNote {
       'imagePath': imagePath,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
+      'subjectId': subjectId,
       'volumeId': volumeId,
     };
   }
@@ -556,14 +572,15 @@ class StudyNote {
     final json = doc.data() as Map<String, dynamic>;
     return StudyNote(
       id: doc.id,
-      title: json['title'] ?? 'Sem título',
+      title: json['title'], // Pode ser nulo
       content: json['content'] ?? '',
       tags: List<String>.from(json['tags'] ?? []),
       videoUrl: json['videoUrl'],
       imagePath: json['imagePath'],
       createdAt: (json['createdAt'] as Timestamp).toDate(),
       updatedAt: (json['updatedAt'] as Timestamp).toDate(),
-      volumeId: json['volumeId'] ?? '',
+      subjectId: json['subjectId'],
+      volumeId: json['volumeId'],
     );
   }
 }

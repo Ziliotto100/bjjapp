@@ -343,19 +343,16 @@ class AcademyDetailPage extends StatefulWidget {
 }
 
 class _AcademyDetailPageState extends State<AcademyDetailPage> {
-  late Future<List<dynamic>> _usersFuture;
-  late Future<UserModel?> _managerFuture;
-  late Future<String> _dataUsageFuture; // NOVO FUTURE
+  late Future<List<UserModel>> _usersFuture;
+  late Future<String> _dataUsageFuture;
 
   @override
   void initState() {
     super.initState();
     _usersFuture = _fetchUsers();
-    _managerFuture = _fetchManager();
-    _dataUsageFuture = _fetchDataUsage(); // INICIA O NOVO FUTURE
+    _dataUsageFuture = _fetchDataUsage();
   }
 
-  // NOVA FUNÇÃO PARA CALCULAR O USO DE DADOS
   Future<String> _fetchDataUsage() async {
     try {
       final videosSnapshot = await FirebaseFirestore.instance
@@ -401,40 +398,17 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
     }
   }
 
-  Future<UserModel?> _fetchManager() async {
-    final data = widget.academyDoc.data() as Map<String, dynamic>;
-    final ownerId = data['ownerId'];
-    if (ownerId == null) return null;
-
-    final doc =
-        await FirebaseFirestore.instance.collection('users').doc(ownerId).get();
-    if (doc.exists) {
-      return UserModel.fromFirestore(doc);
-    }
-    return null;
-  }
-
-  Future<List<dynamic>> _fetchUsers() async {
+  Future<List<UserModel>> _fetchUsers() async {
     final academyId = widget.academyDoc.id;
-    final List<dynamic> allUsers = [];
-
-    final teachersSnapshot = await FirebaseFirestore.instance
+    final usersSnapshot = await FirebaseFirestore.instance
         .collection('users')
         .where('academyId', isEqualTo: academyId)
-        .where('role', isEqualTo: 'teacher')
         .get();
-    allUsers.addAll(
-        teachersSnapshot.docs.map((doc) => UserModel.fromFirestore(doc)));
 
-    final studentsSnapshot = await FirebaseFirestore.instance
-        .collection('academies')
-        .doc(academyId)
-        .collection('students')
-        .get();
-    allUsers.addAll(
-        studentsSnapshot.docs.map((doc) => Aluno.fromJson(doc.id, doc.data())));
-
-    return allUsers;
+    final users =
+        usersSnapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList();
+    users.sort((a, b) => a.name.compareTo(b.name));
+    return users;
   }
 
   Future<void> _startImpersonation(String targetUid) async {
@@ -468,57 +442,9 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
       builder: (_) => _AcademyInfoDialog(
         academyDoc: widget.academyDoc,
         manager: manager,
-        dataUsageFuture: _dataUsageFuture, // PASSA O FUTURE PARA O DIALOG
+        dataUsageFuture: _dataUsageFuture,
       ),
     );
-  }
-
-  void _showEditUserDialog(BuildContext context, dynamic user) {
-    showDialog(
-      context: context,
-      builder: (_) => _EditUserDialog(user: user),
-    );
-  }
-
-  void _navigateToDetailPage(BuildContext context, dynamic user) {
-    final superAdminUser = UserModel(
-      uid: FirebaseAuth.instance.currentUser!.uid,
-      name: 'Super Admin',
-      email: '',
-      academyId: '',
-      role: UserRole.manager,
-      mustChangePassword: false,
-      isActive: true,
-    );
-
-    if (user is Aluno) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => StudentDetailPage(
-          academyId: widget.academyDoc.id,
-          student: user,
-          currentUser: superAdminUser,
-        ),
-      ));
-    } else if (user is UserModel) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ProfessorDetailPage(
-          academyId: widget.academyDoc.id,
-          professor: user,
-          currentUser: superAdminUser,
-        ),
-      ));
-    }
-  }
-
-  void _showCreateAccessDialog(BuildContext context, Aluno aluno) async {
-    final manager = await _managerFuture;
-    if (manager == null) {
-      showBjjSnackBar(context, 'Gerente da academia não encontrado.',
-          type: 'error');
-      return;
-    }
-
-    showCreateAccessDialog(context, aluno, widget.academyDoc.id, manager);
   }
 
   @override
@@ -555,14 +481,23 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
               ));
             },
           ),
-          FutureBuilder<UserModel?>(
-              future: _managerFuture,
-              builder: (context, managerSnapshot) {
+          FutureBuilder<List<UserModel>>(
+              future: _usersFuture,
+              builder: (context, userSnapshot) {
+                final manager = userSnapshot.data?.firstWhere(
+                    (u) => u.role == UserRole.manager,
+                    orElse: () => UserModel(
+                        uid: '',
+                        name: '',
+                        email: '',
+                        academyId: '',
+                        role: UserRole.unknown,
+                        mustChangePassword: true,
+                        isActive: false));
                 return IconButton(
                   icon: const Icon(Icons.info_outline, color: infoColor),
                   tooltip: 'Ver Informações',
-                  onPressed: () =>
-                      _showAcademyInfoDialog(context, managerSnapshot.data),
+                  onPressed: () => _showAcademyInfoDialog(context, manager),
                 );
               }),
           IconButton(
@@ -580,7 +515,7 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
       ),
       body: AppBackground(
         child: SafeArea(
-          child: FutureBuilder<List<dynamic>>(
+          child: FutureBuilder<List<UserModel>>(
             future: _usersFuture,
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
@@ -591,24 +526,30 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
                     icon: Icons.error, title: 'Erro ao carregar usuários');
               }
               final users = snapshot.data!;
-              final teachers = users.whereType<UserModel>().toList();
-              final students = users.whereType<Aluno>().toList();
+              final manager = users.firstWhere(
+                  (u) => u.role == UserRole.manager,
+                  orElse: () => UserModel(
+                      uid: '',
+                      name: '',
+                      email: '',
+                      academyId: '',
+                      role: UserRole.unknown,
+                      mustChangePassword: true,
+                      isActive: false));
+              final teachers =
+                  users.where((u) => u.role == UserRole.teacher).toList();
+              final students =
+                  users.where((u) => u.role == UserRole.student).toList();
 
-              return FutureBuilder<UserModel?>(
-                  future: _managerFuture,
-                  builder: (context, managerSnapshot) {
-                    final manager = managerSnapshot.data;
-                    return ListView(
-                      children: [
-                        if (manager != null)
-                          _buildUserSection("Gerente", [manager]),
-                        if (teachers.isNotEmpty)
-                          _buildUserSection("Professores", teachers),
-                        if (students.isNotEmpty)
-                          _buildUserSection("Alunos", students),
-                      ],
-                    );
-                  });
+              return ListView(
+                children: [
+                  _buildUserSection("Gerente", [manager]),
+                  if (teachers.isNotEmpty)
+                    _buildUserSection("Professores", teachers),
+                  if (students.isNotEmpty)
+                    _buildUserSection("Alunos", students),
+                ],
+              );
             },
           ),
         ),
@@ -616,7 +557,7 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
     );
   }
 
-  Widget _buildUserSection(String title, List<dynamic> users) {
+  Widget _buildUserSection(String title, List<UserModel> users) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -630,72 +571,56 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
           itemCount: users.length,
           itemBuilder: (context, index) {
             final user = users[index];
-            final bool isStudent = user is Aluno;
-            final String name = isStudent ? user.nome : user.name;
-            final String? image =
-                isStudent ? null : (user as UserModel).profileImagePath;
-
-            Widget? trailingWidget;
-            if (isStudent) {
-              final aluno = user as Aluno;
-              if (aluno.userId != null && aluno.userId!.isNotEmpty) {
-                trailingWidget = Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon:
-                          const Icon(Icons.edit_outlined, color: primaryAccent),
-                      tooltip: 'Editar E-mail do Usuário',
-                      onPressed: () => _showEditUserDialog(context, user),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.theater_comedy_outlined,
-                          color: warningColor),
-                      tooltip: 'Entrar como $name',
-                      onPressed: () => _startImpersonation(aluno.userId!),
-                    ),
-                  ],
-                );
-              } else {
-                trailingWidget = IconButton(
-                  icon: const Icon(Icons.login_rounded, color: infoColor),
-                  tooltip: 'Criar Acesso de Login',
-                  onPressed: () => _showCreateAccessDialog(context, aluno),
-                );
-              }
-            } else {
-              final userModel = user as UserModel;
-              trailingWidget = Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined, color: primaryAccent),
-                    tooltip: 'Editar E-mail do Usuário',
-                    onPressed: () => _showEditUserDialog(context, user),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.theater_comedy_outlined,
-                        color: warningColor),
-                    tooltip: 'Entrar como $name',
-                    onPressed: () => _startImpersonation(userModel.uid),
-                  ),
-                ],
-              );
-            }
-
             return Card(
               child: ListTile(
                 leading: CircleAvatar(
-                  backgroundImage: (image != null && image.isNotEmpty)
-                      ? CachedNetworkImageProvider(image)
+                  backgroundImage: (user.profileImagePath != null &&
+                          user.profileImagePath!.isNotEmpty)
+                      ? CachedNetworkImageProvider(user.profileImagePath!)
                       : null,
-                  child: (image == null || image.isEmpty)
+                  child: (user.profileImagePath == null ||
+                          user.profileImagePath!.isEmpty)
                       ? const Icon(Icons.person)
                       : null,
                 ),
-                title: Text(name),
-                onTap: () => _navigateToDetailPage(context, user),
-                trailing: trailingWidget,
+                title: Text(user.name),
+                subtitle: Text(
+                  user.role == UserRole.manager
+                      ? 'Gerente'
+                      : user.role == UserRole.teacher
+                          ? 'Professor'
+                          : 'Aluno',
+                  style: const TextStyle(color: textHint),
+                ),
+                trailing: SizedBox(
+                  width: 100,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      Tooltip(
+                        message: 'Permitir Anexar Vídeos nos Estudos',
+                        child: Switch(
+                          value: user.canUploadStudyVideos,
+                          onChanged: (bool value) async {
+                            await FirebaseFirestore.instance
+                                .collection('users')
+                                .doc(user.uid)
+                                .update({'canUploadStudyVideos': value});
+                            setState(() {
+                              _usersFuture = _fetchUsers();
+                            });
+                          },
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.theater_comedy_outlined,
+                            color: warningColor),
+                        tooltip: 'Entrar como ${user.name}',
+                        onPressed: () => _startImpersonation(user.uid),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             );
           },
@@ -1273,7 +1198,7 @@ class _SendGlobalNotificationDialogState
 class _AcademyInfoDialog extends StatelessWidget {
   final DocumentSnapshot academyDoc;
   final UserModel? manager;
-  final Future<String> dataUsageFuture; // NOVO PARÂMETRO
+  final Future<String> dataUsageFuture;
 
   const _AcademyInfoDialog(
       {required this.academyDoc, this.manager, required this.dataUsageFuture});
@@ -1308,7 +1233,6 @@ class _AcademyInfoDialog extends StatelessWidget {
                 subscriptionEndDate != null
                     ? DateFormat('dd/MM/yyyy').format(subscriptionEndDate)
                     : 'Vitalícia'),
-            // NOVO WIDGET PARA EXIBIR O CONSUMO
             FutureBuilder<String>(
               future: dataUsageFuture,
               builder: (context, snapshot) {
