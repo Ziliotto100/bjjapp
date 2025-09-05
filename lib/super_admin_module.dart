@@ -397,17 +397,63 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
     }
   }
 
+  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+  // >>>>>> AQUI ESTÁ A FUNÇÃO CORRIGIDA <<<<<<<<<<<<<<<<<
+  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   Future<List<UserModel>> _fetchUsers() async {
     final academyId = widget.academyDoc.id;
-    final usersSnapshot = await FirebaseFirestore.instance
+    final firestore = FirebaseFirestore.instance;
+
+    // Mapa para garantir que não haverá usuários duplicados
+    final Map<String, UserModel> allUsersMap = {};
+
+    // 1. Busca todos os usuários com login (gerentes, professores, alunos com acesso)
+    final usersSnapshot = await firestore
         .collection('users')
         .where('academyId', isEqualTo: academyId)
         .get();
 
-    final users =
-        usersSnapshot.docs.map((doc) => UserModel.fromFirestore(doc)).toList();
-    users.sort((a, b) => a.name.compareTo(b.name));
-    return users;
+    for (var doc in usersSnapshot.docs) {
+      final user = UserModel.fromFirestore(doc);
+      allUsersMap[user.uid] = user;
+    }
+
+    // 2. Busca todos os alunos cadastrados (com ou sem login)
+    final studentsSnapshot = await firestore
+        .collection('academies')
+        .doc(academyId)
+        .collection('students')
+        .get();
+
+    for (var doc in studentsSnapshot.docs) {
+      final aluno = Aluno.fromJson(doc.id, doc.data() as Map<String, dynamic>);
+      // Se o aluno já tem um login, o registro dele na coleção 'users' é mais completo,
+      // então não sobrescrevemos. Adicionamos apenas se ele não tiver um login.
+      if (aluno.userId == null || aluno.userId!.isEmpty) {
+        // Converte o Aluno para um UserModel para unificar a lista
+        final userModel = UserModel(
+            uid: aluno.id, // Usa o ID do documento do aluno como UID temporário
+            name: aluno.nome,
+            email: 'N/A', // Não possui e-mail de login
+            academyId: academyId,
+            role: UserRole.student,
+            mustChangePassword: false,
+            isActive: aluno.isActive,
+            // Preenche outros campos se necessário para a UI
+            faixa: aluno.faixa,
+            graus: aluno.graus,
+            peso: aluno.peso,
+            dataNascimento: aluno.dataNascimento);
+        // Usamos o ID do documento de aluno como chave para evitar colisões
+        allUsersMap[aluno.id] = userModel;
+      }
+    }
+
+    // 3. Converte o mapa para uma lista e ordena por nome
+    final unifiedList = allUsersMap.values.toList();
+    unifiedList.sort((a, b) => a.name.compareTo(b.name));
+
+    return unifiedList;
   }
 
   Future<void> _startImpersonation(String targetUid) async {
