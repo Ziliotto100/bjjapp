@@ -63,6 +63,7 @@ flutter:
   assets:
     - assets/images/
     - assets/images/faixas/
+    - assets/images/golpes_proibidos/
 
 # Bloco de configuração para o ÍCONE
 flutter_launcher_icons:

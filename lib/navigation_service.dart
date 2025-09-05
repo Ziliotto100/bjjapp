@@ -13,6 +13,7 @@ import 'shop_module.dart';
 import 'notifications_module.dart';
 import 'birthdays_module.dart';
 import 'video_library_module.dart';
+import 'rules_module.dart'; // <-- NOVO IMPORT
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -199,6 +200,13 @@ class NavigationService {
             user: user,
             academyId: user.academyId,
             todosAlunosDaAcademia: students),
+      ),
+      // <-- NOVO MÓDULO ADICIONADO AQUI -->
+      AppModule(
+        id: 'common_rules',
+        title: 'Regras',
+        icon: Icons.gavel_rounded,
+        pageBuilder: (user, teachers, students) => RulesPage(user: user),
       ),
     ];
   }

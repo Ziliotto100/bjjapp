@@ -14,7 +14,6 @@ import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
 import 'auth_gate.dart';
-import 'manager_module.dart';
 import 'video_library_module.dart';
 
 // --- TELA CONTAINER DO SUPER ADMIN COM NAVEGAÇÃO ---

@@ -1,5 +1,5 @@
 // lib/study_notebook_module.dart
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
