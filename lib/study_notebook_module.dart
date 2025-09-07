@@ -1,8 +1,10 @@
 // lib/study_notebook_module.dart
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, prefer_final_fields, unused_field
 
 import 'dart:async';
+import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
@@ -11,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:video_compress/video_compress.dart';
 
 import 'models.dart';
 import 'common_widgets.dart';
@@ -215,9 +218,10 @@ class StudyNoteService {
     }
     if (note.videoUrl != null && note.videoUrl!.isNotEmpty) {
       try {
-        final isYoutube = note.videoUrl!.contains('youtube.com') ||
-            note.videoUrl!.contains('youtu.be');
-        if (!isYoutube) {
+        final isExternalUrl = note.videoUrl!.contains('youtube.com') ||
+            note.videoUrl!.contains('youtu.be') ||
+            note.videoUrl!.contains('instagram.com');
+        if (!isExternalUrl) {
           await FirebaseStorage.instance.refFromURL(note.videoUrl!).delete();
         }
       } catch (e) {
@@ -244,19 +248,18 @@ class StudyNoteService {
     }
   }
 
-  Future<String?> saveVideo(XFile video) async {
-    try {
-      final fileName = '${userId}_${DateTime.now().millisecondsSinceEpoch}';
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('study_notes_videos')
-          .child(userId)
-          .child(fileName);
-      await ref.putData(await video.readAsBytes());
-      return await ref.getDownloadURL();
-    } catch (e) {
-      debugPrint("Erro ao salvar vídeo do Storage: $e");
-      return null;
+  UploadTask saveVideo(dynamic videoFile, String fileName) {
+    final ref = FirebaseStorage.instance
+        .ref()
+        .child('study_notes_videos')
+        .child(userId)
+        .child(fileName);
+
+    if (kIsWeb) {
+      return ref.putData(
+          videoFile as Uint8List, SettableMetadata(contentType: 'video/mp4'));
+    } else {
+      return ref.putFile(videoFile as File);
     }
   }
 }
@@ -285,34 +288,36 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
       context: context,
       backgroundColor: darkSurface,
       builder: (context) {
-        return Wrap(
-          children: <Widget>[
-            ListTile(
-              leading:
-                  const Icon(Icons.note_add_outlined, color: primaryAccent),
-              title: const Text('Anotação Rápida'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => EditStudyNotePage(
-                      userId: widget.userId,
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading:
+                    const Icon(Icons.note_add_outlined, color: primaryAccent),
+                title: const Text('Anotação Rápida'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EditStudyNotePage(
+                        userId: widget.userId,
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.create_new_folder_outlined,
-                  color: primaryAccent),
-              title: const Text('Novo Assunto'),
-              onTap: () {
-                Navigator.pop(context);
-                _showSubjectDialog();
-              },
-            ),
-          ],
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.create_new_folder_outlined,
+                    color: primaryAccent),
+                title: const Text('Novo Assunto'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showSubjectDialog();
+                },
+              ),
+            ],
+          ),
         );
       },
     );
@@ -746,35 +751,37 @@ class _StudyVolumesPageState extends State<StudyVolumesPage> {
       context: context,
       backgroundColor: darkSurface,
       builder: (context) {
-        return Wrap(
-          children: <Widget>[
-            ListTile(
-              leading:
-                  const Icon(Icons.note_add_outlined, color: primaryAccent),
-              title: const Text('Nova Anotação'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => EditStudyNotePage(
-                      userId: widget.userId,
-                      subjectId: widget.subject.id,
+        return SafeArea(
+          child: Wrap(
+            children: <Widget>[
+              ListTile(
+                leading:
+                    const Icon(Icons.note_add_outlined, color: primaryAccent),
+                title: const Text('Nova Anotação'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EditStudyNotePage(
+                        userId: widget.userId,
+                        subjectId: widget.subject.id,
+                      ),
                     ),
-                  ),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.create_new_folder_outlined,
-                  color: primaryAccent),
-              title: const Text('Novo Volume'),
-              onTap: () {
-                Navigator.pop(context);
-                _showVolumeDialog();
-              },
-            ),
-          ],
+                  );
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.create_new_folder_outlined,
+                    color: primaryAccent),
+                title: const Text('Novo Volume'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showVolumeDialog();
+                },
+              ),
+            ],
+          ),
         );
       },
     );
@@ -1524,6 +1531,10 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
   String? _videoPath;
   bool _isSaving = false;
   Future<UserModel?>? _userFuture;
+  double _uploadProgress = 0.0;
+
+  dynamic _videoToUpload; // Can be File (mobile) or XFile (web)
+  XFile? _pickedThumbnail;
 
   bool get _isEditing => widget.note != null;
   bool get _isQuickNote =>
@@ -1562,60 +1573,60 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
     final ImagePicker picker = ImagePicker();
     if (isVideo) {
       final XFile? video = await picker.pickVideo(source: source);
-      if (video != null) {
+      if (video == null) return;
+
+      if (!kIsWeb) {
         showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) => const Dialog(
-            child: Padding(
-              padding: EdgeInsets.all(20.0),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                CircularProgressIndicator(),
-                SizedBox(width: 20),
-                Text("Enviando vídeo..."),
-              ]),
-            ),
-          ),
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => const AlertDialog(
+                  content: Row(children: [
+                    CircularProgressIndicator(),
+                    SizedBox(width: 16),
+                    Text("Comprimindo vídeo...")
+                  ]),
+                ));
+        final compressedInfo = await VideoCompress.compressVideo(
+          video.path,
+          quality: VideoQuality.MediumQuality,
+          deleteOrigin: false,
         );
-        final savedPath = await _noteService.saveVideo(video);
-        if (mounted) Navigator.of(context).pop();
-        if (savedPath != null) {
-          setState(() => _videoPath = savedPath as String?);
+        Navigator.of(context).pop();
+
+        if (compressedInfo?.file != null) {
+          final originalSize =
+              (await video.length() / (1024 * 1024)).toStringAsFixed(2);
+          final compressedSize =
+              (await compressedInfo!.file!.length() / (1024 * 1024))
+                  .toStringAsFixed(2);
+          final reduction = 100 -
+              ((double.parse(compressedSize) / double.parse(originalSize)) *
+                  100);
+          debugPrint('--- COMPRESSÃO DE VÍDEO ---');
+          debugPrint('Tamanho Original: $originalSize MB');
+          debugPrint('Tamanho Comprimido: $compressedSize MB');
+          debugPrint('Redução de: ${reduction.toStringAsFixed(1)}%');
+
+          setState(() {
+            _videoToUpload = compressedInfo.file;
+          });
         } else {
-          if (mounted) {
-            showBjjSnackBar(context, "Não foi possível enviar o vídeo.",
-                type: 'error');
-          }
+          showBjjSnackBar(context, 'Falha ao comprimir o vídeo.',
+              type: 'error');
         }
+      } else {
+        // Na Web, não comprime, usa o arquivo original
+        setState(() {
+          _videoToUpload = video;
+        });
       }
     } else {
       final XFile? image =
           await picker.pickImage(source: source, imageQuality: 80);
       if (image != null) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (BuildContext context) => const Dialog(
-            child: Padding(
-              padding: EdgeInsets.all(20.0),
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                CircularProgressIndicator(),
-                SizedBox(width: 20),
-                Text("Salvando imagem..."),
-              ]),
-            ),
-          ),
-        );
-        final savedPath = await _noteService.saveImage(image);
-        if (mounted) Navigator.of(context).pop();
-        if (savedPath != null) {
-          setState(() => _imagePath = savedPath);
-        } else {
-          if (mounted) {
-            showBjjSnackBar(context, "Não foi possível salvar a imagem.",
-                type: 'error');
-          }
-        }
+        setState(() {
+          _pickedThumbnail = image;
+        });
       }
     }
   }
@@ -1627,26 +1638,70 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
 
     setState(() => _isSaving = true);
 
-    final tags = _isQuickNote ? <String>[] : _selectedTags;
-
-    final noteToSave = StudyNote(
-      id: _isEditing ? widget.note!.id : '',
-      title: _isQuickNote ? null : _titleController.text.trim(),
-      content: _contentController.text.trim(),
-      tags: tags,
-      videoUrl: _videoPath ??
-          (_urlController.text.trim().isEmpty
-              ? null
-              : _urlController.text.trim()),
-      imagePath: _imagePath,
-      updatedAt: DateTime.now(),
-      createdAt: _isEditing ? widget.note!.createdAt : DateTime.now(),
-      subjectId: widget.subjectId,
-      volumeId: widget.volumeId,
-    );
-
     try {
+      if (_videoToUpload != null) {
+        dynamic fileData;
+        final fileName =
+            '${widget.userId}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+        if (kIsWeb) {
+          fileData = await (_videoToUpload as XFile).readAsBytes();
+        } else {
+          fileData = _videoToUpload as File;
+        }
+
+        final uploadTask = _noteService.saveVideo(fileData, fileName);
+
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext context) => Dialog(
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: StreamBuilder<TaskSnapshot>(
+                stream: uploadTask.snapshotEvents,
+                builder: (context, snapshot) {
+                  var progress = 0.0;
+                  if (snapshot.hasData) {
+                    final data = snapshot.data!;
+                    progress = data.bytesTransferred / data.totalBytes;
+                  }
+                  return Row(mainAxisSize: MainAxisSize.min, children: [
+                    CircularProgressIndicator(value: progress),
+                    const SizedBox(width: 20),
+                    Text(
+                        "Enviando vídeo... ${(progress * 100).toStringAsFixed(0)}%"),
+                  ]);
+                },
+              ),
+            ),
+          ),
+        );
+
+        final snapshot = await uploadTask.whenComplete(() {});
+        _videoPath = await snapshot.ref.getDownloadURL();
+        if (mounted) Navigator.of(context).pop();
+      }
+
+      final tags = _isQuickNote ? <String>[] : _selectedTags;
+      final noteToSave = StudyNote(
+        id: _isEditing ? widget.note!.id : '',
+        title: _isQuickNote ? null : _titleController.text.trim(),
+        content: _contentController.text.trim(),
+        tags: tags,
+        videoUrl: _videoPath ??
+            (_urlController.text.trim().isEmpty
+                ? null
+                : _urlController.text.trim()),
+        imagePath: _imagePath,
+        updatedAt: DateTime.now(),
+        createdAt: _isEditing ? widget.note!.createdAt : DateTime.now(),
+        subjectId: widget.subjectId,
+        volumeId: widget.volumeId,
+      );
+
       await _noteService.saveNote(noteToSave);
+
       if (mounted) {
         showBjjSnackBar(context, "Anotação salva com sucesso!",
             type: 'success');
@@ -1654,7 +1709,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
       }
     } catch (e) {
       if (mounted) {
-        showBjjSnackBar(context, "Erro ao salvar anotação.", type: 'error');
+        showBjjSnackBar(context, "Erro ao salvar anotação: $e", type: 'error');
       }
     } finally {
       if (mounted) {
@@ -1667,8 +1722,10 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
     setState(() {
       if (isVideo) {
         _videoPath = null;
+        _videoToUpload = null;
       } else {
         _imagePath = null;
+        _pickedThumbnail = null;
       }
     });
   }
@@ -1704,7 +1761,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
                           decoration:
                               const InputDecoration(labelText: 'Título'),
                           validator: (v) {
-                            if (v == null || v.trim().isEmpty) {
+                            if (v != null && v.trim().isEmpty) {
                               return 'O título é obrigatório.';
                             }
                             return null;
@@ -1750,11 +1807,13 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
                             isImage: true,
                             path: _imagePath!,
                             onRemove: () => _removeMedia(isVideo: false)),
-                      if (_videoPath != null && _videoPath!.isNotEmpty)
-                        _buildMediaPreview(
-                            isImage: false,
-                            path: _videoPath!,
-                            onRemove: () => _removeMedia(isVideo: true)),
+                      if (_videoToUpload != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Text(
+                              'Vídeo selecionado: ${kIsWeb ? (_videoToUpload as XFile).name : (_videoToUpload as File).path.split('/').last}',
+                              style: const TextStyle(color: textHint)),
+                        ),
                       FutureBuilder<UserModel?>(
                         future: _userFuture,
                         builder: (context, snapshot) {
@@ -1777,7 +1836,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
                                   padding: const EdgeInsets.only(top: 8.0),
                                   child: OutlinedButton.icon(
                                     icon: const Icon(Icons.video_call_outlined),
-                                    label: Text(_videoPath == null
+                                    label: Text(_videoToUpload == null
                                         ? 'Anexar Vídeo'
                                         : 'Trocar Vídeo'),
                                     onPressed: () => _pickMedia(

@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:video_player/video_player.dart';
 import 'package:chewie/chewie.dart';
+import 'package:video_compress/video_compress.dart';
 
 import 'models.dart';
 import 'common_widgets.dart';
@@ -790,7 +791,6 @@ class VideoPlayerPage extends StatefulWidget {
 class _VideoPlayerPageState extends State<VideoPlayerPage> {
   late VideoPlayerController _videoPlayerController;
   ChewieController? _chewieController;
-  bool _isLoading = true;
 
   @override
   void initState() {
@@ -800,20 +800,26 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
 
   @override
   void dispose() {
+    _videoPlayerController.removeListener(_updateListener);
     _videoPlayerController.dispose();
     _chewieController?.dispose();
     super.dispose();
   }
 
+  void _updateListener() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   Future<void> initializePlayer() async {
     _videoPlayerController =
         VideoPlayerController.networkUrl(Uri.parse(widget.video.videoUrl));
+    _videoPlayerController.addListener(_updateListener);
     await _videoPlayerController.initialize();
     _createChewieController();
     if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() {});
     }
   }
 
@@ -843,6 +849,22 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
     );
   }
 
+  Widget _buildBufferingText() {
+    String text = 'Carregando Vídeo...';
+    if (_videoPlayerController.value.isInitialized &&
+        _videoPlayerController.value.buffered.isNotEmpty) {
+      final bufferedEnd =
+          _videoPlayerController.value.buffered.last.end.inMilliseconds;
+      final totalDuration =
+          _videoPlayerController.value.duration.inMilliseconds;
+      if (totalDuration > 0) {
+        final percentage = (bufferedEnd / totalDuration * 100).clamp(0, 100);
+        text = 'Carregando... ${percentage.toStringAsFixed(0)}%';
+      }
+    }
+    return Text(text);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -853,28 +875,18 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         elevation: 0,
       ),
       body: Center(
-        child: _isLoading
-            ? const Column(
+        child: _videoPlayerController.value.isInitialized
+            ? Chewie(
+                controller: _chewieController!,
+              )
+            : Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 20),
-                  Text('Carregando Vídeo...'),
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 20),
+                  _buildBufferingText(),
                 ],
-              )
-            : _chewieController != null &&
-                    _chewieController!.videoPlayerController.value.isInitialized
-                ? Chewie(
-                    controller: _chewieController!,
-                  )
-                : const Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(),
-                      SizedBox(height: 20),
-                      Text('Preparando player...'),
-                    ],
-                  ),
+              ),
       ),
     );
   }
@@ -900,7 +912,7 @@ class _AddVideoPageState extends State<AddVideoPage> {
   final _tagsController = TextEditingController();
 
   VideoType _videoType = VideoType.youtube;
-  XFile? _pickedVideo;
+  dynamic _pickedVideo; // Can be File (mobile) or XFile (web)
   XFile? _pickedThumbnail;
 
   String? _networkThumbnailUrl;
@@ -960,10 +972,50 @@ class _AddVideoPageState extends State<AddVideoPage> {
   Future<void> _pickVideo() async {
     final picker = ImagePicker();
     final video = await picker.pickVideo(source: ImageSource.gallery);
-    if (video != null) {
+    if (video == null) return;
+
+    if (kIsWeb) {
       setState(() {
         _pickedVideo = video;
       });
+    } else {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const AlertDialog(
+          content: Row(children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text("Comprimindo vídeo...")
+          ]),
+        ),
+      );
+      final compressedInfo = await VideoCompress.compressVideo(
+        video.path,
+        quality: VideoQuality.MediumQuality,
+        deleteOrigin: false,
+      );
+      Navigator.of(context).pop();
+
+      if (compressedInfo?.file != null) {
+        final originalSize =
+            (await video.length() / (1024 * 1024)).toStringAsFixed(2);
+        final compressedSize =
+            (await compressedInfo!.file!.length() / (1024 * 1024))
+                .toStringAsFixed(2);
+        final reduction = 100 -
+            ((double.parse(compressedSize) / double.parse(originalSize)) * 100);
+        debugPrint('--- COMPRESSÃO DE VÍDEO ---');
+        debugPrint('Tamanho Original: $originalSize MB');
+        debugPrint('Tamanho Comprimido: $compressedSize MB');
+        debugPrint('Redução de: ${reduction.toStringAsFixed(1)}%');
+
+        setState(() {
+          _pickedVideo = compressedInfo.file;
+        });
+      } else {
+        showBjjSnackBar(context, 'Falha ao comprimir o vídeo.', type: 'error');
+      }
     }
   }
 
@@ -978,9 +1030,16 @@ class _AddVideoPageState extends State<AddVideoPage> {
     }
   }
 
-  Future<String> _uploadFile(XFile file, String path) async {
+  Future<String> _uploadFile(dynamic file, String path) async {
     final ref = FirebaseStorage.instance.ref(path);
-    final uploadTask = ref.putData(await file.readAsBytes());
+    UploadTask uploadTask;
+
+    if (kIsWeb) {
+      uploadTask = ref.putData(await (file as XFile).readAsBytes(),
+          SettableMetadata(contentType: 'video/mp4'));
+    } else {
+      uploadTask = ref.putFile(file as File);
+    }
 
     uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
       if (mounted) {
@@ -1042,15 +1101,18 @@ class _AddVideoPageState extends State<AddVideoPage> {
           final thumbName = 'thumb_${DateTime.now().millisecondsSinceEpoch}';
           final thumbPath =
               'academy_videos/${widget.user.academyId}/thumbnails/$thumbName';
-          finalThumbnailUrl = await _uploadFile(_pickedThumbnail!, thumbPath);
+          finalThumbnailUrl =
+              await _uploadFile(File(_pickedThumbnail!.path), thumbPath);
         }
 
         if (_pickedVideo != null) {
-          videoSizeBytes = await _pickedVideo!.length();
+          videoSizeBytes = kIsWeb
+              ? await (_pickedVideo as XFile).length()
+              : await (_pickedVideo as File).length();
           final videoName = 'video_${DateTime.now().millisecondsSinceEpoch}';
           final videoPath =
               'academy_videos/${widget.user.academyId}/videos/$videoName';
-          finalVideoUrl = await _uploadFile(_pickedVideo!, videoPath);
+          finalVideoUrl = await _uploadFile(_pickedVideo, videoPath);
         }
       }
 
@@ -1129,9 +1191,28 @@ class _AddVideoPageState extends State<AddVideoPage> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        LinearProgressIndicator(
-                            value:
-                                _uploadProgress > 0 ? _uploadProgress : null),
+                        SizedBox(
+                          height: 80,
+                          width: 80,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              CircularProgressIndicator(
+                                value: _uploadProgress > 0
+                                    ? _uploadProgress
+                                    : null,
+                                strokeWidth: 6,
+                                backgroundColor: darkSurface,
+                              ),
+                              Center(
+                                child: Text(
+                                  "${(_uploadProgress * 100).toStringAsFixed(0)}%",
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
                         const SizedBox(height: 20),
                         const Text("Enviando vídeo, por favor aguarde..."),
                       ],
@@ -1145,6 +1226,7 @@ class _AddVideoPageState extends State<AddVideoPage> {
                     children: [
                       TextFormField(
                         controller: _titleController,
+                        textCapitalization: TextCapitalization.words,
                         decoration:
                             const InputDecoration(labelText: 'Título do Vídeo'),
                         validator: (v) =>
@@ -1153,6 +1235,7 @@ class _AddVideoPageState extends State<AddVideoPage> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _descriptionController,
+                        textCapitalization: TextCapitalization.sentences,
                         decoration: const InputDecoration(
                             labelText: 'Descrição', alignLabelWithHint: true),
                         maxLines: 3,
@@ -1239,12 +1322,13 @@ class _AddVideoPageState extends State<AddVideoPage> {
                         Padding(
                           padding: const EdgeInsets.only(top: 8.0),
                           child: Text(
-                              'Vídeo selecionado: ${_pickedVideo!.name}',
+                              'Vídeo selecionado: ${kIsWeb ? (_pickedVideo as XFile).name : (_pickedVideo as File).path.split('/').last}',
                               style: const TextStyle(color: textHint)),
                         ),
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _tagsController,
+                        textCapitalization: TextCapitalization.words,
                         decoration: const InputDecoration(
                             labelText: 'Tags (separadas por vírgula)'),
                       ),

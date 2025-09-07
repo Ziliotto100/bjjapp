@@ -48,6 +48,7 @@ dependencies:
   video_player: ^2.10.0
   flutter_staggered_grid_view: ^0.7.0
   chewie: ^1.12.1
+  video_compress: ^3.1.4
 
 dev_dependencies:
   flutter_test:
@@ -78,7 +79,16 @@ flutter_launcher_icons:
 
 # Bloco de configuração para a SPLASH SCREEN
 flutter_native_splash:
-  color: "#212f28"
-  image: assets/images/splash_fundo.png
+  # Configurações gerais que se aplicam a todos (Android, iOS, Web)
+  color: "#0A0F14"
+  image: assets/images/icone.png
+
+  # Habilita a geração para Android e iOS
   android: true
   ios: true
+  
+  # Habilita a geração para Web
+  web: true
+
+  # Parâmetros específicos para Web
+  web_image_mode: center
