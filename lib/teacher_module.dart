@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
 import 'package:intl/intl.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 import 'models.dart';
 import 'common_widgets.dart';
@@ -2254,7 +2255,6 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
   List<List<Map<String, String>>> _rodadasGeradas = [];
   String _tipoGeracao = 'Aleatório';
   final List<String> _opcoesGeracao = ['Aleatório', 'Por Faixa', 'Por Peso'];
-  // --- NOVOS ESTADOS PARA O FILTRO DE UNIDADE ---
   List<DocumentSnapshot> _units = [];
   String? _selectedUnitId;
   bool _isLoadingUnits = true;
@@ -2263,7 +2263,6 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
   void initState() {
     super.initState();
     _fetchUnits().then((_) {
-      // Usa a última unidade selecionada pelo usuário como padrão
       final lastUnitId = widget.user.lastSelectedUnitId;
       if (lastUnitId != null && _units.any((u) => u.id == lastUnitId)) {
         _selectedUnitId = lastUnitId;
@@ -2304,14 +2303,13 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
   }
 
   Future<void> _navegarParaSelecaoAlunos() async {
-    // Filtra os alunos antes de navegar
     final alunosDaUnidade = widget.todosParticipantesDaAcademia.where((aluno) {
       return _selectedUnitId == 'all' || aluno.unitId == _selectedUnitId;
     }).toList();
 
     final List<Aluno>? r = await Navigator.of(context).push(MaterialPageRoute(
       builder: (context) => SelecaoAlunosTeacherPage(
-        todosOsAlunos: alunosDaUnidade, // Passa a lista já filtrada
+        todosOsAlunos: alunosDaUnidade,
         alunosSelecionadosIniciais: _alunosParticipantes,
       ),
     ));
@@ -2486,35 +2484,56 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (_isLoadingUnits)
-                    const LinearProgressIndicator()
-                  else
-                    DropdownButtonFormField<String>(
-                      value: _selectedUnitId,
-                      items: [
-                        const DropdownMenuItem(
-                          value: 'all',
-                          child: Text("Todas as Unidades"),
-                        ),
-                        ..._units.map((unit) {
-                          return DropdownMenuItem(
-                            value: unit.id,
-                            child: Text(unit['name']),
-                          );
-                        }),
-                      ],
-                      onChanged: widget.isSparringMode
-                          ? null
-                          : (value) {
-                              setState(() {
-                                _selectedUnitId = value;
-                                _alunosParticipantes.clear();
-                                _rodadasGeradas.clear();
-                              });
-                            },
-                      decoration:
-                          const InputDecoration(labelText: 'Filtrar Unidade'),
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: _isLoadingUnits
+                            ? const LinearProgressIndicator()
+                            : DropdownButtonFormField<String>(
+                                value: _selectedUnitId,
+                                items: [
+                                  const DropdownMenuItem(
+                                    value: 'all',
+                                    child: Text("Todas as Unidades"),
+                                  ),
+                                  ..._units.map((unit) {
+                                    return DropdownMenuItem(
+                                      value: unit.id,
+                                      child: Text(unit['name']),
+                                    );
+                                  }),
+                                ],
+                                onChanged: widget.isSparringMode
+                                    ? null
+                                    : (value) {
+                                        setState(() {
+                                          _selectedUnitId = value;
+                                          _alunosParticipantes.clear();
+                                          _rodadasGeradas.clear();
+                                        });
+                                      },
+                                decoration: const InputDecoration(
+                                    labelText: 'Filtrar Unidade'),
+                              ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        icon:
+                            const Icon(Icons.history_rounded, color: textHint),
+                        tooltip: 'Histórico de Treinos',
+                        onPressed: () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => SparringHistoryListPage(
+                              academyId: widget.academyId,
+                              allParticipants:
+                                  widget.todosParticipantesDaAcademia,
+                            ),
+                          ));
+                        },
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.group_add_outlined),
@@ -2689,6 +2708,31 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
   }
 
   Future<void> _finishSparring() async {
+    final sparringStateDoc = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('state')
+        .doc('sparring')
+        .get();
+
+    if (sparringStateDoc.exists) {
+      final data = sparringStateDoc.data()!;
+      final currentUser = FirebaseAuth.instance.currentUser;
+
+      await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .collection('training_history')
+          .add({
+        'startedAt': data['startedAt'] ?? FieldValue.serverTimestamp(),
+        'generationType': data['generationType'],
+        'participants': data['participants'],
+        'allRounds': data['allRounds'],
+        'createdByUid': currentUser?.uid,
+        'createdByName': currentUser?.displayName ?? 'Professor',
+      });
+    }
+
     await FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.academyId)
@@ -2880,12 +2924,31 @@ class SelecaoAlunosTeacherPage extends StatefulWidget {
 
 class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
   late Set<Aluno> _alunosAtuaisSelecionados;
+  final _searchController = TextEditingController();
+  List<Aluno> _filteredAthletes = [];
 
   @override
   void initState() {
     super.initState();
     _alunosAtuaisSelecionados =
         Set<Aluno>.from(widget.alunosSelecionadosIniciais);
+    _filteredAthletes = widget.todosOsAlunos;
+    _searchController.addListener(_filterAthletes);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filterAthletes() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredAthletes = widget.todosOsAlunos.where((athlete) {
+        return athlete.nome.toLowerCase().contains(query);
+      }).toList();
+    });
   }
 
   @override
@@ -2897,32 +2960,58 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
       ),
       body: AppBackground(
         child: SafeArea(
-          child: widget.todosOsAlunos.isEmpty
-              ? const EmptyStateWidget(
-                  icon: Icons.person_search_rounded,
-                  title: 'Nenhum Participante Cadastrado na Academia')
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
-                  itemCount: widget.todosOsAlunos.length,
-                  itemBuilder: (context, index) {
-                    final a = widget.todosOsAlunos[index];
-                    final s = _alunosAtuaisSelecionados.contains(a);
-                    return Card(
-                      child: CheckboxListTile(
-                        title: Text(a.nome),
-                        subtitle: Text('${a.faixa} - ${a.peso}kg'),
-                        value: s,
-                        onChanged: (v) => setState(() {
-                          if (v == true) {
-                            _alunosAtuaisSelecionados.add(a);
-                          } else {
-                            _alunosAtuaisSelecionados.remove(a);
-                          }
-                        }),
-                        secondary: const Icon(Icons.person),
-                      ),
-                    );
-                  }),
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: TextField(
+                  controller: _searchController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    labelText: 'Buscar por nome...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () => _searchController.clear(),
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: widget.todosOsAlunos.isEmpty
+                    ? const EmptyStateWidget(
+                        icon: Icons.person_search_rounded,
+                        title: 'Nenhum Participante Cadastrado')
+                    : _filteredAthletes.isEmpty
+                        ? const Center(child: Text("Nenhum atleta encontrado."))
+                        : ListView.builder(
+                            padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
+                            itemCount: _filteredAthletes.length,
+                            itemBuilder: (context, index) {
+                              final a = _filteredAthletes[index];
+                              final s = _alunosAtuaisSelecionados.contains(a);
+                              return Card(
+                                child: CheckboxListTile(
+                                  title: Text(a.nome),
+                                  subtitle: Text('${a.faixa} - ${a.peso}kg'),
+                                  value: s,
+                                  onChanged: (v) => setState(() {
+                                    if (v == true) {
+                                      _alunosAtuaisSelecionados.add(a);
+                                    } else {
+                                      _alunosAtuaisSelecionados.remove(a);
+                                    }
+                                    _searchController.clear();
+                                  }),
+                                  secondary: const Icon(Icons.person),
+                                ),
+                              );
+                            }),
+              ),
+            ],
+          ),
         ),
       ),
       floatingActionButton: FloatingActionButton.extended(
@@ -2930,6 +3019,154 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
               Navigator.of(context).pop(_alunosAtuaisSelecionados.toList()),
           label: Text('Confirmar (${_alunosAtuaisSelecionados.length})'),
           icon: const Icon(Icons.check_circle_outline_rounded)),
+    );
+  }
+}
+
+// --- TELA DE LISTA DE HISTÓRICO DE TREINOS ---
+class SparringHistoryListPage extends StatefulWidget {
+  final String academyId;
+  final List<Aluno> allParticipants;
+
+  const SparringHistoryListPage({
+    super.key,
+    required this.academyId,
+    required this.allParticipants,
+  });
+
+  @override
+  State<SparringHistoryListPage> createState() =>
+      _SparringHistoryListPageState();
+}
+
+class _SparringHistoryListPageState extends State<SparringHistoryListPage> {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: const Text('Histórico de Treinos'),
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('academies')
+                .doc(widget.academyId)
+                .collection('training_history')
+                .orderBy('startedAt', descending: true)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const EmptyStateWidget(
+                  icon: Icons.history_rounded,
+                  title: 'Nenhum Treino no Histórico',
+                  message:
+                      'Os treinos de sparring finalizados aparecerão aqui.',
+                );
+              }
+
+              final sessions = snapshot.data!.docs
+                  .map((doc) => SparringSession.fromFirestore(doc))
+                  .toList();
+
+              return ListView.builder(
+                padding: const EdgeInsets.all(8.0),
+                itemCount: sessions.length,
+                itemBuilder: (context, index) {
+                  final session = sessions[index];
+                  return Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.event_note_rounded,
+                          color: primaryAccent),
+                      title: Text(
+                          'Treino de ${DateFormat('dd/MM/yyyy \'às\' HH:mm').format(session.startedAt.toDate())}'),
+                      subtitle: Text(
+                          '${session.participantIds.length} participantes'),
+                      trailing:
+                          const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                      onTap: () {
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => SparringHistoryDetailPage(
+                            session: session,
+                            allParticipants: widget.allParticipants,
+                          ),
+                        ));
+                      },
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- TELA DE DETALHES DO HISTÓRICO DE TREINO ---
+class SparringHistoryDetailPage extends StatelessWidget {
+  final SparringSession session;
+  final List<Aluno> allParticipants;
+
+  const SparringHistoryDetailPage({
+    super.key,
+    required this.session,
+    required this.allParticipants,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final participantsMap = {
+      for (var p in allParticipants) p.id: p.nome,
+      'descansa-id': 'DESCANSA' // Adiciona o participante fantasma
+    };
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text('Detalhes do Treino'),
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16.0),
+            itemCount: session.allRounds.length,
+            itemBuilder: (context, index) {
+              final roundData = session.allRounds[index];
+              final fights = (roundData['fights'] as List)
+                  .map((fight) => Map<String, String>.from(fight as Map))
+                  .toList();
+              return Card(
+                child: ExpansionTile(
+                  leading: CircleAvatar(child: Text('${index + 1}')),
+                  title: Text('Rodada ${index + 1}'),
+                  initiallyExpanded: index == 0,
+                  children: fights.map((fight) {
+                    final p1Name =
+                        participantsMap[fight['p1']] ?? 'Desconhecido';
+                    final p2Name =
+                        participantsMap[fight['p2']] ?? 'Desconhecido';
+                    String fightText;
+                    if (p1Name == 'DESCANSA') {
+                      fightText = '$p2Name (descansa)';
+                    } else if (p2Name == 'DESCANSA') {
+                      fightText = '$p1Name (descansa)';
+                    } else {
+                      fightText = '$p1Name x $p2Name';
+                    }
+                    return ListTile(title: Text(fightText));
+                  }).toList(),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
     );
   }
 }

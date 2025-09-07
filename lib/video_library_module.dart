@@ -2,7 +2,7 @@
 // ignore_for_file: use_build_context_synchronously, deprecated_member_use
 
 import 'dart:async';
-import 'dart:io'; // <-- CORREÇÃO: IMPORT ADICIONADO
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -790,6 +790,7 @@ class VideoPlayerPage extends StatefulWidget {
 class _VideoPlayerPageState extends State<VideoPlayerPage> {
   late VideoPlayerController _videoPlayerController;
   ChewieController? _chewieController;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -809,7 +810,11 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         VideoPlayerController.networkUrl(Uri.parse(widget.video.videoUrl));
     await _videoPlayerController.initialize();
     _createChewieController();
-    setState(() {});
+    if (mounted) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   void _createChewieController() {
@@ -848,19 +853,28 @@ class _VideoPlayerPageState extends State<VideoPlayerPage> {
         elevation: 0,
       ),
       body: Center(
-        child: _chewieController != null &&
-                _chewieController!.videoPlayerController.value.isInitialized
-            ? Chewie(
-                controller: _chewieController!,
-              )
-            : const Column(
+        child: _isLoading
+            ? const Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 20),
                   Text('Carregando Vídeo...'),
                 ],
-              ),
+              )
+            : _chewieController != null &&
+                    _chewieController!.videoPlayerController.value.isInitialized
+                ? Chewie(
+                    controller: _chewieController!,
+                  )
+                : const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 20),
+                      Text('Preparando player...'),
+                    ],
+                  ),
       ),
     );
   }
@@ -1052,7 +1066,7 @@ class _AddVideoPageState extends State<AddVideoPage> {
         'description': _descriptionController.text.trim(),
         'videoUrl': finalVideoUrl,
         'thumbnailUrl': finalThumbnailUrl,
-        'videoType': _videoType == VideoType.uploaded ? 'uploaded' : 'youtube',
+        'videoType': _videoType.toString().split('.').last,
         'tags': tags,
         'playlistId':
             isEditing ? widget.videoToEdit!.playlistId : widget.playlistId,
@@ -1131,7 +1145,6 @@ class _AddVideoPageState extends State<AddVideoPage> {
                     children: [
                       TextFormField(
                         controller: _titleController,
-                        textCapitalization: TextCapitalization.words,
                         decoration:
                             const InputDecoration(labelText: 'Título do Vídeo'),
                         validator: (v) =>
@@ -1140,7 +1153,6 @@ class _AddVideoPageState extends State<AddVideoPage> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _descriptionController,
-                        textCapitalization: TextCapitalization.sentences,
                         decoration: const InputDecoration(
                             labelText: 'Descrição', alignLabelWithHint: true),
                         maxLines: 3,
@@ -1233,7 +1245,6 @@ class _AddVideoPageState extends State<AddVideoPage> {
                       const SizedBox(height: 16),
                       TextFormField(
                         controller: _tagsController,
-                        textCapitalization: TextCapitalization.words,
                         decoration: const InputDecoration(
                             labelText: 'Tags (separadas por vírgula)'),
                       ),

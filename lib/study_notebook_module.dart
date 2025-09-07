@@ -1374,10 +1374,11 @@ class NoteDetailPage extends StatelessWidget {
 
   Future<void> _launchUrl(BuildContext context) async {
     if (note.videoUrl != null && note.videoUrl!.isNotEmpty) {
-      final isYoutube = note.videoUrl!.contains('youtube.com') ||
-          note.videoUrl!.contains('youtu.be');
+      final isKnownUrl = note.videoUrl!.contains('youtube.com') ||
+          note.videoUrl!.contains('youtu.be') ||
+          note.videoUrl!.contains('instagram.com');
 
-      if (!isYoutube) {
+      if (!isKnownUrl) {
         final videoItem = VideoItem(
           id: note.id,
           title: note.title ?? 'Vídeo de Estudo',
@@ -1579,7 +1580,7 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
         final savedPath = await _noteService.saveVideo(video);
         if (mounted) Navigator.of(context).pop();
         if (savedPath != null) {
-          setState(() => _videoPath = savedPath);
+          setState(() => _videoPath = savedPath as String?);
         } else {
           if (mounted) {
             showBjjSnackBar(context, "Não foi possível enviar o vídeo.",

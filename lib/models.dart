@@ -1086,3 +1086,48 @@ class VideoItem {
     };
   }
 }
+
+class SparringSession {
+  final String id;
+  final Timestamp startedAt;
+  final String generationType;
+  final List<String> participantIds;
+  final List<Map<String, dynamic>>
+      allRounds; // Estrutura { 'fights': [{'p1': id, 'p2': id}] }
+  final String createdByUid;
+  final String createdByName;
+
+  SparringSession({
+    required this.id,
+    required this.startedAt,
+    required this.generationType,
+    required this.participantIds,
+    required this.allRounds,
+    required this.createdByUid,
+    required this.createdByName,
+  });
+
+  factory SparringSession.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return SparringSession(
+      id: doc.id,
+      startedAt: data['startedAt'] ?? Timestamp.now(),
+      generationType: data['generationType'] ?? 'Aleatório',
+      participantIds: List<String>.from(data['participants'] ?? []),
+      allRounds: List<Map<String, dynamic>>.from(data['allRounds'] ?? []),
+      createdByUid: data['createdByUid'] ?? '',
+      createdByName: data['createdByName'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'startedAt': startedAt,
+      'generationType': generationType,
+      'participants': participantIds,
+      'allRounds': allRounds,
+      'createdByUid': createdByUid,
+      'createdByName': createdByName,
+    };
+  }
+}
