@@ -310,7 +310,7 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
               ListTile(
                 leading: const Icon(Icons.create_new_folder_outlined,
                     color: primaryAccent),
-                title: const Text('Novo Assunto'),
+                title: const Text('Novo Volume'),
                 onTap: () {
                   Navigator.pop(context);
                   _showSubjectDialog();
@@ -329,12 +329,11 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(subject == null ? 'Novo Assunto' : 'Editar Assunto'),
+          title: Text(subject == null ? 'Novo Volume' : 'Editar Volume'),
           content: TextField(
             controller: controller,
             autofocus: true,
-            decoration:
-                const InputDecoration(labelText: 'Nome do Assunto/Curso'),
+            decoration: const InputDecoration(labelText: 'Nome do Volume'),
           ),
           actions: [
             TextButton(
@@ -365,9 +364,9 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Excluir Assunto?'),
+        title: const Text('Excluir Volume?'),
         content: Text(
-            'Isso excluirá "${subject.title}" e todos os seus volumes e anotações permanentemente. Deseja continuar?'),
+            'Isso excluirá "${subject.title}" e todos os seus subvolumes e anotações permanentemente. Deseja continuar?'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(context),
@@ -489,7 +488,7 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
                   }
                   return const Padding(
                     padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-                    child: Text('Meus Assuntos',
+                    child: Text('Meus Volumes',
                         style: TextStyle(color: textHint, fontSize: 16)),
                   );
                 }),
@@ -506,9 +505,9 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
                 return const SliverFillRemaining(
                   child: EmptyStateWidget(
                     icon: Icons.folder_copy_outlined,
-                    title: 'Nenhum Assunto',
+                    title: 'Nenhum Volume',
                     message:
-                        'Crie sua primeira anotação rápida ou assunto no botão "+".',
+                        'Crie sua primeira anotação rápida ou volume no botão "+".',
                   ),
                 );
               }
@@ -650,6 +649,7 @@ class StudyVolumesPage extends StatefulWidget {
 
 class _StudyVolumesPageState extends State<StudyVolumesPage> {
   late final StudyNoteService _noteService;
+  // REMOVIDA a variável de estado `_volumes` para evitar o loop de rebuild
 
   @override
   void initState() {
@@ -663,11 +663,11 @@ class _StudyVolumesPageState extends State<StudyVolumesPage> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(volume == null ? 'Novo Volume' : 'Editar Volume'),
+          title: Text(volume == null ? 'Novo Subvolume' : 'Editar Subvolume'),
           content: TextField(
             controller: controller,
             autofocus: true,
-            decoration: const InputDecoration(labelText: 'Nome do Volume'),
+            decoration: const InputDecoration(labelText: 'Nome do Subvolume'),
           ),
           actions: [
             TextButton(
@@ -699,7 +699,7 @@ class _StudyVolumesPageState extends State<StudyVolumesPage> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Excluir Volume?'),
+        title: const Text('Excluir Subvolume?'),
         content: Text(
             'Isso excluirá "${volume.title}" e todas as suas anotações permanentemente. Deseja continuar?'),
         actions: [
@@ -774,7 +774,7 @@ class _StudyVolumesPageState extends State<StudyVolumesPage> {
               ListTile(
                 leading: const Icon(Icons.create_new_folder_outlined,
                     color: primaryAccent),
-                title: const Text('Novo Volume'),
+                title: const Text('Novo Subvolume'),
                 onTap: () {
                   Navigator.pop(context);
                   _showVolumeDialog();
@@ -787,6 +787,7 @@ class _StudyVolumesPageState extends State<StudyVolumesPage> {
     );
   }
 
+  // >>>>> MÉTODO BUILD TOTALMENTE CORRIGIDO <<<<<
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -796,29 +797,42 @@ class _StudyVolumesPageState extends State<StudyVolumesPage> {
       ),
       body: AppBackground(
         child: SafeArea(
-          child: CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: _noteService.getVolumesStream(widget.subject.id),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const SizedBox.shrink();
-                    final volumes = snapshot.data!.docs
-                        .map((doc) => StudyVolume.fromFirestore(doc))
-                        .toList();
-                    if (volumes.isEmpty) return const SizedBox.shrink();
+          child: StreamBuilder<QuerySnapshot>(
+            stream: _noteService.getVolumesStream(widget.subject.id),
+            builder: (context, volumesSnapshot) {
+              return StreamBuilder<QuerySnapshot>(
+                stream: _noteService.getRootNotesStream(widget.subject.id),
+                builder: (context, notesSnapshot) {
+                  if (!volumesSnapshot.hasData || !notesSnapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
-                          child: Text('Volumes',
-                              style: TextStyle(color: textHint)),
+                  final volumes = volumesSnapshot.data!.docs
+                      .map((doc) => StudyVolume.fromFirestore(doc))
+                      .toList();
+                  final notes = notesSnapshot.data!.docs
+                      .map((doc) => StudyNote.fromFirestore(doc))
+                      .toList();
+
+                  if (volumes.isEmpty && notes.isEmpty) {
+                    return const EmptyStateWidget(
+                      icon: Icons.create_new_folder_outlined,
+                      title: 'Nenhum Conteúdo',
+                      message: 'Crie subvolumes ou anotações no botão "+".',
+                    );
+                  }
+
+                  return CustomScrollView(
+                    slivers: [
+                      if (volumes.isNotEmpty) ...[
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                            child: Text('Subvolumes',
+                                style: TextStyle(color: textHint)),
+                          ),
                         ),
-                        ReorderableListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
+                        SliverReorderableList(
                           itemCount: volumes.length,
                           itemBuilder: (context, index) {
                             final volume = volumes[index];
@@ -827,106 +841,72 @@ class _StudyVolumesPageState extends State<StudyVolumesPage> {
                               volume: volume,
                               noteService: _noteService,
                               userId: widget.userId,
+                              subject: widget.subject,
                               onEdit: () => _showVolumeDialog(volume: volume),
                               onDelete: () => _confirmDeleteVolume(volume),
                             );
                           },
                           onReorder: (int oldIndex, int newIndex) {
-                            setState(() {
-                              if (oldIndex < newIndex) {
-                                newIndex -= 1;
-                              }
-                              final StudyVolume item =
-                                  volumes.removeAt(oldIndex);
-                              volumes.insert(newIndex, item);
-                              _noteService.reorderVolumes(volumes);
-                            });
+                            final List<StudyVolume> reorderedVolumes =
+                                List.from(volumes);
+                            if (oldIndex < newIndex) {
+                              newIndex -= 1;
+                            }
+                            final StudyVolume item =
+                                reorderedVolumes.removeAt(oldIndex);
+                            reorderedVolumes.insert(newIndex, item);
+
+                            // Apenas envia a nova ordem para o Firestore.
+                            // O próprio StreamBuilder se encarregará de atualizar a UI
+                            // quando receber os dados atualizados.
+                            _noteService.reorderVolumes(reorderedVolumes);
                           },
                         ),
-                        const Divider(height: 32),
+                        if (notes.isNotEmpty)
+                          const SliverToBoxAdapter(child: Divider(height: 32)),
                       ],
-                    );
-                  },
-                ),
-              ),
-              SliverToBoxAdapter(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: _noteService.getRootNotesStream(widget.subject.id),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return const SizedBox.shrink();
-                    }
-
-                    final notes = snapshot.data!.docs
-                        .map((doc) => StudyNote.fromFirestore(doc))
-                        .toList();
-
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Padding(
-                          padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
-                          child: Text('Anotações Gerais',
-                              style: TextStyle(color: textHint)),
+                      if (notes.isNotEmpty) ...[
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+                            child: Text('Anotações Gerais',
+                                style: TextStyle(color: textHint)),
+                          ),
                         ),
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: notes.length,
-                          itemBuilder: (context, index) {
-                            final note = notes[index];
-                            return _NoteListItem(
-                              note: note,
-                              onTap: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => NoteDetailPage(note: note),
-                                ),
-                              ),
-                              onEdit: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => EditStudyNotePage(
-                                    note: note,
-                                    userId: widget.userId,
-                                    subjectId: widget.subject.id,
+                        SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              final note = notes[index];
+                              return _NoteListItem(
+                                note: note,
+                                onTap: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => NoteDetailPage(note: note),
                                   ),
                                 ),
-                              ),
-                              onDelete: () => _confirmDeleteNote(note.id),
-                            );
-                          },
+                                onEdit: () => Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => EditStudyNotePage(
+                                      note: note,
+                                      userId: widget.userId,
+                                      subjectId: widget.subject.id,
+                                    ),
+                                  ),
+                                ),
+                                onDelete: () => _confirmDeleteNote(note.id),
+                              );
+                            },
+                            childCount: notes.length,
+                          ),
                         ),
                       ],
-                    );
-                  },
-                ),
-              ),
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: FutureBuilder<List<QuerySnapshot>>(
-                  future: Future.wait([
-                    _noteService.getVolumesStream(widget.subject.id).first,
-                    _noteService.getRootNotesStream(widget.subject.id).first,
-                  ]),
-                  builder: (context, snapshot) {
-                    if (snapshot.hasData &&
-                        (snapshot.data![0].docs.isEmpty &&
-                            snapshot.data![1].docs.isEmpty)) {
-                      return const EmptyStateWidget(
-                        icon: Icons.create_new_folder_outlined,
-                        title: 'Nenhum Conteúdo',
-                        message: 'Crie volumes ou anotações no botão "+".',
-                      );
-                    }
-                    return const SizedBox.shrink();
-                  },
-                ),
-              )
-            ],
+                    ],
+                  );
+                },
+              );
+            },
           ),
         ),
       ),
@@ -943,6 +923,7 @@ class _VolumeListItem extends StatelessWidget {
   final StudyVolume volume;
   final StudyNoteService noteService;
   final String userId;
+  final StudySubject subject;
   final VoidCallback onEdit;
   final VoidCallback onDelete;
 
@@ -951,6 +932,7 @@ class _VolumeListItem extends StatelessWidget {
     required this.volume,
     required this.noteService,
     required this.userId,
+    required this.subject,
     required this.onEdit,
     required this.onDelete,
   });
@@ -958,19 +940,21 @@ class _VolumeListItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      child: ExpansionTile(
+      child: ListTile(
         leading: const Icon(Icons.folder_open_outlined, color: primaryAccent),
         title: Text(volume.title),
-        subtitle: StreamBuilder<int>(
-          stream: noteService.getNotesCountStream(volume.id),
-          builder: (context, snapshot) {
-            if (!snapshot.hasData || snapshot.data == 0) {
-              return const Text('Nenhuma anotação');
-            }
-            final count = snapshot.data!;
-            return Text('$count anotaç${count == 1 ? "ão" : "ões"}');
-          },
-        ),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => NoteListPage(
+                userId: userId,
+                subject: subject,
+                volume: volume,
+              ),
+            ),
+          );
+        },
         trailing: PopupMenuButton(
           itemBuilder: (context) => [
             const PopupMenuItem(value: 'edit', child: Text('Renomear')),
@@ -984,70 +968,6 @@ class _VolumeListItem extends StatelessWidget {
             }
           },
         ),
-        children: [
-          StreamBuilder<QuerySnapshot>(
-            stream: noteService.getNotesStream(volume.id),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Padding(
-                  padding: EdgeInsets.all(8.0),
-                  child: Center(child: CircularProgressIndicator()),
-                );
-              }
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return ListTile(
-                  title: Text(
-                    'Nenhuma anotação neste volume.',
-                    style: TextStyle(color: textHint),
-                  ),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => EditStudyNotePage(
-                          userId: userId,
-                          subjectId: volume.subjectId,
-                          volumeId: volume.id,
-                        ),
-                      ),
-                    );
-                  },
-                );
-              }
-              final notes = snapshot.data!.docs
-                  .map((doc) => StudyNote.fromFirestore(doc))
-                  .toList();
-              return ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: notes.length,
-                itemBuilder: (context, index) {
-                  final note = notes[index];
-                  return _NoteListItem(
-                    note: note,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                          builder: (_) => NoteDetailPage(note: note)),
-                    ),
-                    onEdit: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => EditStudyNotePage(
-                          note: note,
-                          userId: userId,
-                          subjectId: volume.subjectId,
-                          volumeId: volume.id,
-                        ),
-                      ),
-                    ),
-                    onDelete: () => noteService.deleteNote(note.id),
-                  );
-                },
-              );
-            },
-          )
-        ],
       ),
     );
   }
@@ -1055,9 +975,11 @@ class _VolumeListItem extends StatelessWidget {
 
 class NoteListPage extends StatefulWidget {
   final String userId;
-  final StudyVolume volume;
+  final StudySubject subject;
+  final StudyVolume? volume;
 
-  const NoteListPage({super.key, required this.userId, required this.volume});
+  const NoteListPage(
+      {super.key, required this.userId, required this.subject, this.volume});
 
   @override
   State<NoteListPage> createState() => _NoteListPageState();
@@ -1111,7 +1033,7 @@ class _NoteListPageState extends State<NoteListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(title: Text(widget.volume.title)),
+      appBar: AppBar(title: Text(widget.volume?.title ?? widget.subject.title)),
       body: AppBackground(
         child: SafeArea(
           child: Column(
@@ -1134,7 +1056,9 @@ class _NoteListPageState extends State<NoteListPage> {
               ),
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
-                  stream: _noteService.getNotesStream(widget.volume.id),
+                  stream: widget.volume != null
+                      ? _noteService.getNotesStream(widget.volume!.id)
+                      : _noteService.getRootNotesStream(widget.subject.id),
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return const Center(child: CircularProgressIndicator());
@@ -1201,8 +1125,8 @@ class _NoteListPageState extends State<NoteListPage> {
                               builder: (_) => EditStudyNotePage(
                                 note: note,
                                 userId: widget.userId,
-                                subjectId: note.subjectId,
-                                volumeId: widget.volume.id,
+                                subjectId: widget.subject.id,
+                                volumeId: widget.volume?.id,
                               ),
                             ),
                           ),
@@ -1222,9 +1146,10 @@ class _NoteListPageState extends State<NoteListPage> {
             context,
             MaterialPageRoute(
                 builder: (_) => EditStudyNotePage(
-                    userId: widget.userId,
-                    subjectId: widget.volume.subjectId,
-                    volumeId: widget.volume.id))),
+                      userId: widget.userId,
+                      subjectId: widget.subject.id,
+                      volumeId: widget.volume?.id,
+                    ))),
         tooltip: 'Nova Anotação',
         child: const Icon(Icons.add),
       ),
@@ -1749,7 +1674,40 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
       body: AppBackground(
         child: SafeArea(
           child: _isSaving
-              ? const Center(child: CircularProgressIndicator())
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(20.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          height: 80,
+                          width: 80,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              CircularProgressIndicator(
+                                value: _uploadProgress > 0
+                                    ? _uploadProgress
+                                    : null,
+                                strokeWidth: 6,
+                                backgroundColor: darkSurface,
+                              ),
+                              Center(
+                                child: Text(
+                                  "${(_uploadProgress * 100).toStringAsFixed(0)}%",
+                                  style: Theme.of(context).textTheme.titleSmall,
+                                ),
+                              )
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text("Enviando vídeo, por favor aguarde..."),
+                      ],
+                    ),
+                  ),
+                )
               : Form(
                   key: _formKey,
                   child: ListView(
