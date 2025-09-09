@@ -94,28 +94,32 @@ class EmptyStateWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Icon(icon, size: 80, color: textHint),
-            const SizedBox(height: 20),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.headlineSmall,
-            ),
-            if (message != null) ...[
-              const SizedBox(height: 10),
+      // --- CORREÇÃO APLICADA AQUI ---
+      // Adicionado SingleChildScrollView para evitar overflow em telas pequenas.
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(32.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(icon, size: 80, color: textHint),
+              const SizedBox(height: 20),
               Text(
-                message!,
+                title,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: textHint, fontSize: 16),
+                style: Theme.of(context).textTheme.headlineSmall,
               ),
-            ]
-          ],
+              if (message != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  message!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: textHint, fontSize: 16),
+                ),
+              ]
+            ],
+          ),
         ),
       ),
     );

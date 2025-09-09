@@ -13,22 +13,25 @@ import 'shop_module.dart';
 import 'notifications_module.dart';
 import 'birthdays_module.dart';
 import 'video_library_module.dart';
-import 'rules_module.dart'; // <-- NOVO IMPORT
+import 'rules_module.dart';
+import 'manager_reports_page.dart';
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
   final String id;
   final String title;
   final IconData icon;
-  final UserRole? requiredRole; // Papel necessário para ver este módulo
-  final Widget Function(UserModel, List<UserModel>, List<Aluno>) pageBuilder;
+  final UserRole? requiredRole;
+  final Widget Function(UserModel, List<UserModel>, List<Aluno>)? pageBuilder;
+  final List<AppModule>? subModules;
 
   AppModule({
     required this.id,
     required this.title,
     required this.icon,
     this.requiredRole,
-    required this.pageBuilder,
+    this.pageBuilder,
+    this.subModules,
   });
 }
 
@@ -39,14 +42,54 @@ class NavigationService {
 
   NavigationService({required this.userId, required this.userRole});
 
-  /// Retorna a coleção de configurações de abas do usuário no Firestore.
   CollectionReference get _tabSettingsCollection => FirebaseFirestore.instance
       .collection('users')
       .doc(userId)
       .collection('tab_settings');
 
+  /// --- LÓGICA DE PERMISSÃO ATUALIZADA ---
+  /// Retorna uma lista HIERÁRQUICA para construir o Drawer.
+  List<AppModule> getDrawerModulesForCurrentUser() {
+    final all = _getAllPossibleModules();
+    return all.where((module) {
+      // --- REGRA ATUALIZADA PARA O GERENTE ---
+      if (userRole == UserRole.manager) {
+        // IDs das telas que devem ser ocultadas para o gerente.
+        const hiddenForManager = [
+          'student_profile',
+          'student_history',
+          'teacher_history'
+        ];
+        // Se o módulo não estiver na lista de ocultos, ele é exibido.
+        return !hiddenForManager.contains(module.id);
+      }
+      // Para outros usuários, a regra antiga se aplica.
+      return module.requiredRole == null || module.requiredRole == userRole;
+    }).toList();
+  }
+
+  /// Retorna uma lista PLANA (achatada) de TODOS os módulos com páginas.
+  List<AppModule> getFlatPageModulesForCurrentUser() {
+    final List<AppModule> flatList = [];
+    final hierarchicalList = getDrawerModulesForCurrentUser();
+
+    for (final module in hierarchicalList) {
+      if (module.pageBuilder != null) {
+        flatList.add(module);
+      }
+      if (module.subModules != null) {
+        for (final subModule in module.subModules!) {
+          if (subModule.pageBuilder != null) {
+            flatList.add(subModule);
+          }
+        }
+      }
+    }
+    return flatList;
+  }
+
   /// Lista de todos os módulos disponíveis no aplicativo.
-  List<AppModule> get allModules {
+  List<AppModule> _getAllPossibleModules() {
     return [
       // Módulos do Gerente
       AppModule(
@@ -57,6 +100,29 @@ class NavigationService {
         pageBuilder: (user, teachers, students) =>
             ManagerDashboardPage(user: user),
       ),
+      AppModule(
+          id: 'manager_financial',
+          title: 'Financeiro',
+          icon: Icons.monetization_on_rounded,
+          requiredRole: UserRole.manager,
+          subModules: [
+            AppModule(
+              id: 'manager_fees',
+              title: 'Mensalidades',
+              icon: Icons.request_quote_outlined,
+              requiredRole: UserRole.manager,
+              pageBuilder: (user, teachers, students) =>
+                  MonthlyFeeManagerPage(academyId: user.academyId),
+            ),
+            AppModule(
+              id: 'manager_reports',
+              title: 'Relatórios',
+              icon: Icons.bar_chart_rounded,
+              requiredRole: UserRole.manager,
+              pageBuilder: (user, teachers, students) =>
+                  ManagerReportsPage(user: user),
+            ),
+          ]),
       AppModule(
         id: 'manager_students',
         title: 'Alunos',
@@ -73,14 +139,6 @@ class NavigationService {
         pageBuilder: (user, teachers, students) =>
             ProfessoresManagerPage(academyId: user.academyId, manager: user),
       ),
-      AppModule(
-        id: 'manager_fees',
-        title: 'Mensalidades',
-        icon: Icons.monetization_on_rounded,
-        requiredRole: UserRole.manager,
-        pageBuilder: (user, teachers, students) =>
-            MonthlyFeeManagerPage(academyId: user.academyId),
-      ),
 
       // Módulos do Professor
       AppModule(
@@ -90,7 +148,7 @@ class NavigationService {
         requiredRole: UserRole.teacher,
         pageBuilder: (user, teachers, students) => TeacherDashboardPage(
           user: user,
-          isSparringMode: false, // O estado real virá da tela principal
+          isSparringMode: false,
           onNavigateToSparring: () {},
         ),
       ),
@@ -121,7 +179,7 @@ class NavigationService {
           user: user,
           academyId: user.academyId,
           todosParticipantesDaAcademia: students,
-          isSparringMode: false, // O estado real virá da tela principal
+          isSparringMode: false,
           onIniciarSparring: (rounds, type, participants) {},
           onCheckinAlunos: (students) {},
         ),
@@ -201,7 +259,6 @@ class NavigationService {
             academyId: user.academyId,
             todosAlunosDaAcademia: students),
       ),
-      // <-- NOVO MÓDULO ADICIONADO AQUI -->
       AppModule(
         id: 'common_rules',
         title: 'Regras',
@@ -211,14 +268,6 @@ class NavigationService {
     ];
   }
 
-  /// Retorna os módulos disponíveis para o papel do usuário atual.
-  List<AppModule> getModulesForCurrentUser() {
-    return allModules
-        .where((module) =>
-            module.requiredRole == null || module.requiredRole == userRole)
-        .toList();
-  }
-
   /// Retorna as configurações de abas padrão para um novo usuário.
   Map<String, dynamic> getDefaultTabSettings() {
     List<String> defaultVisibleIds;
@@ -226,10 +275,10 @@ class NavigationService {
       case UserRole.manager:
         defaultVisibleIds = [
           'manager_dashboard',
-          'common_notifications',
           'manager_students',
-          'common_birthdays',
+          'manager_financial',
           'common_schedule',
+          'common_notifications',
         ];
         break;
       case UserRole.teacher:
@@ -252,14 +301,15 @@ class NavigationService {
         ];
         break;
     }
-    final allModuleIds = getModulesForCurrentUser().map((m) => m.id).toList();
+
+    final allModuleIds =
+        getFlatPageModulesForCurrentUser().map((m) => m.id).toList();
     return {
       'order': allModuleIds,
       'visible': defaultVisibleIds,
     };
   }
 
-  /// Salva as novas configurações de abas (ordem e visibilidade) no Firestore.
   Future<void> saveTabSettings(List<String> newOrder, List<String> newVisible) {
     return _tabSettingsCollection.doc('user_prefs').set({
       'order': newOrder,
@@ -267,7 +317,6 @@ class NavigationService {
     });
   }
 
-  /// Retorna um stream com as configurações de abas do usuário.
   Stream<DocumentSnapshot> getTabSettingsStream() {
     return _tabSettingsCollection.doc('user_prefs').snapshots();
   }

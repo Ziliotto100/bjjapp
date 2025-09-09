@@ -13,6 +13,7 @@ import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:collection/collection.dart';
 
 import 'models.dart';
 import 'common_widgets.dart';
@@ -42,7 +43,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
   bool _isLoading = true;
 
   late final NavigationService _navService;
-  List<AppModule> _allModules = [];
+  List<AppModule> _allPageModules = [];
+  List<AppModule> _drawerModules = [];
   List<AppModule> _visibleModules = [];
   List<Widget> _telas = [];
 
@@ -51,7 +53,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
   StreamSubscription? _notificationSubscription;
   StreamSubscription? _settingsSubscription;
 
-  // --- NOVA VARIÁVEL DE CONTROLE ---
   bool _isNotificationDialogShowing = false;
 
   @override
@@ -70,7 +71,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
     super.dispose();
   }
 
-  // --- LÓGICA DE NOTIFICAÇÃO CORRIGIDA ---
   void _checkForNewNotifications() {
     final userLastCheck = widget.user.lastNotificationCheck ??
         Timestamp.fromMillisecondsSinceEpoch(0);
@@ -84,12 +84,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
         .limit(1)
         .snapshots()
         .listen((snapshot) async {
-      // Se não houver notificação nova ou um diálogo já estiver aberto, não faz nada
       if (!mounted || snapshot.docs.isEmpty || _isNotificationDialogShowing) {
         return;
       }
 
-      // Marca que um diálogo está sendo aberto
       setState(() {
         _isNotificationDialogShowing = true;
       });
@@ -111,7 +109,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ],
         ),
       ).then((_) {
-        // Quando o diálogo for fechado, reseta a variável de controle
         if (mounted) {
           setState(() {
             _isNotificationDialogShowing = false;
@@ -182,43 +179,24 @@ class _StudentHomePageState extends State<StudentHomePage> {
       settings = _navService.getDefaultTabSettings();
     }
 
-    final allUserModules = _navService.getModulesForCurrentUser();
-    final userModuleIds = allUserModules.map((m) => m.id).toSet();
-    final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
+    _drawerModules = _navService.getDrawerModulesForCurrentUser();
+    _allPageModules = _navService.getFlatPageModulesForCurrentUser();
+
     final List<String> visibleIds =
         List<String>.from(settings['visible'] ?? []);
 
-    // Garante que todos os módulos do usuário existam na lista de ordem
-    for (var module in allUserModules) {
-      if (!savedOrder.contains(module.id)) {
-        savedOrder.add(module.id);
-      }
-    }
-
-    // Filtra a ordem salva para remover módulos que não existem mais
-    final cleanSavedOrder =
-        savedOrder.where((id) => userModuleIds.contains(id)).toList();
-
     if (mounted) {
       setState(() {
-        _allModules = cleanSavedOrder
-            .map((id) => allUserModules.firstWhere((m) => m.id == id))
+        _telas = _allPageModules
+            .map((module) =>
+                module.pageBuilder!(widget.user, _teachers, _students))
             .toList();
 
         _visibleModules =
-            _allModules.where((m) => visibleIds.contains(m.id)).toList();
+            _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
 
-        _telas = _allModules
-            .map((module) =>
-                module.pageBuilder(widget.user, _teachers, _students))
-            .toList();
-
-        // *** ALTERAÇÃO AQUI: Força a página inicial para "Meu Perfil" ***
         int profileIndex =
-            _allModules.indexWhere((m) => m.id == 'student_profile');
-
-        // Se o módulo de perfil for encontrado, define-o como a página atual.
-        // Caso contrário (o que seria raro), mantém a página 0 como padrão seguro.
+            _allPageModules.indexWhere((m) => m.id == 'student_profile');
         _paginaAtual = (profileIndex != -1) ? profileIndex : 0;
 
         _isLoading = false;
@@ -226,19 +204,18 @@ class _StudentHomePageState extends State<StudentHomePage> {
     }
   }
 
-  void _onItemTapped(int index) {
-    final selectedModuleId = _visibleModules[index].id;
-    final globalIndex = _allModules.indexWhere((m) => m.id == selectedModuleId);
-
-    setState(() {
-      _paginaAtual = globalIndex;
-    });
+  void _navigateToModuleId(String moduleId) {
+    final newIndex = _allPageModules.indexWhere((m) => m.id == moduleId);
+    if (newIndex != -1) {
+      setState(() {
+        _paginaAtual = newIndex;
+      });
+    }
   }
 
-  void _onDrawerItemTapped(int index) {
-    setState(() {
-      _paginaAtual = index;
-    });
+  void _onItemTapped(int index) {
+    final selectedModuleId = _visibleModules[index].id;
+    _navigateToModuleId(selectedModuleId);
   }
 
   @override
@@ -249,7 +226,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
       );
     }
 
-    final currentModule = _allModules[_paginaAtual];
+    final currentModule = _allPageModules[_paginaAtual];
     final currentVisibleIndex =
         _visibleModules.indexWhere((m) => m.id == currentModule.id);
 
@@ -270,8 +247,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
       ),
       drawer: AppDrawer(
         user: widget.user,
-        allModules: _allModules,
-        onSelectItem: _onDrawerItemTapped,
+        drawerModules: _drawerModules,
+        allPageModules: _allPageModules,
+        onSelectItem: _navigateToModuleId,
       ),
       body: Column(
         children: [
@@ -1193,19 +1171,21 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         margin: const EdgeInsets.symmetric(vertical: 4.0),
                         child: ListTile(
                           leading: Icon(
-                            _currentMonthFee != null
+                            _currentMonthFee?.status == PaymentStatus.pago
                                 ? Icons.check_circle_outline_rounded
                                 : Icons.error_outline_rounded,
-                            color: _currentMonthFee != null
-                                ? successColor
-                                : warningColor,
+                            color:
+                                _currentMonthFee?.status == PaymentStatus.pago
+                                    ? successColor
+                                    : warningColor,
                             size: 30,
                           ),
                           title: const Text("Status da Mensalidade",
                               style: TextStyle(color: textHint)),
                           subtitle: Text(
-                            _currentMonthFee != null
-                                ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate)}'
+                            _currentMonthFee?.status == PaymentStatus.pago &&
+                                    _currentMonthFee!.paymentDate != null
+                                ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate!)}' // <-- CORREÇÃO AQUI
                                 : 'Pendente para este mês',
                             style: Theme.of(context)
                                 .textTheme

@@ -96,7 +96,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   bool _isLoading = true;
 
   late final NavigationService _navService;
-  List<AppModule> _allModules = [];
+  List<AppModule> _allPageModules = [];
+  List<AppModule> _drawerModules = [];
   List<AppModule> _visibleModules = [];
   List<Widget> _telas = [];
 
@@ -340,10 +341,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   }
 
   void _rebuildScreens() {
-    if (_allModules.isEmpty) return;
+    if (_allPageModules.isEmpty) return;
     setState(() {
       _telas =
-          _allModules.map((module) => _buildPageForModule(module)).toList();
+          _allPageModules.map((module) => _buildPageForModule(module)).toList();
     });
   }
 
@@ -354,11 +355,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           user: widget.user,
           isSparringMode: _isSparringMode,
           onNavigateToSparring: () {
-            final sparringIndex =
-                _allModules.indexWhere((m) => m.id == 'teacher_sparring');
-            if (sparringIndex != -1) {
-              setState(() => _paginaAtual = sparringIndex);
-            }
+            _navigateToModuleId('teacher_sparring');
           },
         );
       case 'teacher_sparring':
@@ -377,7 +374,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           onCheckinAlunos: _checkinAlunos,
         );
       default:
-        return module.pageBuilder(widget.user, _teachers, _students);
+        return module.pageBuilder!(widget.user, _teachers, _students);
     }
   }
 
@@ -389,49 +386,42 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       settings = _navService.getDefaultTabSettings();
     }
 
-    final allUserModules = _navService.getModulesForCurrentUser();
-    final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
+    _drawerModules = _navService.getDrawerModulesForCurrentUser();
+    _allPageModules = _navService.getFlatPageModulesForCurrentUser();
+
     final List<String> visibleIds =
         List<String>.from(settings['visible'] ?? []);
 
-    for (var module in allUserModules) {
-      if (!savedOrder.contains(module.id)) {
-        savedOrder.add(module.id);
-      }
-    }
-    savedOrder.removeWhere((id) => !allUserModules.any((m) => m.id == id));
-
     if (mounted) {
       setState(() {
-        _allModules = savedOrder
-            .map((id) => allUserModules.firstWhere((m) => m.id == id,
-                orElse: () => allUserModules.first))
+        _telas = _allPageModules
+            .map((module) => _buildPageForModule(module))
             .toList();
 
         _visibleModules =
-            _allModules.where((m) => visibleIds.contains(m.id)).toList();
+            _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
 
-        if (_paginaAtual >= _allModules.length) {
+        if (_paginaAtual >= _allPageModules.length) {
           _paginaAtual = 0;
         }
-        _rebuildScreens();
+
         _isLoading = false;
+      });
+    }
+  }
+
+  void _navigateToModuleId(String moduleId) {
+    final newIndex = _allPageModules.indexWhere((m) => m.id == moduleId);
+    if (newIndex != -1) {
+      setState(() {
+        _paginaAtual = newIndex;
       });
     }
   }
 
   void _onItemTapped(int index) {
     final selectedModuleId = _visibleModules[index].id;
-    final globalIndex = _allModules.indexWhere((m) => m.id == selectedModuleId);
-    setState(() {
-      _paginaAtual = globalIndex;
-    });
-  }
-
-  void _onDrawerItemTapped(int index) {
-    setState(() {
-      _paginaAtual = index;
-    });
+    _navigateToModuleId(selectedModuleId);
   }
 
   @override
@@ -442,7 +432,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       );
     }
 
-    final currentModule = _allModules[_paginaAtual];
+    final currentModule = _allPageModules[_paginaAtual];
     final currentVisibleIndex =
         _visibleModules.indexWhere((m) => m.id == currentModule.id);
 
@@ -465,8 +455,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
       ),
       drawer: AppDrawer(
         user: widget.user,
-        allModules: _allModules,
-        onSelectItem: _onDrawerItemTapped,
+        drawerModules: _drawerModules,
+        allPageModules: _allPageModules,
+        onSelectItem: _navigateToModuleId,
       ),
       body: Column(
         children: [
@@ -497,10 +488,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   }
 
   Widget? _buildFloatingActionButton() {
-    final currentModuleId = _allModules[_paginaAtual].id;
+    final currentModuleId = _allPageModules[_paginaAtual].id;
     if (currentModuleId == 'teacher_students') {
       return FloatingActionButton(
-        heroTag: 'teacher_add_student_fab', // CORREÇÃO AQUI
+        heroTag: 'teacher_add_student_fab',
         onPressed: () {
           showDialog(
             context: context,

@@ -1,5 +1,5 @@
 // lib/app_drawer.dart
-import 'package:cached_network_image/cached_network_image.dart'; // NOVO IMPORT
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -11,38 +11,23 @@ import 'auth_gate.dart';
 
 class AppDrawer extends StatelessWidget {
   final UserModel user;
-  final List<AppModule> allModules;
-  final Function(int) onSelectItem;
+  // --- ATUALIZADO: Recebe as duas listas ---
+  final List<AppModule> drawerModules; // Lista hierárquica para desenhar o menu
+  final List<AppModule> allPageModules; // Lista plana para encontrar o índice
+  final Function(String) onSelectItem; // Agora passa o ID do módulo
 
   const AppDrawer({
     super.key,
     required this.user,
-    required this.allModules,
+    required this.drawerModules,
+    required this.allPageModules,
     required this.onSelectItem,
   });
 
   @override
   Widget build(BuildContext context) {
-    // --- LÓGICA DE ORDENAÇÃO ADICIONADA AQUI ---
-    AppModule? inicioModule;
-    try {
-      // Encontra o módulo "Início"
-      inicioModule = allModules.firstWhere((m) => m.title == 'Início');
-    } catch (e) {
-      // Caso não encontre, continua sem ele
-      inicioModule = null;
-    }
-
-    // Cria uma lista com os outros módulos
-    final otherModules = allModules.where((m) => m.title != 'Início').toList();
-
-    // Ordena os outros módulos em ordem alfabética
-    otherModules.sort((a, b) => a.title.compareTo(b.title));
-
-    // Junta as listas, com "Início" no topo (se existir)
-    final sortedModules =
-        (inicioModule != null) ? [inicioModule, ...otherModules] : otherModules;
-    // --- FIM DA LÓGICA DE ORDENAÇÃO ---
+    // A lógica de ordenação agora acontece dentro deste widget
+    List<AppModule> sortedDrawerModules = _getSortedModules(drawerModules);
 
     return Drawer(
       backgroundColor: darkScaffoldBackground,
@@ -51,20 +36,42 @@ class AppDrawer extends StatelessWidget {
         children: [
           _buildDrawerHeader(context),
           const Divider(color: borderNormal),
-          // Mapeia a lista já ordenada para criar os itens do menu
-          ...sortedModules.map((module) {
-            // Pega o índice original do módulo para a navegação não quebrar
-            final originalIndex = allModules.indexOf(module);
+
+          // Mapeia a lista hierárquica e ordenada
+          ...sortedDrawerModules.map((module) {
+            // Se o módulo tiver submódulos, cria um ExpansionTile
+            if (module.subModules != null && module.subModules!.isNotEmpty) {
+              return ExpansionTile(
+                leading: Icon(module.icon, color: textSecondary),
+                title: Text(module.title,
+                    style: const TextStyle(color: textSecondary)),
+                children: module.subModules!.map((subModule) {
+                  return ListTile(
+                    leading:
+                        Icon(subModule.icon, color: textSecondary, size: 20),
+                    title: Text(subModule.title),
+                    contentPadding: const EdgeInsets.only(left: 32.0),
+                    onTap: () {
+                      Navigator.pop(context);
+                      onSelectItem(subModule.id); // Passa o ID do submódulo
+                    },
+                  );
+                }).toList(),
+              );
+            }
+
+            // Se não, cria um ListTile normal
             return ListTile(
               leading: Icon(module.icon, color: textSecondary),
               title: Text(module.title,
                   style: const TextStyle(color: textSecondary)),
               onTap: () {
-                Navigator.pop(context); // Fecha o drawer
-                onSelectItem(originalIndex); // Navega usando o índice correto
+                Navigator.pop(context);
+                onSelectItem(module.id); // Passa o ID do módulo
               },
             );
-          }),
+          }).toList(),
+
           const Divider(color: borderNormal),
           ListTile(
             leading: const Icon(Icons.tune_rounded, color: primaryAccent),
@@ -81,7 +88,7 @@ class AppDrawer extends StatelessWidget {
             leading: const Icon(Icons.logout, color: errorColor),
             title: const Text('Sair', style: TextStyle(color: errorColor)),
             onTap: () async {
-              Navigator.pop(context); // Fecha o drawer primeiro
+              Navigator.pop(context);
               final confirm = await showDialog<bool>(
                 context: context,
                 builder: (context) => AlertDialog(
@@ -101,11 +108,8 @@ class AppDrawer extends StatelessWidget {
                 ),
               );
 
-              // Garante que o contexto ainda é válido após o dialog
               if (confirm == true && context.mounted) {
                 await FirebaseAuth.instance.signOut();
-                // Navega para a AuthGate e remove todas as telas anteriores da pilha
-                // ignore: use_build_context_synchronously
                 Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
                   MaterialPageRoute(builder: (context) => const AuthGate()),
                   (route) => false,
@@ -118,6 +122,35 @@ class AppDrawer extends StatelessWidget {
     );
   }
 
+  // --- FUNÇÃO DE ORDENAÇÃO ATUALIZADA ---
+  List<AppModule> _getSortedModules(List<AppModule> modules) {
+    AppModule? inicioModule;
+    AppModule? financeiroModule;
+
+    try {
+      inicioModule = modules.firstWhere((m) => m.title == 'Início');
+    } catch (e) {
+      inicioModule = null;
+    }
+    try {
+      financeiroModule = modules.firstWhere((m) => m.title == 'Financeiro');
+    } catch (e) {
+      financeiroModule = null;
+    }
+
+    final otherModules = modules
+        .where((m) => m.title != 'Início' && m.title != 'Financeiro')
+        .toList();
+    otherModules.sort((a, b) => a.title.compareTo(b.title));
+
+    final List<AppModule> sortedList = [];
+    if (inicioModule != null) sortedList.add(inicioModule);
+    if (financeiroModule != null) sortedList.add(financeiroModule);
+    sortedList.addAll(otherModules);
+
+    return sortedList;
+  }
+
   Widget _buildDrawerHeader(BuildContext context) {
     final profileImage = user.profileImagePath;
     return UserAccountsDrawerHeader(
@@ -126,11 +159,9 @@ class AppDrawer extends StatelessWidget {
       accountEmail: Text(user.email, style: const TextStyle(color: textHint)),
       currentAccountPicture: CircleAvatar(
         backgroundColor: primaryAccent,
-        // --- ALTERAÇÃO AQUI ---
         backgroundImage: (profileImage != null && profileImage.isNotEmpty)
             ? CachedNetworkImageProvider(profileImage)
             : null,
-        // --- FIM DA ALTERAÇÃO ---
         child: (profileImage == null || profileImage.isEmpty)
             ? Text(
                 user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',

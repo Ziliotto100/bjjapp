@@ -334,49 +334,7 @@ class MatchSettings {
   }
 }
 
-class MonthlyFee {
-  final String id;
-  final String studentId;
-  final double amount;
-  final DateTime paymentDate;
-  final String paymentMethod;
-  final int paymentYear;
-  final int paymentMonth;
-
-  MonthlyFee({
-    required this.id,
-    required this.studentId,
-    required this.amount,
-    required this.paymentDate,
-    required this.paymentMethod,
-    required this.paymentYear,
-    required this.paymentMonth,
-  });
-
-  factory MonthlyFee.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
-    return MonthlyFee(
-      id: doc.id,
-      studentId: data['studentId'],
-      amount: (data['amount'] as num).toDouble(),
-      paymentDate: (data['paymentDate'] as Timestamp).toDate(),
-      paymentMethod: data['paymentMethod'],
-      paymentYear: data['paymentYear'],
-      paymentMonth: data['paymentMonth'],
-    );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      'studentId': studentId,
-      'amount': amount,
-      'paymentDate': paymentDate,
-      'paymentMethod': paymentMethod,
-      'paymentYear': paymentYear,
-      'paymentMonth': paymentMonth,
-    };
-  }
-}
+// MonthlyFee foi movido para o final do arquivo
 
 class CheckinEntry {
   final String id;
@@ -1128,6 +1086,72 @@ class SparringSession {
       'allRounds': allRounds,
       'createdByUid': createdByUid,
       'createdByName': createdByName,
+    };
+  }
+}
+
+// NOVO MODELO PARA MENSALIDADES - MUITO MAIS ROBUSTO
+class MonthlyFee {
+  final String id;
+  final String studentId;
+  final String studentName;
+  final double amount;
+  final DateTime? paymentDate;
+  final String? paymentMethod;
+  final int paymentYear;
+  final int paymentMonth;
+  final PaymentStatus status;
+
+  MonthlyFee({
+    required this.id,
+    required this.studentId,
+    required this.studentName,
+    required this.amount,
+    this.paymentDate,
+    this.paymentMethod,
+    required this.paymentYear,
+    required this.paymentMonth,
+    required this.status,
+  });
+
+  factory MonthlyFee.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    PaymentStatus status;
+    switch (data['status']) {
+      case 'pago':
+        status = PaymentStatus.pago;
+        break;
+      case 'atrasado':
+        status = PaymentStatus.atrasado;
+        break;
+      default:
+        status = PaymentStatus.pendente;
+    }
+
+    return MonthlyFee(
+      id: doc.id,
+      studentId: data['studentId'],
+      studentName: data['studentName'],
+      amount: (data['amount'] as num).toDouble(),
+      paymentDate: (data['paymentDate'] as Timestamp?)?.toDate(),
+      paymentMethod: data['paymentMethod'],
+      paymentYear: data['paymentYear'],
+      paymentMonth: data['paymentMonth'],
+      status: status,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'studentId': studentId,
+      'studentName': studentName,
+      'amount': amount,
+      'paymentDate':
+          paymentDate != null ? Timestamp.fromDate(paymentDate!) : null,
+      'paymentMethod': paymentMethod,
+      'paymentYear': paymentYear,
+      'paymentMonth': paymentMonth,
+      'status': status.name, // Salva o enum como string
     };
   }
 }

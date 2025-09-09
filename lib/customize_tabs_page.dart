@@ -1,5 +1,8 @@
 // lib/customize_tabs_page.dart
+// ignore_for_file: unused_import
+
 import 'package:flutter/material.dart';
+import 'package:collection/collection.dart'; // Import para ListEquality
 import 'navigation_service.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
@@ -38,25 +41,23 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
         settings = doc.data() as Map<String, dynamic>;
       } else {
         settings = _navService.getDefaultTabSettings();
-        // Salva as configurações padrão se for o primeiro acesso
         await _navService.saveTabSettings(
           List<String>.from(settings['order']),
           List<String>.from(settings['visible']),
         );
       }
 
-      final allUserModules = _navService.getModulesForCurrentUser();
+      final allUserModules =
+          _navService.getFlatPageModulesForCurrentUser(); // CORREÇÃO AQUI
       final List<String> savedOrder =
           List<String>.from(settings['order'] ?? []);
 
-      // Garante que todos os módulos do usuário estejam na lista de ordem
       for (var module in allUserModules) {
         if (!savedOrder.contains(module.id)) {
           savedOrder.add(module.id);
         }
       }
 
-      // Remove módulos que não existem mais
       savedOrder.removeWhere((id) => !allUserModules.any((m) => m.id == id));
 
       if (mounted) {
@@ -65,34 +66,13 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
               .map((id) => allUserModules.firstWhere((m) => m.id == id))
               .toList();
 
-          // --- LÓGICA DE ORDENAÇÃO ADICIONADA AQUI ---
-          AppModule? inicioModule;
-          try {
-            // Encontra o módulo "Início"
-            inicioModule =
-                _orderedModules.firstWhere((m) => m.title == 'Início');
-          } catch (e) {
-            inicioModule = null;
-          }
-
-          // Cria uma lista com os outros módulos e ordena alfabeticamente
-          final otherModules =
-              _orderedModules.where((m) => m.title != 'Início').toList();
-          otherModules.sort((a, b) => a.title.compareTo(b.title));
-
-          // Junta as listas, com "Início" no topo
-          _orderedModules = (inicioModule != null)
-              ? [inicioModule, ...otherModules]
-              : otherModules;
-          // --- FIM DA LÓGICA DE ORDENAÇÃO ---
-
           _visibleModuleIds = List<String>.from(settings['visible'] ?? []);
           _isLoading = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        showBjjSnackBar(context, "Erro ao carregar configurações.",
+        showBjjSnackBar(context, "Erro ao carregar configurações: $e",
             type: 'error');
         setState(() => _isLoading = false);
       }
@@ -153,7 +133,6 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
                               onChanged: (bool value) {
                                 setState(() {
                                   if (value) {
-                                    // Limita a 5 abas visíveis
                                     if (_visibleModuleIds.length < 5) {
                                       _visibleModuleIds.add(module.id);
                                     } else {

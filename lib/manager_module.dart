@@ -1,5 +1,5 @@
 // lib/manager_module.dart
-// ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps, deprecated_member_use
+// ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps, deprecated_member_use, unused_import, unused_import, duplicate_ignore
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -9,6 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:collection/collection.dart';
 import 'models.dart';
 import 'common_widgets.dart';
 import 'app_theme.dart';
@@ -215,7 +216,8 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   bool _isLoading = true;
 
   late final NavigationService _navService;
-  List<AppModule> _allModules = [];
+  List<AppModule> _allPageModules = [];
+  List<AppModule> _drawerModules = [];
   List<AppModule> _visibleModules = [];
   List<Widget> _telas = [];
 
@@ -242,21 +244,21 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     setState(() => _isLoading = true);
     try {
       final firestore = FirebaseFirestore.instance;
-      final usersSnapshot = await firestore
-          .collection('users')
-          .where('academyId', isEqualTo: widget.user.academyId)
-          .where('role', isEqualTo: 'teacher')
-          .get();
-      _teachers = usersSnapshot.docs
+      _teachers = (await firestore
+              .collection('users')
+              .where('academyId', isEqualTo: widget.user.academyId)
+              .where('role', isEqualTo: 'teacher')
+              .get())
+          .docs
           .map((doc) => UserModel.fromFirestore(doc))
           .toList();
 
-      final studentsSnapshot = await firestore
-          .collection('academies')
-          .doc(widget.user.academyId)
-          .collection('students')
-          .get();
-      _students = studentsSnapshot.docs
+      _students = (await firestore
+              .collection('academies')
+              .doc(widget.user.academyId)
+              .collection('students')
+              .get())
+          .docs
           .map((doc) => Aluno.fromJson(doc.id, doc.data()))
           .toList();
 
@@ -280,38 +282,23 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       settings = _navService.getDefaultTabSettings();
     }
 
-    final allUserModules = _navService.getModulesForCurrentUser();
-    final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
+    _drawerModules = _navService.getDrawerModulesForCurrentUser();
+    _allPageModules = _navService.getFlatPageModulesForCurrentUser();
+
     final List<String> visibleIds =
         List<String>.from(settings['visible'] ?? []);
 
-    for (var module in allUserModules) {
-      if (!savedOrder.contains(module.id)) {
-        savedOrder.add(module.id);
-      }
-    }
-    savedOrder.removeWhere((id) => !allUserModules.any((m) => m.id == id));
-
-    final currentOrderIds = _allModules.map((m) => m.id).toList();
-    final orderChanged =
-        !const ListEquality().equals(currentOrderIds, savedOrder);
-
     if (mounted) {
       setState(() {
-        if (orderChanged || _telas.isEmpty) {
-          _allModules = savedOrder
-              .map((id) => allUserModules.firstWhere((m) => m.id == id))
-              .toList();
-          _telas = _allModules
-              .map((module) =>
-                  module.pageBuilder(widget.user, _teachers, _students))
-              .toList();
-        }
+        _telas = _allPageModules
+            .map((module) =>
+                module.pageBuilder!(widget.user, _teachers, _students))
+            .toList();
 
         _visibleModules =
-            _allModules.where((m) => visibleIds.contains(m.id)).toList();
+            _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
 
-        if (_paginaAtual >= _allModules.length) {
+        if (_paginaAtual >= _allPageModules.length) {
           _paginaAtual = 0;
         }
 
@@ -320,19 +307,18 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     }
   }
 
-  void _onItemTapped(int index) {
-    final selectedModuleId = _visibleModules[index].id;
-    final globalIndex = _allModules.indexWhere((m) => m.id == selectedModuleId);
-
-    setState(() {
-      _paginaAtual = globalIndex;
-    });
+  void _navigateToModuleId(String moduleId) {
+    final newIndex = _allPageModules.indexWhere((m) => m.id == moduleId);
+    if (newIndex != -1) {
+      setState(() {
+        _paginaAtual = newIndex;
+      });
+    }
   }
 
-  void _onDrawerItemTapped(int index) {
-    setState(() {
-      _paginaAtual = index;
-    });
+  void _onItemTapped(int index) {
+    final selectedModuleId = _visibleModules[index].id;
+    _navigateToModuleId(selectedModuleId);
   }
 
   void _navigateToSettings() {
@@ -397,7 +383,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       );
     }
 
-    final currentModule = _allModules[_paginaAtual];
+    final currentModule = _allPageModules[_paginaAtual];
     final currentVisibleIndex =
         _visibleModules.indexWhere((m) => m.id == currentModule.id);
 
@@ -415,8 +401,9 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       ),
       drawer: AppDrawer(
         user: widget.user,
-        allModules: _allModules,
-        onSelectItem: _onDrawerItemTapped,
+        drawerModules: _drawerModules,
+        allPageModules: _allPageModules,
+        onSelectItem: _navigateToModuleId,
       ),
       body: Column(
         children: [
@@ -446,11 +433,11 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   }
 
   Widget? _buildFloatingActionButton() {
-    final currentModuleId = _allModules[_paginaAtual].id;
+    final currentModuleId = _allPageModules[_paginaAtual].id;
 
     if (currentModuleId == 'manager_students') {
       return FloatingActionButton(
-        heroTag: 'manager_add_student_fab', // CORREÇÃO AQUI
+        heroTag: 'manager_add_student_fab',
         onPressed: () {
           showDialog(
             context: context,
@@ -507,7 +494,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       );
     } else if (currentModuleId == 'manager_teachers') {
       return FloatingActionButton(
-        heroTag: 'manager_add_teacher_fab', // CORREÇÃO AQUI
+        heroTag: 'manager_add_teacher_fab',
         onPressed: () async {
           final result = await showDialog<Map<String, String>?>(
             context: context,
@@ -1766,51 +1753,6 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
   }
 }
 
-void _showCreateAccessDialog(BuildContext context, Aluno aluno,
-    String academyId, UserModel manager) async {
-  final result = await showDialog<Map<String, dynamic>?>(
-    context: context,
-    builder: (_) => CreateStudentAccessDialog(
-      academyId: academyId,
-      aluno: aluno,
-      manager: manager,
-    ),
-  );
-
-  if (result?['success'] == true && context.mounted) {
-    final email = result!['email'];
-    showDialog(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text("Acesso Criado!"),
-        content: RichText(
-          text: TextSpan(
-            style: Theme.of(context).textTheme.bodyLarge,
-            children: <TextSpan>[
-              TextSpan(
-                  text:
-                      'A conta para ${aluno.nome} foi criada com sucesso!\n\n'),
-              const TextSpan(
-                text: 'A senha padrão é mudar123\n\n',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              TextSpan(text: 'E-mail de acesso: $email\n\n'),
-              const TextSpan(
-                  text:
-                      'O aluno deverá usar esta senha temporária no primeiro login e será solicitado a criar uma nova senha.'),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text("OK"))
-        ],
-      ),
-    );
-  }
-}
-
 class CreateStudentAccessDialog extends StatefulWidget {
   final String academyId;
   final Aluno aluno;
@@ -2273,7 +2215,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                   onPressed: () async {
                     final currentContext = context;
                     Navigator.of(currentContext).pop();
-                    _showCreateAccessDialog(
+                    // CORREÇÃO: Chamando a função pública global
+                    showCreateAccessDialog(
                         currentContext,
                         widget.alunoParaEditar!,
                         widget.academyId!,
@@ -3161,6 +3104,7 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
   String _searchQuery = '';
   List<Aluno> _allStudentsWithStatus = [];
   bool _isLoading = true;
+  bool _isGenerating = false;
 
   @override
   void initState() {
@@ -3188,41 +3132,30 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
         .collection('academies')
         .doc(widget.academyId)
         .collection('students')
+        .where('isActive', isEqualTo: true)
         .orderBy('nome')
         .get();
     final students = studentsSnapshot.docs
         .map((doc) => Aluno.fromJson(doc.id, doc.data()))
         .toList();
 
-    // MODIFICAÇÃO: Busca na coleção 'payment_history'
-    final paymentsSnapshot = await firestore
+    final feesSnapshot = await firestore
         .collection('academies')
         .doc(widget.academyId)
-        .collection('payment_history')
-        .where('paymentDate',
-            isGreaterThanOrEqualTo: DateTime(now.year, now.month, 1))
+        .collection('monthly_fees')
+        .where('paymentYear', isEqualTo: now.year)
+        .where('paymentMonth', isEqualTo: now.month)
         .get();
 
-    // Mapeia pagamentos pelo ID do ALUNO, não pelo ID do usuário
-    final studentPaymentsThisMonth = <String, bool>{};
-    for (var doc in paymentsSnapshot.docs) {
-      final data = doc.data();
-      // Assumindo que o 'notes' contém o nome do aluno
-      // Uma abordagem melhor seria salvar o studentId no registro de pagamento
-      final note = data['notes'] as String?;
-      if (note != null) {
-        for (var student in students) {
-          if (note.contains(student.nome)) {
-            studentPaymentsThisMonth[student.id] = true;
-            break;
-          }
-        }
-      }
-    }
+    final feesMap = {
+      for (var doc in feesSnapshot.docs)
+        doc['studentId']: MonthlyFee.fromFirestore(doc)
+    };
 
     for (var student in students) {
-      if (studentPaymentsThisMonth.containsKey(student.id)) {
-        student.paymentStatus = PaymentStatus.pago;
+      final fee = feesMap[student.id];
+      if (fee != null) {
+        student.paymentStatus = fee.status;
       } else {
         student.paymentStatus =
             (now.day > 10) ? PaymentStatus.atrasado : PaymentStatus.pendente;
@@ -3235,6 +3168,61 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
         _isLoading = false;
       });
     }
+  }
+
+  Future<void> _generateMonthlyFees() async {
+    setState(() => _isGenerating = true);
+    final now = DateTime.now();
+    final firestore = FirebaseFirestore.instance;
+    final batch = firestore.batch();
+    int generatedCount = 0;
+
+    // Pega as mensalidades já geradas este mês para não duplicar
+    final feesSnapshot = await firestore
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('monthly_fees')
+        .where('paymentYear', isEqualTo: now.year)
+        .where('paymentMonth', isEqualTo: now.month)
+        .get();
+    final existingFeeStudentIds =
+        feesSnapshot.docs.map((doc) => doc['studentId']).toSet();
+
+    for (final student in _allStudentsWithStatus) {
+      if (!existingFeeStudentIds.contains(student.id)) {
+        final newFeeRef = firestore
+            .collection('academies')
+            .doc(widget.academyId)
+            .collection('monthly_fees')
+            .doc();
+
+        final fee = MonthlyFee(
+          id: newFeeRef.id,
+          studentId: student.id,
+          studentName: student.nome,
+          amount: 0, // ou um valor padrão
+          paymentYear: now.year,
+          paymentMonth: now.month,
+          status: PaymentStatus.pendente,
+        );
+        batch.set(newFeeRef, fee.toMap());
+        generatedCount++;
+      }
+    }
+
+    if (generatedCount > 0) {
+      await batch.commit();
+      showBjjSnackBar(context,
+          '$generatedCount novas mensalidades foram geradas para este mês!',
+          type: 'success');
+      _fetchStudentsWithPaymentStatus(); // Atualiza a lista
+    } else {
+      showBjjSnackBar(context,
+          'Todos os alunos ativos já possuem mensalidades geradas para este mês.',
+          type: 'info');
+    }
+
+    setState(() => _isGenerating = false);
   }
 
   void _showAddPaymentDialog(Aluno student) async {
@@ -3312,6 +3300,22 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
                       onPressed: () => _searchController.clear(),
                     )
                   : null,
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+          child: ElevatedButton.icon(
+            icon: _isGenerating
+                ? CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: primaryAccentForeground,
+                  )
+                : Icon(Icons.add_card),
+            label: Text('Gerar Mensalidades do Mês'),
+            onPressed: _isGenerating ? null : _generateMonthlyFees,
+            style: ElevatedButton.styleFrom(
+              minimumSize: const Size(double.infinity, 40),
             ),
           ),
         ),
@@ -3553,21 +3557,65 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
     final now = DateTime.now();
     final amount = double.parse(_amountController.text.replaceAll(',', '.'));
 
-    final newPaymentRecord = {
+    final batch = FirebaseFirestore.instance.batch();
+
+    // 1. Adiciona ao histórico de pagamentos
+    final newPaymentRecordRef = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('payment_history')
+        .doc();
+
+    batch.set(newPaymentRecordRef, {
       'amount': amount,
       'paymentDate': Timestamp.fromDate(now),
       'paymentMethod': _paymentMethod!,
-      'notes': 'Mensalidade de ${widget.student.nome}', // Nota importante
+      'notes': 'Mensalidade de ${widget.student.nome}',
       'recordedByUid': FirebaseAuth.instance.currentUser?.uid ?? 'manager',
-    };
+    });
 
-    try {
-      await FirebaseFirestore.instance
+    // 2. Atualiza (ou cria) o registro de mensalidade do mês
+    final feeQuery = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('monthly_fees')
+        .where('studentId', isEqualTo: widget.student.id)
+        .where('paymentYear', isEqualTo: now.year)
+        .where('paymentMonth', isEqualTo: now.month)
+        .limit(1)
+        .get();
+
+    if (feeQuery.docs.isNotEmpty) {
+      // Atualiza a mensalidade existente
+      final feeDocRef = feeQuery.docs.first.reference;
+      batch.update(feeDocRef, {
+        'status': PaymentStatus.pago.name,
+        'paymentDate': Timestamp.fromDate(now),
+        'paymentMethod': _paymentMethod!,
+        'amount': amount,
+      });
+    } else {
+      // Cria uma nova mensalidade se não existir (caso de pagamento adiantado)
+      final newFeeRef = FirebaseFirestore.instance
           .collection('academies')
           .doc(widget.academyId)
-          .collection('payment_history')
-          .add(newPaymentRecord);
+          .collection('monthly_fees')
+          .doc();
+      final fee = MonthlyFee(
+          id: newFeeRef.id,
+          studentId: widget.student.id,
+          studentName: widget.student.nome,
+          amount: amount,
+          paymentDate: now,
+          paymentMethod: _paymentMethod,
+          paymentYear: now.year,
+          paymentMonth: now.month,
+          status: PaymentStatus.pago);
+      batch.set(newFeeRef, fee.toMap());
+    }
 
+    try {
+      await batch.commit();
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) {
