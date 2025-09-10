@@ -392,14 +392,26 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     final List<String> visibleIds =
         List<String>.from(settings['visible'] ?? []);
 
+    // >>>>> MODIFICAÇÃO AQUI <<<<<
+    final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
+
     if (mounted) {
       setState(() {
         _telas = _allPageModules
             .map((module) => _buildPageForModule(module))
             .toList();
 
-        _visibleModules =
-            _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
+        // Ordena os módulos visíveis com base na ordem salva
+        _visibleModules = visibleIds
+            .map((id) => _allPageModules.firstWhere((m) => m.id == id,
+                orElse: () => _allPageModules.first))
+            .toList();
+        _visibleModules.sort((a, b) {
+          final indexA = savedOrder.indexOf(a.id);
+          final indexB = savedOrder.indexOf(b.id);
+          return indexA.compareTo(indexB);
+        });
+        // >>>>> FIM DA MODIFICAÇÃO <<<<<
 
         int dashboardIndex =
             _allPageModules.indexWhere((m) => m.id == 'teacher_dashboard');

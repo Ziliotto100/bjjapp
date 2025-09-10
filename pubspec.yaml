@@ -2,7 +2,7 @@ name: bjjapp
 description: "A new Flutter project."
 publish_to: 'none'
 
-version: 1.2.1+24
+version: 1.2.2+25
 
 environment:
   sdk: '>=3.4.0 <4.0.0' # Atualizado para a versão mais recente do Flutter
@@ -73,7 +73,7 @@ flutter_launcher_icons:
   image_path: "assets/images/icone.png"
   min_sdk_android: 21
   remove_alpha_ios: true
-  adaptive_icon_background: "#212f28"
+  adaptive_icon_background: "#0A0F14"
   adaptive_icon_foreground: "assets/images/icone.png"
 
 

@@ -1,6 +1,6 @@
 {
   "name": "Match BJJ",
-  "short_name": "MatchBjj",
+  "short_name": "Match BJJ",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",
@@ -15,7 +15,7 @@
       "purpose": "maskable"
     }
   ],
-  "theme_color": "#212f28",
-  "background_color": "#212f28",
+  "theme_color": "#233c4b",
+  "background_color": "#233c4b",
   "display": "standalone"
 }

@@ -42,13 +42,15 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
       } else {
         settings = _navService.getDefaultTabSettings();
         await _navService.saveTabSettings(
-          List<String>.from(settings['order']),
+          _navService
+              .getFlatPageModulesForCurrentUser()
+              .map((m) => m.id)
+              .toList(),
           List<String>.from(settings['visible']),
         );
       }
 
-      final allUserModules =
-          _navService.getFlatPageModulesForCurrentUser(); // CORREÇÃO AQUI
+      final allUserModules = _navService.getFlatPageModulesForCurrentUser();
       final List<String> savedOrder =
           List<String>.from(settings['order'] ?? []);
 
@@ -57,7 +59,6 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
           savedOrder.add(module.id);
         }
       }
-
       savedOrder.removeWhere((id) => !allUserModules.any((m) => m.id == id));
 
       if (mounted) {
@@ -67,6 +68,7 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
               .toList();
 
           _visibleModuleIds = List<String>.from(settings['visible'] ?? []);
+          _sortModules();
           _isLoading = false;
         });
       }
@@ -79,11 +81,31 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
     }
   }
 
+  void _sortModules() {
+    final visibleSet = _visibleModuleIds.toSet();
+    _orderedModules.sort((a, b) {
+      final aIsVisible = visibleSet.contains(a.id);
+      final bIsVisible = visibleSet.contains(b.id);
+
+      if (aIsVisible && !bIsVisible) return -1;
+      if (!aIsVisible && bIsVisible) return 1;
+
+      if (aIsVisible && bIsVisible) {
+        return _visibleModuleIds
+            .indexOf(a.id)
+            .compareTo(_visibleModuleIds.indexOf(b.id));
+      }
+
+      return 0;
+    });
+  }
+
   Future<void> _saveSettings() async {
     final newOrder = _orderedModules.map((m) => m.id).toList();
     await _navService.saveTabSettings(newOrder, _visibleModuleIds);
     if (mounted) {
       showBjjSnackBar(context, "Preferências salvas!", type: 'success');
+      Navigator.of(context).pop(); // <-- ADICIONADO AQUI
     }
   }
 
@@ -96,7 +118,7 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.save_outlined),
-            tooltip: 'Salvar',
+            tooltip: 'Salvar e Sair', // Texto da dica atualizado
             onPressed: _isLoading ? null : _saveSettings,
           )
         ],
@@ -110,7 +132,7 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
                     const Padding(
                       padding: EdgeInsets.all(16.0),
                       child: Text(
-                        "Use os interruptores para mostrar/ocultar abas na barra inferior. Segure e arraste para reordenar.",
+                        "O número indica a posição na barra inferior. Use os interruptores para ativar e segure para arrastar e reordenar.",
                         textAlign: TextAlign.center,
                         style: TextStyle(color: textHint),
                       ),
@@ -122,29 +144,64 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
                           final module = _orderedModules[index];
                           final isVisible =
                               _visibleModuleIds.contains(module.id);
+                          final visibleIndex =
+                              _visibleModuleIds.indexOf(module.id);
+
                           return Card(
                             key: ValueKey(module.id),
                             margin: const EdgeInsets.symmetric(
                                 horizontal: 12, vertical: 4),
-                            child: SwitchListTile(
-                              title: Text(module.title),
-                              secondary: Icon(module.icon),
-                              value: isVisible,
-                              onChanged: (bool value) {
-                                setState(() {
-                                  if (value) {
-                                    if (_visibleModuleIds.length < 5) {
-                                      _visibleModuleIds.add(module.id);
-                                    } else {
-                                      showBjjSnackBar(context,
-                                          "Você pode selecionar no máximo 5 abas.",
-                                          type: 'info');
-                                    }
-                                  } else {
-                                    _visibleModuleIds.remove(module.id);
-                                  }
-                                });
-                              },
+                            child: Row(
+                              children: [
+                                ReorderableDragStartListener(
+                                  index: index,
+                                  child: Container(
+                                    width: 56,
+                                    height: 68,
+                                    alignment: Alignment.center,
+                                    child: isVisible
+                                        ? CircleAvatar(
+                                            radius: 14,
+                                            backgroundColor: primaryAccent,
+                                            child: Text(
+                                              '${visibleIndex + 1}',
+                                              style: const TextStyle(
+                                                color: primaryAccentForeground,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.drag_handle_rounded,
+                                            color: textHint,
+                                          ),
+                                  ),
+                                ),
+                                Expanded(
+                                  child: SwitchListTile(
+                                    title: Text(module.title),
+                                    secondary: Icon(module.icon),
+                                    value: isVisible,
+                                    onChanged: (bool value) {
+                                      setState(() {
+                                        if (value) {
+                                          if (_visibleModuleIds.length < 5) {
+                                            _visibleModuleIds.add(module.id);
+                                          } else {
+                                            showBjjSnackBar(context,
+                                                "Você pode selecionar no máximo 5 abas.",
+                                                type: 'info');
+                                            return;
+                                          }
+                                        } else {
+                                          _visibleModuleIds.remove(module.id);
+                                        }
+                                        _sortModules();
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ],
                             ),
                           );
                         },
@@ -156,6 +213,12 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
                             final AppModule item =
                                 _orderedModules.removeAt(oldIndex);
                             _orderedModules.insert(newIndex, item);
+
+                            final visibleSet = _visibleModuleIds.toSet();
+                            _visibleModuleIds = _orderedModules
+                                .where((m) => visibleSet.contains(m.id))
+                                .map((m) => m.id)
+                                .toList();
                           });
                         },
                       ),

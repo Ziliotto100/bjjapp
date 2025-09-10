@@ -185,6 +185,9 @@ class _StudentHomePageState extends State<StudentHomePage> {
     final List<String> visibleIds =
         List<String>.from(settings['visible'] ?? []);
 
+    // >>>>> MODIFICAÇÃO AQUI <<<<<
+    final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
+
     if (mounted) {
       setState(() {
         _telas = _allPageModules
@@ -192,8 +195,17 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 module.pageBuilder!(widget.user, _teachers, _students))
             .toList();
 
-        _visibleModules =
-            _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
+        // Ordena os módulos visíveis com base na ordem salva
+        _visibleModules = visibleIds
+            .map((id) => _allPageModules.firstWhere((m) => m.id == id,
+                orElse: () => _allPageModules.first))
+            .toList();
+        _visibleModules.sort((a, b) {
+          final indexA = savedOrder.indexOf(a.id);
+          final indexB = savedOrder.indexOf(b.id);
+          return indexA.compareTo(indexB);
+        });
+        // >>>>> FIM DA MODIFICAÇÃO <<<<<
 
         int profileIndex =
             _allPageModules.indexWhere((m) => m.id == 'student_profile');
