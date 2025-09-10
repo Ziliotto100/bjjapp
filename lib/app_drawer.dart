@@ -1,4 +1,6 @@
 // lib/app_drawer.dart
+// ignore_for_file: unused_import, unnecessary_to_list_in_spreads
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,10 +13,9 @@ import 'auth_gate.dart';
 
 class AppDrawer extends StatelessWidget {
   final UserModel user;
-  // --- ATUALIZADO: Recebe as duas listas ---
-  final List<AppModule> drawerModules; // Lista hierárquica para desenhar o menu
-  final List<AppModule> allPageModules; // Lista plana para encontrar o índice
-  final Function(String) onSelectItem; // Agora passa o ID do módulo
+  final List<AppModule> drawerModules;
+  final List<AppModule> allPageModules;
+  final Function(String) onSelectItem;
 
   const AppDrawer({
     super.key,
@@ -26,7 +27,6 @@ class AppDrawer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // A lógica de ordenação agora acontece dentro deste widget
     List<AppModule> sortedDrawerModules = _getSortedModules(drawerModules);
 
     return Drawer(
@@ -37,9 +37,7 @@ class AppDrawer extends StatelessWidget {
           _buildDrawerHeader(context),
           const Divider(color: borderNormal),
 
-          // Mapeia a lista hierárquica e ordenada
           ...sortedDrawerModules.map((module) {
-            // Se o módulo tiver submódulos, cria um ExpansionTile
             if (module.subModules != null && module.subModules!.isNotEmpty) {
               return ExpansionTile(
                 leading: Icon(module.icon, color: textSecondary),
@@ -53,21 +51,20 @@ class AppDrawer extends StatelessWidget {
                     contentPadding: const EdgeInsets.only(left: 32.0),
                     onTap: () {
                       Navigator.pop(context);
-                      onSelectItem(subModule.id); // Passa o ID do submódulo
+                      onSelectItem(subModule.id);
                     },
                   );
                 }).toList(),
               );
             }
 
-            // Se não, cria um ListTile normal
             return ListTile(
               leading: Icon(module.icon, color: textSecondary),
               title: Text(module.title,
                   style: const TextStyle(color: textSecondary)),
               onTap: () {
                 Navigator.pop(context);
-                onSelectItem(module.id); // Passa o ID do módulo
+                onSelectItem(module.id);
               },
             );
           }).toList(),
@@ -84,45 +81,12 @@ class AppDrawer extends StatelessWidget {
               ));
             },
           ),
-          ListTile(
-            leading: const Icon(Icons.logout, color: errorColor),
-            title: const Text('Sair', style: TextStyle(color: errorColor)),
-            onTap: () async {
-              Navigator.pop(context);
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Confirmar Saída'),
-                  content:
-                      const Text('Tem certeza que deseja sair do aplicativo?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(false),
-                      child: const Text('Cancelar'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(true),
-                      child: const Text('Sair'),
-                    ),
-                  ],
-                ),
-              );
-
-              if (confirm == true && context.mounted) {
-                await FirebaseAuth.instance.signOut();
-                Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (context) => const AuthGate()),
-                  (route) => false,
-                );
-              }
-            },
-          ),
+          // --- BOTÃO SAIR REMOVIDO DAQUI ---
         ],
       ),
     );
   }
 
-  // --- FUNÇÃO DE ORDENAÇÃO ATUALIZADA ---
   List<AppModule> _getSortedModules(List<AppModule> modules) {
     AppModule? inicioModule;
     AppModule? financeiroModule;

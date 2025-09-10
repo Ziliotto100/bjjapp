@@ -401,9 +401,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         _visibleModules =
             _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
 
-        if (_paginaAtual >= _allPageModules.length) {
-          _paginaAtual = 0;
-        }
+        int dashboardIndex =
+            _allPageModules.indexWhere((m) => m.id == 'teacher_dashboard');
+        _paginaAtual = (dashboardIndex != -1) ? dashboardIndex : 0;
 
         _isLoading = false;
       });

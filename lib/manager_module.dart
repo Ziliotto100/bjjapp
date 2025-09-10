@@ -1,5 +1,5 @@
 // lib/manager_module.dart
-// ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps, deprecated_member_use, unused_import, unused_import, duplicate_ignore
+// ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps, deprecated_member_use, unused_element, unused_import
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -19,9 +19,9 @@ import 'navigation_service.dart';
 import 'app_drawer.dart';
 import 'user_card_widget.dart';
 import 'graduation_timeline_page.dart';
+import 'teacher_module.dart'; // Import para SorteioTeacherPage e SparringTeacherPage
 
 // --- FUNÇÃO DE LOG DE AUDITORIA ---
-/// Função auxiliar para criar uma entrada no log de auditoria.
 Future<void> _createAuditLog({
   required String academyId,
   required UserModel actor,
@@ -224,6 +224,8 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   List<UserModel> _teachers = [];
   List<Aluno> _students = [];
 
+  bool _isSparringMode = false;
+  StreamSubscription? _sparringStateSubscription;
   StreamSubscription? _settingsSubscription;
 
   @override
@@ -232,12 +234,32 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     _navService =
         NavigationService(userId: widget.user.uid, userRole: widget.user.role);
     _loadInitialData();
+    _listenToSparringState();
   }
 
   @override
   void dispose() {
+    _sparringStateSubscription?.cancel();
     _settingsSubscription?.cancel();
     super.dispose();
+  }
+
+  void _listenToSparringState() {
+    _sparringStateSubscription = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('state')
+        .doc('sparring')
+        .snapshots()
+        .listen((doc) {
+      if (mounted) {
+        setState(() {
+          _isSparringMode =
+              doc.exists && (doc.data()?['isSparringMode'] ?? false);
+          if (!_isLoading) _rebuildScreens();
+        });
+      }
+    });
   }
 
   Future<void> _loadInitialData() async {
@@ -274,6 +296,131 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     }
   }
 
+  Future<void> _iniciarSparring(List<List<Map<String, String>>> rounds,
+      String tipoGeracao, List<Aluno> participants) async {
+    if (participants.isEmpty) {
+      showBjjSnackBar(context, 'Selecione participantes para o treino.',
+          type: 'error');
+      return;
+    }
+
+    await _checkinAlunos(participants);
+
+    final roundsForFirestore =
+        rounds.map((round) => {'fights': round}).toList();
+
+    final stateData = {
+      'isSparringMode': true,
+      'allRounds': roundsForFirestore,
+      'participants': participants.map((p) => p.id).toList(),
+      'generationType': tipoGeracao,
+      'currentRoundIndex': 1,
+      'startedAt': FieldValue.serverTimestamp(),
+    };
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .collection('state')
+          .doc('sparring')
+          .set(stateData);
+
+      await _createAuditLog(
+        academyId: widget.user.academyId,
+        actor: widget.user,
+        actionType: 'START_SPARRING',
+        description:
+            '${widget.user.name} iniciou um treino de sparring com ${participants.length} participantes.',
+      );
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao iniciar o treino: $e', type: 'error');
+      }
+    }
+  }
+
+  Future<void> _checkinAlunos(List<Aluno> participants) async {
+    final now = DateTime.now();
+    final dateOnly = DateTime(now.year, now.month, now.day);
+    final checkinRef = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('checkins');
+
+    final participantIds = participants.map((p) => p.id).toList();
+    if (participantIds.isEmpty) return;
+
+    final querySnapshot = await checkinRef
+        .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
+        .where('studentId', whereIn: participantIds)
+        .get();
+
+    final existingCheckinsMap = {
+      for (var doc in querySnapshot.docs) doc['studentId'] as String: doc
+    };
+
+    final batch = FirebaseFirestore.instance.batch();
+    int newCheckins = 0;
+    for (final student in participants) {
+      if (!existingCheckinsMap.containsKey(student.id)) {
+        final newDocRef = checkinRef.doc();
+        batch.set(newDocRef, {
+          'studentId': student.id,
+          'studentName': student.nome,
+          'date': Timestamp.fromDate(dateOnly),
+          'createdAt': FieldValue.serverTimestamp(),
+          'status': checkinStatusToString(CheckinStatus.approved),
+        });
+        newCheckins++;
+      }
+    }
+    if (newCheckins > 0) {
+      await batch.commit();
+
+      await _createAuditLog(
+        academyId: widget.user.academyId,
+        actor: widget.user,
+        actionType: 'BULK_CHECKIN',
+        description:
+            '${widget.user.name} fez check-in para $newCheckins alunos.',
+      );
+
+      if (mounted) {
+        showBjjSnackBar(context, '$newCheckins presenças confirmadas!',
+            type: 'success');
+      }
+    }
+  }
+
+  void _rebuildScreens() {
+    if (_allPageModules.isEmpty) return;
+    setState(() {
+      _telas =
+          _allPageModules.map((module) => _buildPageForModule(module)).toList();
+    });
+  }
+
+  Widget _buildPageForModule(AppModule module) {
+    if (module.id == 'teacher_sparring') {
+      if (_isSparringMode) {
+        return SparringTeacherPage(
+          academyId: widget.user.academyId,
+          todosAlunos: _students,
+        );
+      }
+      return SorteioTeacherPage(
+        user: widget.user,
+        academyId: widget.user.academyId,
+        todosParticipantesDaAcademia: _students,
+        isSparringMode: _isSparringMode,
+        onIniciarSparring: _iniciarSparring,
+        onCheckinAlunos: _checkinAlunos,
+      );
+    }
+    return module.pageBuilder!(widget.user, _teachers, _students);
+  }
+
   void _configureNavigation(DocumentSnapshot? settingsDoc) {
     Map<String, dynamic> settings;
     if (settingsDoc != null && settingsDoc.exists) {
@@ -291,8 +438,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     if (mounted) {
       setState(() {
         _telas = _allPageModules
-            .map((module) =>
-                module.pageBuilder!(widget.user, _teachers, _students))
+            .map((module) => _buildPageForModule(module))
             .toList();
 
         _visibleModules =

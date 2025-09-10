@@ -47,28 +47,48 @@ class NavigationService {
       .doc(userId)
       .collection('tab_settings');
 
-  /// --- LÓGICA DE PERMISSÃO ATUALIZADA ---
-  /// Retorna uma lista HIERÁRQUICA para construir o Drawer.
   List<AppModule> getDrawerModulesForCurrentUser() {
     final all = _getAllPossibleModules();
-    return all.where((module) {
-      // --- REGRA ATUALIZADA PARA O GERENTE ---
+
+    final topLevelModules = all.where((module) {
       if (userRole == UserRole.manager) {
-        // IDs das telas que devem ser ocultadas para o gerente.
         const hiddenForManager = [
           'student_profile',
           'student_history',
-          'teacher_history'
+          'teacher_history',
+          'teacher_dashboard',
+          'teacher_students',
+          'student_progress'
         ];
-        // Se o módulo não estiver na lista de ocultos, ele é exibido.
         return !hiddenForManager.contains(module.id);
       }
-      // Para outros usuários, a regra antiga se aplica.
       return module.requiredRole == null || module.requiredRole == userRole;
+    }).toList();
+
+    return topLevelModules.map((module) {
+      if (module.subModules == null) {
+        return module;
+      }
+      final filteredSubModules = module.subModules!.where((subModule) {
+        if (userRole == UserRole.manager) {
+          const hiddenForManager = ['teacher_students'];
+          return !hiddenForManager.contains(subModule.id);
+        }
+        return subModule.requiredRole == null ||
+            subModule.requiredRole == userRole;
+      }).toList();
+
+      return AppModule(
+        id: module.id,
+        title: module.title,
+        icon: module.icon,
+        requiredRole: module.requiredRole,
+        pageBuilder: module.pageBuilder,
+        subModules: filteredSubModules,
+      );
     }).toList();
   }
 
-  /// Retorna uma lista PLANA (achatada) de TODOS os módulos com páginas.
   List<AppModule> getFlatPageModulesForCurrentUser() {
     final List<AppModule> flatList = [];
     final hierarchicalList = getDrawerModulesForCurrentUser();
@@ -88,7 +108,6 @@ class NavigationService {
     return flatList;
   }
 
-  /// Lista de todos os módulos disponíveis no aplicativo.
   List<AppModule> _getAllPossibleModules() {
     return [
       // Módulos do Gerente
@@ -124,21 +143,109 @@ class NavigationService {
             ),
           ]),
       AppModule(
-        id: 'manager_students',
-        title: 'Alunos',
-        icon: Icons.people_alt_rounded,
-        requiredRole: UserRole.manager,
-        pageBuilder: (user, teachers, students) =>
-            AlunosManagerPage(academyId: user.academyId, manager: user),
+        id: 'common_academy',
+        title: 'Academia',
+        icon: Icons.business_rounded,
+        subModules: [
+          AppModule(
+            id: 'common_schedule',
+            title: 'Grade',
+            icon: Icons.calendar_month_rounded,
+            pageBuilder: (user, teachers, students) =>
+                SchedulePage(user: user, teachers: teachers),
+          ),
+          AppModule(
+            id: 'manager_students',
+            title: 'Alunos',
+            icon: Icons.people_alt_rounded,
+            requiredRole: UserRole.manager,
+            pageBuilder: (user, teachers, students) =>
+                AlunosManagerPage(academyId: user.academyId, manager: user),
+          ),
+          AppModule(
+            id: 'teacher_students',
+            title: 'Alunos',
+            icon: Icons.people_alt_rounded,
+            requiredRole: UserRole.teacher,
+            pageBuilder: (user, teachers, students) =>
+                AlunosTeacherPage(academyId: user.academyId, teacher: user),
+          ),
+          AppModule(
+            id: 'teacher_checkin',
+            title: 'Check-in',
+            icon: Icons.check_circle_outline_rounded,
+            requiredRole: UserRole.teacher,
+            pageBuilder: (user, teachers, students) => CheckinTeacherPage(
+                user: user,
+                academyId: user.academyId,
+                todosParticipantesDaAcademia: students),
+          ),
+          AppModule(
+            id: 'manager_teachers',
+            title: 'Professores',
+            icon: Icons.school_rounded,
+            requiredRole: UserRole.manager,
+            pageBuilder: (user, teachers, students) => ProfessoresManagerPage(
+                academyId: user.academyId, manager: user),
+          ),
+          AppModule(
+            id: 'common_notifications',
+            title: 'Avisos',
+            icon: Icons.notifications_rounded,
+            pageBuilder: (user, teachers, students) =>
+                NotificationsPage(user: user),
+          ),
+          AppModule(
+            id: 'common_birthdays',
+            title: 'Aniversários',
+            icon: Icons.cake_rounded,
+            pageBuilder: (user, teachers, students) =>
+                BirthdaysPage(academyId: user.academyId, currentUser: user),
+          ),
+        ],
       ),
       AppModule(
-        id: 'manager_teachers',
-        title: 'Professores',
-        icon: Icons.school_rounded,
-        requiredRole: UserRole.manager,
-        pageBuilder: (user, teachers, students) =>
-            ProfessoresManagerPage(academyId: user.academyId, manager: user),
-      ),
+          id: 'common_tools',
+          title: 'Ferramentas',
+          icon: Icons.construction_rounded,
+          subModules: [
+            AppModule(
+              id: 'teacher_sparring',
+              title: 'Sorteio de Treinos',
+              icon: Icons.shuffle_rounded,
+              requiredRole: UserRole.teacher,
+              pageBuilder: (user, teachers, students) => SorteioTeacherPage(
+                user: user,
+                academyId: user.academyId,
+                todosParticipantesDaAcademia: students,
+                isSparringMode: false,
+                onIniciarSparring: (rounds, type, participants) {},
+                onCheckinAlunos: (students) {},
+              ),
+            ),
+            AppModule(
+              id: 'common_scoreboard',
+              title: 'Placar',
+              icon: Icons.scoreboard_rounded,
+              pageBuilder: (user, teachers, students) => MatchSetupPage(
+                  user: user,
+                  academyId: user.academyId,
+                  todosAlunosDaAcademia: students),
+            ),
+            AppModule(
+              id: 'common_notebook',
+              title: 'Caderno de Estudos',
+              icon: Icons.book_rounded,
+              pageBuilder: (user, teachers, students) =>
+                  StudyNotebookPage(userId: user.uid),
+            ),
+            AppModule(
+              id: 'common_rules',
+              title: 'Livro de Regras',
+              icon: Icons.gavel_rounded,
+              pageBuilder: (user, teachers, students) => RulesPage(user: user),
+            ),
+          ]),
 
       // Módulos do Professor
       AppModule(
@@ -153,38 +260,6 @@ class NavigationService {
         ),
       ),
       AppModule(
-        id: 'teacher_students',
-        title: 'Alunos',
-        icon: Icons.people_alt_rounded,
-        requiredRole: UserRole.teacher,
-        pageBuilder: (user, teachers, students) =>
-            AlunosTeacherPage(academyId: user.academyId, teacher: user),
-      ),
-      AppModule(
-        id: 'teacher_checkin',
-        title: 'Check-in',
-        icon: Icons.check_circle_outline_rounded,
-        requiredRole: UserRole.teacher,
-        pageBuilder: (user, teachers, students) => CheckinTeacherPage(
-            user: user,
-            academyId: user.academyId,
-            todosParticipantesDaAcademia: students),
-      ),
-      AppModule(
-        id: 'teacher_sparring',
-        title: 'Sorteio',
-        icon: Icons.shuffle_rounded,
-        requiredRole: UserRole.teacher,
-        pageBuilder: (user, teachers, students) => SorteioTeacherPage(
-          user: user,
-          academyId: user.academyId,
-          todosParticipantesDaAcademia: students,
-          isSparringMode: false,
-          onIniciarSparring: (rounds, type, participants) {},
-          onCheckinAlunos: (students) {},
-        ),
-      ),
-      AppModule(
         id: 'teacher_history',
         title: 'Histórico',
         icon: Icons.calendar_today_rounded,
@@ -194,43 +269,30 @@ class NavigationService {
 
       // Módulos do Aluno
       AppModule(
-        id: 'student_profile',
-        title: 'Meu Perfil',
-        icon: Icons.person_rounded,
-        requiredRole: UserRole.student,
-        pageBuilder: (user, teachers, students) =>
-            UserProfilePage(user: user, hasScaffold: false),
-      ),
-      AppModule(
-        id: 'student_history',
-        title: 'Histórico',
-        icon: Icons.calendar_today_rounded,
-        requiredRole: UserRole.student,
-        pageBuilder: (user, teachers, students) => MyCheckinsPage(user: user),
-      ),
+          id: 'student_progress',
+          title: 'Meu Perfil',
+          icon: Icons.person_rounded,
+          requiredRole: UserRole.student,
+          subModules: [
+            AppModule(
+              id: 'student_profile',
+              title: 'Início', // Nome da aba alterado
+              icon: Icons.home_rounded, // Ícone alterado para "Início"
+              requiredRole: UserRole.student,
+              pageBuilder: (user, teachers, students) =>
+                  UserProfilePage(user: user, hasScaffold: false),
+            ),
+            AppModule(
+              id: 'student_history',
+              title: 'Histórico',
+              icon: Icons.calendar_today_rounded,
+              requiredRole: UserRole.student,
+              pageBuilder: (user, teachers, students) =>
+                  MyCheckinsPage(user: user),
+            ),
+          ]),
 
-      // Módulos Comuns
-      AppModule(
-        id: 'common_notifications',
-        title: 'Avisos',
-        icon: Icons.notifications_rounded,
-        pageBuilder: (user, teachers, students) =>
-            NotificationsPage(user: user),
-      ),
-      AppModule(
-        id: 'common_birthdays',
-        title: 'Aniversários',
-        icon: Icons.cake_rounded,
-        pageBuilder: (user, teachers, students) =>
-            BirthdaysPage(academyId: user.academyId, currentUser: user),
-      ),
-      AppModule(
-        id: 'common_schedule',
-        title: 'Grade',
-        icon: Icons.calendar_month_rounded,
-        pageBuilder: (user, teachers, students) =>
-            SchedulePage(user: user, teachers: teachers),
-      ),
+      // Módulos Comuns restantes
       AppModule(
         id: 'common_video_aulas',
         title: 'Videoaulas',
@@ -243,28 +305,6 @@ class NavigationService {
         icon: Icons.storefront_rounded,
         pageBuilder: (user, teachers, students) => ShopPage(user: user),
       ),
-      AppModule(
-        id: 'common_notebook',
-        title: 'Estudos',
-        icon: Icons.book_rounded,
-        pageBuilder: (user, teachers, students) =>
-            StudyNotebookPage(userId: user.uid),
-      ),
-      AppModule(
-        id: 'common_scoreboard',
-        title: 'Placar',
-        icon: Icons.scoreboard_rounded,
-        pageBuilder: (user, teachers, students) => MatchSetupPage(
-            user: user,
-            academyId: user.academyId,
-            todosAlunosDaAcademia: students),
-      ),
-      AppModule(
-        id: 'common_rules',
-        title: 'Regras',
-        icon: Icons.gavel_rounded,
-        pageBuilder: (user, teachers, students) => RulesPage(user: user),
-      ),
     ];
   }
 
@@ -275,29 +315,27 @@ class NavigationService {
       case UserRole.manager:
         defaultVisibleIds = [
           'manager_dashboard',
-          'manager_students',
+          'common_academy',
           'manager_financial',
-          'common_schedule',
-          'common_notifications',
+          'common_tools',
+          'common_shop',
         ];
         break;
       case UserRole.teacher:
         defaultVisibleIds = [
           'teacher_dashboard',
+          'common_academy',
+          'common_tools',
           'teacher_history',
-          'common_notifications',
-          'common_birthdays',
-          'teacher_checkin',
         ];
         break;
       case UserRole.student:
       default:
         defaultVisibleIds = [
           'student_profile',
-          'common_notifications',
-          'common_schedule',
+          'common_academy',
+          'common_tools',
           'student_history',
-          'common_notebook',
         ];
         break;
     }
