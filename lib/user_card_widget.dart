@@ -218,6 +218,7 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
       currentUser: currentUser,
       onAlunoAdicionado: (alunoAtualizado) async {
         try {
+          // >>>>> INÍCIO DA CORREÇÃO <<<<<
           final dataToUpdate = {
             'nome': alunoAtualizado.nome,
             'faixa': alunoAtualizado.faixa,
@@ -226,6 +227,8 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
             'dataNascimento': alunoAtualizado.dataNascimento != null
                 ? Timestamp.fromDate(alunoAtualizado.dataNascimento!)
                 : null,
+            'phoneNumber': alunoAtualizado.phoneNumber,
+            'address': alunoAtualizado.address,
             'unitId': alunoAtualizado.unitId,
             'unitName': alunoAtualizado.unitName,
             'lastUpdatedByUid': currentUser.uid,
@@ -246,11 +249,14 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
                 .doc(alunoAtualizado.userId!)
                 .update({
               'name': alunoAtualizado.nome,
+              'phoneNumber': alunoAtualizado.phoneNumber,
+              'address': alunoAtualizado.address,
               'lastUpdatedByUid': currentUser.uid,
               'lastUpdatedByName': currentUser.name,
               'updatedAt': FieldValue.serverTimestamp(),
             });
           }
+          // >>>>> FIM DA CORREÇÃO <<<<<
 
           // **LOG DE AUDITORIA PARA EDIÇÃO**
           await _createAuditLog(

@@ -310,6 +310,12 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
   final _nameController = TextEditingController();
   final _weightController = TextEditingController();
   final _dateController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _logradouroController = TextEditingController();
+  final _numeroController = TextEditingController();
+  final _bairroController = TextEditingController();
+  final _cidadeController = TextEditingController();
+  final _cepController = TextEditingController();
   bool _isLoading = true;
   bool _isSaving = false;
   XFile? _newProfileImageFile;
@@ -328,6 +334,12 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
     _nameController.dispose();
     _weightController.dispose();
     _dateController.dispose();
+    _phoneController.dispose();
+    _logradouroController.dispose();
+    _numeroController.dispose();
+    _bairroController.dispose();
+    _cidadeController.dispose();
+    _cepController.dispose();
     super.dispose();
   }
 
@@ -350,6 +362,14 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
         _currentAlunoData = aluno;
         _nameController.text = aluno.nome;
         _weightController.text = aluno.peso.toString();
+        _phoneController.text = aluno.phoneNumber ?? '';
+        if (aluno.address != null) {
+          _logradouroController.text = aluno.address!['logradouro'] ?? '';
+          _numeroController.text = aluno.address!['numero'] ?? '';
+          _bairroController.text = aluno.address!['bairro'] ?? '';
+          _cidadeController.text = aluno.address!['cidade'] ?? '';
+          _cepController.text = aluno.address!['cep'] ?? '';
+        }
         if (aluno.dataNascimento != null) {
           _dateController.text =
               DateFormat('dd/MM/yyyy').format(aluno.dataNascimento!);
@@ -416,6 +436,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
           .doc(widget.user.studentRecordId!);
 
       final Map<String, dynamic> userUpdateData = {};
+      final Map<String, dynamic> studentUpdateData = {};
 
       if (_newProfileImageFile != null) {
         final ref = FirebaseStorage.instance
@@ -433,17 +454,30 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
         userUpdateData['profileImagePath'] = downloadUrl;
       }
 
-      batch.update(studentRef, {
+      final addressMap = {
+        'logradouro': _logradouroController.text.trim(),
+        'numero': _numeroController.text.trim(),
+        'bairro': _bairroController.text.trim(),
+        'cidade': _cidadeController.text.trim(),
+        'cep': _cepController.text.trim(),
+      };
+
+      studentUpdateData.addAll({
         'nome': _nameController.text.trim().capitalizeWords(),
         'peso': double.parse(_weightController.text.replaceAll(',', '.')),
         'dataNascimento':
             dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
+        'phoneNumber': _phoneController.text.trim(),
+        'address': addressMap,
       });
 
       if (_nameController.text.trim().capitalizeWords() != widget.user.name) {
         userUpdateData['name'] = _nameController.text.trim().capitalizeWords();
       }
+      userUpdateData['phoneNumber'] = _phoneController.text.trim();
+      userUpdateData['address'] = addressMap;
 
+      batch.update(studentRef, studentUpdateData);
       if (userUpdateData.isNotEmpty) {
         batch.update(userRef, userUpdateData);
       }
@@ -584,6 +618,19 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                           ),
                           const SizedBox(height: 16),
                           TextFormField(
+                            controller: _phoneController,
+                            decoration: const InputDecoration(
+                              labelText: 'Telefone',
+                              prefixIcon: Icon(Icons.phone),
+                            ),
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              PhoneInputFormatter(),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
                             controller: _dateController,
                             decoration: const InputDecoration(
                               labelText: 'Data de Nascimento',
@@ -624,6 +671,64 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                   ? 'Peso inválido (deve ser > 0)'
                                   : null;
                             },
+                          ),
+                          const SizedBox(height: 24),
+                          Text("Endereço",
+                              style: Theme.of(context).textTheme.titleLarge),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _logradouroController,
+                            decoration: const InputDecoration(
+                                labelText: 'Logradouro (Rua, Av...)'),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: TextFormField(
+                                  controller: _numeroController,
+                                  decoration:
+                                      const InputDecoration(labelText: 'Nº'),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                flex: 3,
+                                child: TextFormField(
+                                  controller: _bairroController,
+                                  decoration: const InputDecoration(
+                                      labelText: 'Bairro'),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 3,
+                                child: TextFormField(
+                                  controller: _cidadeController,
+                                  decoration: const InputDecoration(
+                                      labelText: 'Cidade'),
+                                ),
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                flex: 2,
+                                child: TextFormField(
+                                  controller: _cepController,
+                                  decoration:
+                                      const InputDecoration(labelText: 'CEP'),
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                    CepInputFormatter(),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                           const SizedBox(height: 24),
                           _isSaving

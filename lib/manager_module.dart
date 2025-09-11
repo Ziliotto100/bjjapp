@@ -74,7 +74,7 @@ int _getBeltIndex(String faixa) {
   ];
   final index =
       ordemFaixas.indexWhere((f) => f.toLowerCase() == faixa.toLowerCase());
-  return index == -1 ? 99 : index;
+  return index == -1 ? 99 : index; // Retorna um número alto se não encontrar
 }
 
 // --- LÓGICA DE GERENCIAMENTO DE USUÁRIOS ---
@@ -627,6 +627,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
                       showBjjSnackBar(
                           context, '${novoAluno.nome} adicionado com sucesso!',
                           type: 'success');
+                      _loadInitialData();
                     }
                   } catch (e) {
                     if (mounted) {
@@ -1545,7 +1546,13 @@ class AdicionarAlunoDialog extends StatefulWidget {
 class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
   final nC = TextEditingController(),
       pC = TextEditingController(),
-      dNascC = TextEditingController();
+      dNascC = TextEditingController(),
+      phoneC = TextEditingController(),
+      logradouroC = TextEditingController(),
+      numeroC = TextEditingController(),
+      bairroC = TextEditingController(),
+      cidadeC = TextEditingController(),
+      cepC = TextEditingController();
   String? fS;
   int? gS;
   String? selectedUnitId;
@@ -1587,6 +1594,14 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
       pC.text = aluno.peso.toString();
       fS = aluno.faixa;
       gS = aluno.graus;
+      phoneC.text = aluno.phoneNumber ?? '';
+      if (aluno.address != null) {
+        logradouroC.text = aluno.address!['logradouro'] ?? '';
+        numeroC.text = aluno.address!['numero'] ?? '';
+        bairroC.text = aluno.address!['bairro'] ?? '';
+        cidadeC.text = aluno.address!['cidade'] ?? '';
+        cepC.text = aluno.address!['cep'] ?? '';
+      }
       selectedUnitId = aluno.unitId;
       selectedUnitName = aluno.unitName;
       if (aluno.dataNascimento != null) {
@@ -1623,6 +1638,12 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
     nC.dispose();
     pC.dispose();
     dNascC.dispose();
+    phoneC.dispose();
+    logradouroC.dispose();
+    numeroC.dispose();
+    bairroC.dispose();
+    cidadeC.dispose();
+    cepC.dispose();
     super.dispose();
   }
 
@@ -1756,6 +1777,19 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                 ),
               const SizedBox(height: 16),
               TextFormField(
+                controller: phoneC,
+                decoration: const InputDecoration(
+                  labelText: 'Telefone',
+                  prefixIcon: Icon(Icons.phone),
+                ),
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  PhoneInputFormatter(),
+                ],
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
                 controller: dNascC,
                 decoration: const InputDecoration(
                   labelText: 'Data de Nascimento',
@@ -1838,6 +1872,59 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                         ? 'Peso inválido (deve ser > 0)'
                         : null;
                   }),
+              const SizedBox(height: 24),
+              Text("Endereço", style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: logradouroC,
+                decoration:
+                    const InputDecoration(labelText: 'Logradouro (Rua, Av...)'),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: numeroC,
+                      decoration: const InputDecoration(labelText: 'Nº'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      controller: bairroC,
+                      decoration: const InputDecoration(labelText: 'Bairro'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      controller: cidadeC,
+                      decoration: const InputDecoration(labelText: 'Cidade'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: cepC,
+                      decoration: const InputDecoration(labelText: 'CEP'),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        CepInputFormatter(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
               if (isEditing && widget.alunoParaEditar?.userId == null) ...[
                 const SizedBox(height: 24),
                 OutlinedButton.icon(
@@ -1971,6 +2058,14 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                               peso: peso,
                               graus: gS,
                               dataNascimento: dataNascimento,
+                              phoneNumber: phoneC.text.trim(),
+                              address: {
+                                'logradouro': logradouroC.text.trim(),
+                                'numero': numeroC.text.trim(),
+                                'bairro': bairroC.text.trim(),
+                                'cidade': cidadeC.text.trim(),
+                                'cep': cepC.text.trim(),
+                              },
                               userId: isEditing
                                   ? widget.alunoParaEditar!.userId
                                   : null,

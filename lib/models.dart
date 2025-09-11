@@ -186,6 +186,9 @@ class Aluno {
   String? userId;
   PaymentStatus paymentStatus;
   bool isActive;
+  // CAMPOS ADICIONADOS
+  String? phoneNumber;
+  Map<String, String>? address;
   // *** NOVOS CAMPOS PARA UNIDADES ***
   String? unitId;
   String? unitName;
@@ -207,6 +210,8 @@ class Aluno {
     this.userId,
     this.paymentStatus = PaymentStatus.pendente,
     this.isActive = true,
+    this.phoneNumber,
+    this.address,
     this.unitId,
     this.unitName,
     this.createdAt,
@@ -237,6 +242,8 @@ class Aluno {
     this.graus,
     this.dataNascimento,
     this.userId,
+    this.phoneNumber,
+    this.address,
     this.unitId,
     this.unitName,
     this.createdByUid,
@@ -258,6 +265,8 @@ class Aluno {
           dataNascimento != null ? Timestamp.fromDate(dataNascimento!) : null,
       'userId': userId,
       'isActive': isActive,
+      'phoneNumber': phoneNumber,
+      'address': address,
       'unitId': unitId,
       'unitName': unitName,
       'createdAt': createdAt ?? FieldValue.serverTimestamp(),
@@ -279,6 +288,10 @@ class Aluno {
       dataNascimento: (json['dataNascimento'] as Timestamp?)?.toDate(),
       userId: json['userId'],
       isActive: json['isActive'] ?? true,
+      phoneNumber: json['phoneNumber'],
+      address: json['address'] != null
+          ? Map<String, String>.from(json['address'])
+          : null,
       unitId: json['unitId'],
       unitName: json['unitName'],
       createdAt: json['createdAt'],
@@ -300,6 +313,8 @@ class Aluno {
       userId: user.uid,
       dataNascimento: user.dataNascimento,
       isActive: user.isActive,
+      phoneNumber: user.phoneNumber,
+      address: user.address,
       unitId: user.unitId,
       unitName: user.unitName,
     );
