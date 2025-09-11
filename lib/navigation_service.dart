@@ -15,6 +15,7 @@ import 'birthdays_module.dart';
 import 'video_library_module.dart';
 import 'rules_module.dart';
 import 'manager_reports_page.dart';
+import 'manager_units_module.dart'; // NOVO IMPORT
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -163,6 +164,22 @@ class NavigationService {
                 AlunosManagerPage(academyId: user.academyId, manager: user),
           ),
           AppModule(
+            id: 'manager_teachers',
+            title: 'Professores',
+            icon: Icons.school_rounded,
+            requiredRole: UserRole.manager,
+            pageBuilder: (user, teachers, students) => ProfessoresManagerPage(
+                academyId: user.academyId, manager: user),
+          ),
+          AppModule(
+            id: 'manager_units',
+            title: 'Gerenciar Unidades',
+            icon: Icons.store_mall_directory_outlined,
+            requiredRole: UserRole.manager,
+            pageBuilder: (user, teachers, students) =>
+                ManageUnitsPage(academyId: user.academyId, manager: user),
+          ),
+          AppModule(
             id: 'teacher_students',
             title: 'Alunos',
             icon: Icons.people_alt_rounded,
@@ -179,14 +196,6 @@ class NavigationService {
                 user: user,
                 academyId: user.academyId,
                 todosParticipantesDaAcademia: students),
-          ),
-          AppModule(
-            id: 'manager_teachers',
-            title: 'Professores',
-            icon: Icons.school_rounded,
-            requiredRole: UserRole.manager,
-            pageBuilder: (user, teachers, students) => ProfessoresManagerPage(
-                academyId: user.academyId, manager: user),
           ),
           AppModule(
             id: 'common_notifications',

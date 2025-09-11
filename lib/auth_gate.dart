@@ -5,6 +5,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
+import 'package:flutter/services.dart'; // IMPORT ADICIONADO AQUI
 import 'package:url_launcher/url_launcher.dart';
 
 import 'models.dart';
@@ -557,12 +561,36 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
   final List<String> _faixasList = ['Azul', 'Roxa', 'Marrom', 'Preta'];
   List<int> _grausList = [];
 
+  // Novos controladores para o perfil da academia
+  final _cnpjController = TextEditingController();
+  final _responsibleNameController = TextEditingController();
+  final _responsiblePhoneController = TextEditingController();
+  final _academyPhoneController = TextEditingController();
+  // NOVOS controladores para endereço
+  final _logradouroController = TextEditingController();
+  final _numeroController = TextEditingController();
+  final _bairroController = TextEditingController();
+  final _cidadeController = TextEditingController();
+  final _cepController = TextEditingController();
+
+  bool _hasCnpj = true;
+  XFile? _logoImageFile;
+
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
     _academyNameController.dispose();
     _managerNameController.dispose();
+    _cnpjController.dispose();
+    _responsibleNameController.dispose();
+    _responsiblePhoneController.dispose();
+    _academyPhoneController.dispose();
+    _logradouroController.dispose();
+    _numeroController.dispose();
+    _bairroController.dispose();
+    _cidadeController.dispose();
+    _cepController.dispose();
     super.dispose();
   }
 
@@ -574,6 +602,17 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
       return [1, 2, 3, 4];
     }
     return [];
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery, imageQuality: 80, maxWidth: 600);
+    if (pickedFile != null) {
+      setState(() {
+        _logoImageFile = pickedFile;
+      });
+    }
   }
 
   Future<void> _submit() async {
@@ -596,14 +635,43 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         throw Exception("Não foi possível criar o usuário.");
       }
 
+      String? logoUrl;
+      if (_logoImageFile != null) {
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('academy_logos')
+            .child('${newUser.uid}.jpg');
+        if (kIsWeb) {
+          await ref.putData(await _logoImageFile!.readAsBytes());
+        } else {
+          await ref.putFile(File(_logoImageFile!.path));
+        }
+        logoUrl = await ref.getDownloadURL();
+      }
+
       final firestore = FirebaseFirestore.instance;
       final academyRef = firestore.collection('academies').doc();
       final userRef = firestore.collection('users').doc(newUser.uid);
       final batch = firestore.batch();
       final managerName = _managerNameController.text.trim().capitalizeWords();
 
+      // Monta o mapa de endereço
+      final Map<String, String> addressMap = {
+        'logradouro': _logradouroController.text.trim(),
+        'numero': _numeroController.text.trim(),
+        'bairro': _bairroController.text.trim(),
+        'cidade': _cidadeController.text.trim(),
+        'cep': _cepController.text.trim(),
+      };
+
       batch.set(academyRef, {
         'name': _academyNameController.text.trim(),
+        'logoUrl': logoUrl,
+        'contactPhoneNumber': _academyPhoneController.text.trim(),
+        'address': addressMap, // Salva o endereço como um mapa
+        'cnpj': _hasCnpj ? _cnpjController.text.trim() : null,
+        'responsibleName': _responsibleNameController.text.trim(),
+        'responsiblePhone': _responsiblePhoneController.text.trim(),
         'plan': 'premium',
         'ownerId': newUser.uid,
         'createdAt': FieldValue.serverTimestamp(),
@@ -695,6 +763,8 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 24),
+                  _buildLogoPicker(),
+                  const SizedBox(height: 16),
                   TextFormField(
                     controller: _academyNameController,
                     decoration: const InputDecoration(
@@ -705,8 +775,125 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                             ? 'Por favor, insira o nome da academia.'
                             : null,
                   ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _logradouroController,
+                    decoration: const InputDecoration(
+                      labelText: 'Logradouro (Rua, Av...)',
+                      prefixIcon: Icon(Icons.location_on_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: _numeroController,
+                          decoration: const InputDecoration(labelText: 'Nº'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 3,
+                        child: TextFormField(
+                          controller: _bairroController,
+                          decoration:
+                              const InputDecoration(labelText: 'Bairro'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextFormField(
+                          controller: _cidadeController,
+                          decoration:
+                              const InputDecoration(labelText: 'Cidade'),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        flex: 2,
+                        child: TextFormField(
+                          controller: _cepController,
+                          decoration: const InputDecoration(labelText: 'CEP'),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            CepInputFormatter(),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _academyPhoneController,
+                    decoration: const InputDecoration(
+                      labelText: 'Telefone da Academia',
+                      prefixIcon: Icon(Icons.phone),
+                    ),
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      PhoneInputFormatter(),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  CheckboxListTile(
+                    title: const Text("Possui CNPJ?"),
+                    value: _hasCnpj,
+                    onChanged: (value) {
+                      setState(() {
+                        _hasCnpj = value!;
+                      });
+                    },
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (_hasCnpj)
+                    TextFormField(
+                      controller: _cnpjController,
+                      decoration: const InputDecoration(
+                        labelText: 'CNPJ',
+                        prefixIcon: Icon(Icons.badge_outlined),
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        CnpjInputFormatter(),
+                      ],
+                    ),
                   const SizedBox(height: 24),
-                  Text('Seus Dados de Gerente',
+                  Text('Dados do Responsável',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.titleLarge),
+                  const SizedBox(height: 24),
+                  TextFormField(
+                    controller: _responsibleNameController,
+                    decoration: const InputDecoration(
+                        labelText: 'Nome do Responsável',
+                        prefixIcon: Icon(Icons.person_outline)),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _responsiblePhoneController,
+                    decoration: const InputDecoration(
+                      labelText: 'Telefone do Responsável',
+                      prefixIcon: Icon(Icons.contact_phone_outlined),
+                    ),
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      PhoneInputFormatter(),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  Text('Seus Dados de Acesso',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 24),
@@ -794,6 +981,39 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildLogoPicker() {
+    return Column(
+      children: [
+        if (_logoImageFile != null)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: kIsWeb
+                ? FutureBuilder<Uint8List>(
+                    future: _logoImageFile!.readAsBytes(),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData) {
+                        return Image.memory(snapshot.data!,
+                            height: 150, fit: BoxFit.cover);
+                      }
+                      return const SizedBox(
+                          height: 150,
+                          child: Center(child: CircularProgressIndicator()));
+                    },
+                  )
+                : Image.file(File(_logoImageFile!.path),
+                    height: 150, fit: BoxFit.cover),
+          ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _pickImage,
+          icon: const Icon(Icons.add_photo_alternate_outlined),
+          label:
+              Text(_logoImageFile == null ? 'Adicionar Logo' : 'Trocar Logo'),
+        ),
+      ],
     );
   }
 }

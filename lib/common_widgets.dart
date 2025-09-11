@@ -264,6 +264,97 @@ class UserProfileHeader extends StatelessWidget {
   }
 }
 
+// --- NOVOS FORMATADORES ---
+
+/// Formatador de texto para CEP no formato XXXXX-XXX.
+class CepInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final newText = newValue.text.replaceAll(RegExp(r'\D'), '');
+
+    if (newText.length > 8) {
+      return oldValue;
+    }
+
+    var formattedText = newText;
+    if (newText.length > 5) {
+      formattedText = '${newText.substring(0, 5)}-${newText.substring(5)}';
+    }
+
+    return TextEditingValue(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: formattedText.length),
+    );
+  }
+}
+
+/// Formatador de texto para CNPJ no formato XX.XXX.XXX/XXXX-XX.
+class CnpjInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final newText = newValue.text.replaceAll(RegExp(r'\D'), '');
+
+    if (newText.length > 14) {
+      return oldValue;
+    }
+
+    var formattedText = newText;
+    if (newText.length > 2) {
+      formattedText = '${newText.substring(0, 2)}.${newText.substring(2)}';
+    }
+    if (newText.length > 5) {
+      formattedText =
+          '${formattedText.substring(0, 6)}.${formattedText.substring(6)}';
+    }
+    if (newText.length > 8) {
+      formattedText =
+          '${formattedText.substring(0, 10)}/${formattedText.substring(10)}';
+    }
+    if (newText.length > 12) {
+      formattedText =
+          '${formattedText.substring(0, 15)}-${formattedText.substring(15)}';
+    }
+
+    return TextEditingValue(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: formattedText.length),
+    );
+  }
+}
+
+/// Formatador de texto para Telefone no formato (XX) XXXXX-XXXX.
+class PhoneInputFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+      TextEditingValue oldValue, TextEditingValue newValue) {
+    final newText = newValue.text.replaceAll(RegExp(r'\D'), '');
+
+    if (newText.length > 11) {
+      return oldValue;
+    }
+
+    var formattedText = newText;
+    if (newText.length > 2) {
+      formattedText = '(${newText.substring(0, 2)}) ${newText.substring(2)}';
+    }
+    if (newText.length > 7) {
+      formattedText =
+          '${formattedText.substring(0, 9)}-${formattedText.substring(9)}';
+    } else if (newText.length > 6 && newText.length < 8) {
+      // Handles 8-digit numbers
+      formattedText =
+          '${formattedText.substring(0, 8)}-${formattedText.substring(8)}';
+    }
+
+    return TextEditingValue(
+      text: formattedText,
+      selection: TextSelection.collapsed(offset: formattedText.length),
+    );
+  }
+}
+
 /// Formatador de texto para datas no formato DD/MM/AAAA.
 class DateInputFormatter extends TextInputFormatter {
   @override
