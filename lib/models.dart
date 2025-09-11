@@ -56,6 +56,8 @@ class UserModel {
   final double? peso;
   final String? profileImagePath;
   final DateTime? dataNascimento;
+  final String? phoneNumber;
+  final Map<String, String>? address;
   final Map<String, int> monthlyTrainingGoals;
   final Timestamp? lastNotificationCheck;
   // *** NOVOS CAMPOS PARA UNIDADES ***
@@ -86,6 +88,8 @@ class UserModel {
     this.peso,
     this.profileImagePath,
     this.dataNascimento,
+    this.phoneNumber,
+    this.address,
     this.monthlyTrainingGoals = const {},
     this.lastNotificationCheck,
     this.unitId,
@@ -135,6 +139,11 @@ class UserModel {
       return MapEntry(key, (value as num).toInt());
     });
 
+    Map<String, String>? addressMap;
+    if (data['address'] is Map) {
+      addressMap = Map<String, String>.from(data['address']);
+    }
+
     return UserModel(
       uid: doc.id,
       name: data['name'] ?? 'Nome não definido',
@@ -149,6 +158,8 @@ class UserModel {
       peso: (data['peso'] as num?)?.toDouble(),
       profileImagePath: data['profileImagePath'],
       dataNascimento: (data['dataNascimento'] as Timestamp?)?.toDate(),
+      phoneNumber: data['phoneNumber'],
+      address: addressMap,
       monthlyTrainingGoals: goals,
       lastNotificationCheck: data['lastNotificationCheck'],
       unitId: data['unitId'],

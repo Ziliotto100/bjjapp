@@ -1350,6 +1350,13 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
   final _nameController = TextEditingController();
   final _weightController = TextEditingController();
   final _dateController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _logradouroController = TextEditingController();
+  final _numeroController = TextEditingController();
+  final _bairroController = TextEditingController();
+  final _cidadeController = TextEditingController();
+  final _cepController = TextEditingController();
+
   bool _isSaving = false;
   XFile? _newProfileImageFile;
   String? _currentProfileImageUrl;
@@ -1364,6 +1371,14 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
       _dateController.text =
           DateFormat('dd/MM/yyyy').format(widget.user.dataNascimento!);
     }
+    _phoneController.text = widget.user.phoneNumber ?? '';
+    if (widget.user.address != null) {
+      _logradouroController.text = widget.user.address!['logradouro'] ?? '';
+      _numeroController.text = widget.user.address!['numero'] ?? '';
+      _bairroController.text = widget.user.address!['bairro'] ?? '';
+      _cidadeController.text = widget.user.address!['cidade'] ?? '';
+      _cepController.text = widget.user.address!['cep'] ?? '';
+    }
   }
 
   @override
@@ -1371,6 +1386,12 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
     _nameController.dispose();
     _weightController.dispose();
     _dateController.dispose();
+    _phoneController.dispose();
+    _logradouroController.dispose();
+    _numeroController.dispose();
+    _bairroController.dispose();
+    _cidadeController.dispose();
+    _cepController.dispose();
     super.dispose();
   }
 
@@ -1408,12 +1429,22 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
       final userRef =
           FirebaseFirestore.instance.collection('users').doc(widget.user.uid);
 
+      final Map<String, String> addressMap = {
+        'logradouro': _logradouroController.text.trim(),
+        'numero': _numeroController.text.trim(),
+        'bairro': _bairroController.text.trim(),
+        'cidade': _cidadeController.text.trim(),
+        'cep': _cepController.text.trim(),
+      };
+
       final Map<String, dynamic> updateData = {
         'name': _nameController.text.trim().capitalizeWords(),
         'peso': double.tryParse(_weightController.text.replaceAll(',', '.')) ??
             widget.user.peso,
         'dataNascimento':
             dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
+        'phoneNumber': _phoneController.text.trim(),
+        'address': addressMap,
       };
 
       if (_newProfileImageFile != null) {
@@ -1565,6 +1596,19 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
+                      controller: _phoneController,
+                      decoration: const InputDecoration(
+                        labelText: 'Telefone',
+                        prefixIcon: Icon(Icons.phone),
+                      ),
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        PhoneInputFormatter(),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
                       controller: _dateController,
                       decoration: const InputDecoration(
                         labelText: 'Data de Nascimento',
@@ -1606,6 +1650,62 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                         },
                       ),
                     ],
+                    const SizedBox(height: 24),
+                    Text("Endereço",
+                        style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _logradouroController,
+                      decoration: const InputDecoration(
+                          labelText: 'Logradouro (Rua, Av...)'),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _numeroController,
+                            decoration: const InputDecoration(labelText: 'Nº'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          flex: 3,
+                          child: TextFormField(
+                            controller: _bairroController,
+                            decoration:
+                                const InputDecoration(labelText: 'Bairro'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextFormField(
+                            controller: _cidadeController,
+                            decoration:
+                                const InputDecoration(labelText: 'Cidade'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _cepController,
+                            decoration: const InputDecoration(labelText: 'CEP'),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              CepInputFormatter(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 24),
                     _isSaving
                         ? const Center(child: CircularProgressIndicator())
