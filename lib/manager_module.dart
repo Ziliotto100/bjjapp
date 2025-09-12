@@ -695,9 +695,10 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   }
 }
 
-// A função foi tornada pública (removido o `_`)
+// >>>>> INÍCIO DA CORREÇÃO <<<<<
 void showCreateAccessDialog(BuildContext context, Aluno aluno, String academyId,
     UserModel manager) async {
+  // A função agora é chamada de um contexto que permanecerá válido.
   final result = await showDialog<Map<String, dynamic>?>(
     context: context,
     builder: (_) => CreateStudentAccessDialog(
@@ -709,6 +710,7 @@ void showCreateAccessDialog(BuildContext context, Aluno aluno, String academyId,
 
   if (result?['success'] == true && context.mounted) {
     final email = result!['email'];
+    // Este showDialog agora usa o contexto válido da página.
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -740,6 +742,7 @@ void showCreateAccessDialog(BuildContext context, Aluno aluno, String academyId,
     );
   }
 }
+// >>>>> FIM DA CORREÇÃO <<<<<
 
 class ManagerDashboardPage extends StatelessWidget {
   final UserModel user;

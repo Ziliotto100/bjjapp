@@ -108,6 +108,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   StreamSubscription? _sparringStateSubscription;
   StreamSubscription? _settingsSubscription;
   StreamSubscription? _notificationSubscription;
+  bool _isNotificationDialogShowing = false;
 
   @override
   void initState() {
@@ -185,6 +186,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     });
   }
 
+  // >>>>> INÍCIO DA CORREÇÃO <<<<<
   void _checkForNewNotifications() {
     final userLastCheck = widget.user.lastNotificationCheck ??
         Timestamp.fromMillisecondsSinceEpoch(0);
@@ -198,39 +200,54 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         .limit(1)
         .snapshots()
         .listen((snapshot) async {
-      if (snapshot.docs.isNotEmpty && mounted) {
-        final latestNotificationDoc = snapshot.docs.first;
-        final notification =
-            NotificationModel.fromFirestore(latestNotificationDoc);
-
-        if (notification.senderId == widget.user.uid) {
-          final timeSinceSent =
-              DateTime.now().difference(notification.createdAt.toDate());
-          if (timeSinceSent.inSeconds < 10) {
-            await _updateLastNotificationCheck();
-            return;
-          }
-        }
-
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(notification.title),
-            content: Text(notification.message),
-            actions: [
-              TextButton(
-                onPressed: () async {
-                  Navigator.of(context).pop();
-                  await _updateLastNotificationCheck();
-                },
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
+      if (!mounted || snapshot.docs.isEmpty || _isNotificationDialogShowing) {
+        return;
       }
+
+      final notification = NotificationModel.fromFirestore(snapshot.docs.first);
+
+      if (notification.senderId == widget.user.uid) {
+        final timeSinceSent =
+            DateTime.now().difference(notification.createdAt.toDate());
+        if (timeSinceSent.inSeconds < 15) {
+          await _updateLastNotificationCheck();
+          return;
+        }
+      }
+
+      _notificationSubscription?.pause();
+
+      setState(() {
+        _isNotificationDialogShowing = true;
+      });
+
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(notification.title),
+          content: Text(notification.message),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await _updateLastNotificationCheck();
+                if (mounted) Navigator.of(dialogContext).pop();
+              },
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      ).then((_) {
+        if (mounted) {
+          setState(() {
+            _isNotificationDialogShowing = false;
+          });
+          _notificationSubscription?.resume();
+        }
+      });
     });
   }
+  // >>>>> FIM DA CORREÇÃO <<<<<
 
   Future<void> _updateLastNotificationCheck() async {
     try {
@@ -392,7 +409,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     final List<String> visibleIds =
         List<String>.from(settings['visible'] ?? []);
 
-    // >>>>> MODIFICAÇÃO AQUI <<<<<
     final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
 
     if (mounted) {
@@ -401,7 +417,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             .map((module) => _buildPageForModule(module))
             .toList();
 
-        // Ordena os módulos visíveis com base na ordem salva
         _visibleModules = visibleIds
             .map((id) => _allPageModules.firstWhere((m) => m.id == id,
                 orElse: () => _allPageModules.first))
@@ -411,7 +426,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           final indexB = savedOrder.indexOf(b.id);
           return indexA.compareTo(indexB);
         });
-        // >>>>> FIM DA MODIFICAÇÃO <<<<<
 
         int dashboardIndex =
             _allPageModules.indexWhere((m) => m.id == 'teacher_dashboard');

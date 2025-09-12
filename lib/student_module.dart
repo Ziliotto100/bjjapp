@@ -71,6 +71,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     super.dispose();
   }
 
+  // >>>>> INÍCIO DA CORREÇÃO <<<<<
   void _checkForNewNotifications() {
     final userLastCheck = widget.user.lastNotificationCheck ??
         Timestamp.fromMillisecondsSinceEpoch(0);
@@ -88,21 +89,28 @@ class _StudentHomePageState extends State<StudentHomePage> {
         return;
       }
 
+      // Pausa a escuta para evitar múltiplos disparos
+      _notificationSubscription?.pause();
+
       setState(() {
         _isNotificationDialogShowing = true;
       });
 
       final notification = NotificationModel.fromFirestore(snapshot.docs.first);
+
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
+        barrierDismissible:
+            false, // Impede que o diálogo seja fechado ao clicar fora
+        builder: (dialogContext) => AlertDialog(
           title: Text(notification.title),
           content: Text(notification.message),
           actions: [
             TextButton(
               onPressed: () async {
                 await _updateLastNotificationCheck();
-                if (mounted) Navigator.of(context).pop();
+                // Usa o dialogContext para garantir que está fechando o diálogo correto
+                if (mounted) Navigator.of(dialogContext).pop();
               },
               child: const Text('OK'),
             ),
@@ -113,10 +121,13 @@ class _StudentHomePageState extends State<StudentHomePage> {
           setState(() {
             _isNotificationDialogShowing = false;
           });
+          // Reativa a escuta depois que o diálogo foi fechado
+          _notificationSubscription?.resume();
         }
       });
     });
   }
+  // >>>>> FIM DA CORREÇÃO <<<<<
 
   Future<void> _updateLastNotificationCheck() async {
     try {
@@ -185,7 +196,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
     final List<String> visibleIds =
         List<String>.from(settings['visible'] ?? []);
 
-    // >>>>> MODIFICAÇÃO AQUI <<<<<
     final List<String> savedOrder = List<String>.from(settings['order'] ?? []);
 
     if (mounted) {
@@ -195,7 +205,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 module.pageBuilder!(widget.user, _teachers, _students))
             .toList();
 
-        // Ordena os módulos visíveis com base na ordem salva
         _visibleModules = visibleIds
             .map((id) => _allPageModules.firstWhere((m) => m.id == id,
                 orElse: () => _allPageModules.first))
@@ -205,7 +214,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
           final indexB = savedOrder.indexOf(b.id);
           return indexA.compareTo(indexB);
         });
-        // >>>>> FIM DA MODIFICAÇÃO <<<<<
 
         int profileIndex =
             _allPageModules.indexWhere((m) => m.id == 'student_profile');
