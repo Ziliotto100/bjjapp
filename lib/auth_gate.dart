@@ -20,6 +20,7 @@ import 'student_module.dart';
 import 'update_checker.dart';
 import 'super_admin_module.dart';
 import 'dev_quick_login.dart';
+import 'tutorials_module.dart'; // NOVO IMPORT
 
 // --- CLASSE DE CONFIGURAÇÃO ---
 class EnvConfig {
@@ -123,6 +124,47 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
+  // --- NOVA FUNÇÃO PARA O DIÁLOGO DE BOAS-VINDAS ---
+  void _showWelcomeDialog(BuildContext context, UserModel user) {
+    // Garante que o diálogo seja exibido apenas uma vez
+    if (!user.hasSeenWelcomePopup) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await showDialog(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text('Bem-vindo(a), ${user.name}!'),
+            content: const SingleChildScrollView(
+              child: ListBody(
+                children: <Widget>[
+                  Text('É um prazer ter você conosco no Match BJJ.'),
+                  SizedBox(height: 16),
+                  Text(
+                      'Para aprender a usar todas as funcionalidades do aplicativo, preparamos vídeos tutoriais para você.'),
+                  SizedBox(height: 8),
+                  Text(
+                      'Você pode acessá-los a qualquer momento no menu lateral, na opção "Ajuda / Tutoriais".'),
+                ],
+              ),
+            ),
+            actions: <Widget>[
+              TextButton(
+                child: const Text('Começar a Usar'),
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+              ),
+            ],
+          ),
+        );
+        // Marca que o pop-up foi visto
+        await FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .update({'hasSeenWelcomePopup': true});
+      });
+    }
+  }
+
   Widget _buildUserFlow(String uid, {required bool isImpersonating}) {
     const loadingScaffold = Scaffold(
         body: AppBackground(child: Center(child: CircularProgressIndicator())));
@@ -142,6 +184,12 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
+
+        // --- CHAMADA DO DIÁLOGO DE BOAS-VINDAS ---
+        if (!isImpersonating) {
+          // Evita mostrar o pop-up durante a personificação
+          _showWelcomeDialog(context, userModel);
+        }
 
         return FutureBuilder<DocumentSnapshot>(
           future: FirebaseFirestore.instance
@@ -696,6 +744,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         'createdByName': managerName,
         'lastUpdatedByUid': newUser.uid,
         'lastUpdatedByName': managerName,
+        'hasSeenWelcomePopup': false, // NOVO CAMPO
       });
 
       final historyEntry = GraduationHistory(

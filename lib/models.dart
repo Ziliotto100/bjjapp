@@ -73,6 +73,9 @@ class UserModel {
   final String? lastUpdatedByUid;
   final String? lastUpdatedByName;
 
+  // NOVO CAMPO PARA O POP-UP DE BOAS-VINDAS
+  final bool hasSeenWelcomePopup;
+
   UserModel({
     required this.uid,
     required this.name,
@@ -100,6 +103,7 @@ class UserModel {
     this.createdByName,
     this.lastUpdatedByUid,
     this.lastUpdatedByName,
+    this.hasSeenWelcomePopup = false, // NOVO CAMPO
   });
 
   int? get idade {
@@ -169,6 +173,7 @@ class UserModel {
       createdByName: data['createdByName'],
       lastUpdatedByUid: data['lastUpdatedByUid'],
       lastUpdatedByName: data['lastUpdatedByName'],
+      hasSeenWelcomePopup: data['hasSeenWelcomePopup'] ?? false, // NOVO CAMPO
     );
   }
 }
@@ -1123,6 +1128,72 @@ class MonthlyFee {
       'paymentYear': paymentYear,
       'paymentMonth': paymentMonth,
       'status': status.name, // Salva o enum como string
+    };
+  }
+}
+
+// --- MODELOS PARA TUTORIAIS ---
+class TutorialPlaylist {
+  final String id;
+  final String name;
+  final int orderIndex;
+
+  TutorialPlaylist({
+    required this.id,
+    required this.name,
+    required this.orderIndex,
+  });
+
+  factory TutorialPlaylist.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return TutorialPlaylist(
+      id: doc.id,
+      name: data['name'] ?? 'Playlist sem nome',
+      orderIndex: data['orderIndex'] ?? 99,
+    );
+  }
+}
+
+class Tutorial {
+  final String id;
+  final String title;
+  final String description;
+  final String videoUrl;
+  final List<String> visibleTo; // Lista de UserRole.name
+  final int orderIndex;
+  final String? playlistId; // NOVO CAMPO
+
+  Tutorial({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.videoUrl,
+    required this.visibleTo,
+    required this.orderIndex,
+    this.playlistId, // NOVO CAMPO
+  });
+
+  factory Tutorial.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return Tutorial(
+      id: doc.id,
+      title: data['title'] ?? 'Sem Título',
+      description: data['description'] ?? '',
+      videoUrl: data['videoUrl'] ?? '',
+      visibleTo: List<String>.from(data['visibleTo'] ?? []),
+      orderIndex: data['orderIndex'] ?? 99,
+      playlistId: data['playlistId'], // NOVO CAMPO
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'title': title,
+      'description': description,
+      'videoUrl': videoUrl,
+      'visibleTo': visibleTo,
+      'orderIndex': orderIndex,
+      'playlistId': playlistId, // NOVO CAMPO
     };
   }
 }

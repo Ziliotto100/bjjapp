@@ -10,6 +10,7 @@ import 'navigation_service.dart';
 import 'customize_tabs_page.dart';
 import 'app_theme.dart';
 import 'auth_gate.dart';
+import 'tutorials_module.dart'; // CORREÇÃO: Import que estava faltando
 
 class AppDrawer extends StatelessWidget {
   final UserModel user;
@@ -70,6 +71,20 @@ class AppDrawer extends StatelessWidget {
           }).toList(),
 
           const Divider(color: borderNormal),
+          // --- NOVA SEÇÃO DE AJUDA ---
+          ListTile(
+            leading:
+                const Icon(Icons.help_outline_rounded, color: primaryAccent),
+            title: const Text('Ajuda / Tutoriais',
+                style: TextStyle(color: primaryAccent)),
+            onTap: () {
+              Navigator.pop(context);
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => TutorialsPage(user: user),
+              ));
+            },
+          ),
+          // --- FIM DA SEÇÃO DE AJUDA ---
           ListTile(
             leading: const Icon(Icons.tune_rounded, color: primaryAccent),
             title: const Text('Personalizar Abas',

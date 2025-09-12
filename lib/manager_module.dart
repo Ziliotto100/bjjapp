@@ -25,6 +25,7 @@ import 'academy_profile_page.dart';
 // Imports adicionados para a nova dashboard
 import 'manager_reports_page.dart';
 import 'financial_student_list_page.dart';
+import 'tutorials_module.dart';
 
 // --- FUNÇÃO DE LOG DE AUDITORIA ---
 Future<void> _createAuditLog({
@@ -895,15 +896,12 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
 
               final metrics = snapshot.data!;
 
-              // --- CORREÇÃO DE OVERFLOW AQUI ---
-              // Usamos um GridView.builder com SliverGridDelegateWithMaxCrossAxisExtent
-              // para criar um layout que se adapta à largura da tela.
               return GridView.builder(
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 150.0, // Largura máxima de cada item
+                  maxCrossAxisExtent: 150.0,
                   mainAxisSpacing: 8.0,
                   crossAxisSpacing: 8.0,
-                  childAspectRatio: 0.9,
+                  childAspectRatio: 0.85, // <-- CORREÇÃO AQUI
                 ),
                 itemCount: 6,
                 shrinkWrap: true,
@@ -994,12 +992,12 @@ class _MinimalMetricCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisAlignment:
+                MainAxisAlignment.spaceAround, // <-- CORREÇÃO AQUI
             children: [
               Icon(icon, color: color, size: 32),
-              const SizedBox(height: 8),
-              // FittedBox garante que o texto não quebre o layout
               FittedBox(
+                // <-- CORREÇÃO AQUI
                 fit: BoxFit.scaleDown,
                 child: Text(
                   value,
@@ -1010,7 +1008,6 @@ class _MinimalMetricCard extends StatelessWidget {
                   textAlign: TextAlign.center,
                 ),
               ),
-              const SizedBox(height: 4),
               Text(
                 label,
                 style: const TextStyle(color: textHint, fontSize: 12),
@@ -1023,6 +1020,7 @@ class _MinimalMetricCard extends StatelessWidget {
     );
   }
 }
+
 // =========================================================================
 // ==                   FIM DA DASHBOARD ADAPTÁVEL                      ==
 // =========================================================================

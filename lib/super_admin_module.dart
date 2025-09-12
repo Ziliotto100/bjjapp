@@ -15,6 +15,7 @@ import 'common_widgets.dart';
 import 'models.dart';
 import 'auth_gate.dart';
 import 'video_library_module.dart';
+import 'tutorials_module.dart';
 
 // --- TELA CONTAINER DO SUPER ADMIN COM NAVEGAÇÃO ---
 class SuperAdminPage extends StatefulWidget {
@@ -32,6 +33,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     const AdminFinancialPage(),
     const AcademyListPage(),
     const VideoAuditPage(),
+    const TutorialsAdminPage(), // NOVA PÁGINA
   ];
 
   final List<String> _pageTitles = [
@@ -39,6 +41,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     'Financeiro',
     'Academias',
     'Vídeos',
+    'Tutoriais', // NOVO TÍTULO
   ];
 
   @override
@@ -48,7 +51,6 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       appBar: AppBar(
         title: Text(_pageTitles[_currentIndex]),
         actions: [
-          // BOTÃO DE CONFIGURAÇÕES NA BARRA SUPERIOR
           IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Configurações',
@@ -92,11 +94,520 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
             icon: Icon(Icons.video_library_outlined),
             label: 'Vídeos',
           ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.help_outline_rounded), // NOVO ÍCONE
+            label: 'Tutoriais', // NOVO LABEL
+          ),
         ],
       ),
     );
   }
 }
+
+// --- TELA DE GERENCIAMENTO DE TUTORIAIS (AGORA COM PLAYLISTS) ---
+class TutorialsAdminPage extends StatefulWidget {
+  const TutorialsAdminPage({super.key});
+
+  @override
+  State<TutorialsAdminPage> createState() => _TutorialsAdminPageState();
+}
+
+class _TutorialsAdminPageState extends State<TutorialsAdminPage> {
+  // Métodos para gerenciar tutoriais
+  void _showTutorialDialog(
+      {Tutorial? tutorial, List<TutorialPlaylist>? playlists}) {
+    showDialog(
+      context: context,
+      builder: (_) => _AddEditTutorialDialog(
+          tutorial: tutorial, playlists: playlists ?? []),
+    );
+  }
+
+  Future<void> _deleteTutorial(Tutorial tutorial) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir Tutorial?'),
+        content: Text('Tem certeza que deseja excluir "${tutorial.title}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await FirebaseFirestore.instance
+          .collection('tutorials')
+          .doc(tutorial.id)
+          .delete();
+    }
+  }
+
+  // Métodos para gerenciar playlists
+  void _showPlaylistDialog({TutorialPlaylist? playlist}) {
+    showDialog(
+      context: context,
+      builder: (_) => _AddEditPlaylistDialog(playlist: playlist),
+    );
+  }
+
+  Future<void> _deletePlaylist(TutorialPlaylist playlist) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir Playlist?'),
+        content: Text(
+            'Atenção: Os vídeos desta playlist NÃO serão excluídos, mas ficarão sem categoria. Deseja continuar e excluir a playlist "${playlist.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final batch = FirebaseFirestore.instance.batch();
+      // Desvincula os vídeos da playlist
+      final videosSnapshot = await FirebaseFirestore.instance
+          .collection('tutorials')
+          .where('playlistId', isEqualTo: playlist.id)
+          .get();
+      for (var doc in videosSnapshot.docs) {
+        batch.update(doc.reference, {'playlistId': null});
+      }
+      // Deleta a playlist
+      batch.delete(FirebaseFirestore.instance
+          .collection('tutorial_playlists')
+          .doc(playlist.id));
+      await batch.commit();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('tutorial_playlists')
+            .orderBy('orderIndex')
+            .snapshots(),
+        builder: (context, playlistSnapshot) {
+          if (playlistSnapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          final playlists = playlistSnapshot.data?.docs
+                  .map((doc) => TutorialPlaylist.fromFirestore(doc))
+                  .toList() ??
+              [];
+
+          return StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('tutorials')
+                .orderBy('orderIndex')
+                .snapshots(),
+            builder: (context, tutorialSnapshot) {
+              if (tutorialSnapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final allTutorials = tutorialSnapshot.data?.docs
+                      .map((doc) => Tutorial.fromFirestore(doc))
+                      .toList() ??
+                  [];
+
+              final videosByPlaylist = <String, List<Tutorial>>{};
+              for (var video in allTutorials) {
+                final playlistId = video.playlistId ?? 'orphans';
+                videosByPlaylist.putIfAbsent(playlistId, () => []).add(video);
+              }
+
+              final orphanTutorials = videosByPlaylist['orphans'] ?? [];
+
+              return ListView(
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text("Gerenciar Conteúdo",
+                            style: Theme.of(context).textTheme.titleLarge),
+                        Row(
+                          children: [
+                            IconButton(
+                                icon: const Icon(Icons.playlist_add_rounded,
+                                    color: primaryAccent),
+                                onPressed: () => _showPlaylistDialog(),
+                                tooltip: 'Nova Playlist'),
+                            IconButton(
+                                icon: const Icon(Icons.video_call_outlined,
+                                    color: primaryAccent),
+                                onPressed: () =>
+                                    _showTutorialDialog(playlists: playlists),
+                                tooltip: 'Novo Vídeo'),
+                          ],
+                        )
+                      ],
+                    ),
+                  ),
+                  const Divider(),
+                  if (playlists.isEmpty && orphanTutorials.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: EmptyStateWidget(
+                          icon: Icons.video_library_outlined,
+                          title: "Nenhum Conteúdo",
+                          message: "Adicione playlists ou vídeos."),
+                    ),
+                  ...playlists.map((playlist) {
+                    final videosInPlaylist =
+                        videosByPlaylist[playlist.id] ?? [];
+                    return Card(
+                      child: ExpansionTile(
+                        leading: const Icon(Icons.playlist_play_rounded,
+                            color: textHint),
+                        title: Text(playlist.name),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                                icon: const Icon(Icons.edit_outlined),
+                                onPressed: () =>
+                                    _showPlaylistDialog(playlist: playlist)),
+                            IconButton(
+                                icon: const Icon(Icons.delete_outline,
+                                    color: errorColor),
+                                onPressed: () => _deletePlaylist(playlist)),
+                          ],
+                        ),
+                        children: videosInPlaylist.map((tutorial) {
+                          return ListTile(
+                            leading: const Icon(Icons.play_circle_fill_rounded,
+                                color: primaryAccent),
+                            title: Text(tutorial.title),
+                            subtitle: Text(
+                                "Perfis: ${tutorial.visibleTo.join(', ')}"),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                    icon: const Icon(Icons.edit_outlined),
+                                    onPressed: () => _showTutorialDialog(
+                                        tutorial: tutorial,
+                                        playlists: playlists)),
+                                IconButton(
+                                    icon: const Icon(Icons.delete_outline,
+                                        color: errorColor),
+                                    onPressed: () => _deleteTutorial(tutorial)),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  }),
+                  if (orphanTutorials.isNotEmpty) ...[
+                    const Padding(
+                      padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
+                      child: Text("Vídeos Avulsos",
+                          style: TextStyle(color: textHint)),
+                    ),
+                    ...orphanTutorials.map((tutorial) => Card(
+                          child: ListTile(
+                            leading: const Icon(Icons.play_circle_fill_rounded,
+                                color: primaryAccent),
+                            title: Text(tutorial.title),
+                            subtitle: Text(
+                                "Perfis: ${tutorial.visibleTo.join(', ')}"),
+                            trailing: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                    icon: const Icon(Icons.edit_outlined),
+                                    onPressed: () => _showTutorialDialog(
+                                        tutorial: tutorial,
+                                        playlists: playlists)),
+                                IconButton(
+                                    icon: const Icon(Icons.delete_outline,
+                                        color: errorColor),
+                                    onPressed: () => _deleteTutorial(tutorial)),
+                              ],
+                            ),
+                          ),
+                        )),
+                  ]
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+// Dialog para Adicionar/Editar Playlist (COM CORREÇÃO DE OVERFLOW)
+class _AddEditPlaylistDialog extends StatefulWidget {
+  final TutorialPlaylist? playlist;
+  const _AddEditPlaylistDialog({this.playlist});
+
+  @override
+  State<_AddEditPlaylistDialog> createState() => _AddEditPlaylistDialogState();
+}
+
+class _AddEditPlaylistDialogState extends State<_AddEditPlaylistDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _orderController = TextEditingController();
+  bool get _isEditing => widget.playlist != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEditing) {
+      _nameController.text = widget.playlist!.name;
+      _orderController.text = widget.playlist!.orderIndex.toString();
+    }
+  }
+
+  Future<void> _savePlaylist() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final data = {
+      'name': _nameController.text.trim(),
+      'orderIndex': int.tryParse(_orderController.text) ?? 99,
+    };
+
+    if (_isEditing) {
+      await FirebaseFirestore.instance
+          .collection('tutorial_playlists')
+          .doc(widget.playlist!.id)
+          .update(data);
+    } else {
+      await FirebaseFirestore.instance
+          .collection('tutorial_playlists')
+          .add(data);
+    }
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_isEditing ? 'Editar Playlist' : 'Nova Playlist'),
+      content: SingleChildScrollView(
+        // <-- CORREÇÃO AQUI
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration:
+                    const InputDecoration(labelText: 'Nome da Playlist'),
+                validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
+              ),
+              const SizedBox(height: 16), // Espaçamento adicionado
+              TextFormField(
+                controller: _orderController,
+                decoration:
+                    const InputDecoration(labelText: 'Ordem (ex: 1, 2)'),
+                keyboardType: TextInputType.number,
+                validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar')),
+        ElevatedButton(onPressed: _savePlaylist, child: const Text('Salvar')),
+      ],
+    );
+  }
+}
+
+// Dialog para Adicionar/Editar Tutorial (COM CORREÇÃO DE NOMES)
+class _AddEditTutorialDialog extends StatefulWidget {
+  final Tutorial? tutorial;
+  final List<TutorialPlaylist> playlists;
+  const _AddEditTutorialDialog({this.tutorial, required this.playlists});
+
+  @override
+  State<_AddEditTutorialDialog> createState() => _AddEditTutorialDialogState();
+}
+
+class _AddEditTutorialDialogState extends State<_AddEditTutorialDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _descController = TextEditingController();
+  final _urlController = TextEditingController();
+  final _orderController = TextEditingController();
+  String? _selectedPlaylistId;
+
+  // Mapa para tradução dos nomes dos perfis
+  final Map<String, String> _roleTranslations = {
+    'manager': 'Gerente',
+    'teacher': 'Professor',
+    'student': 'Aluno',
+  };
+
+  Map<String, bool> _visibleTo = {
+    UserRole.manager.name: false,
+    UserRole.teacher.name: false,
+    UserRole.student.name: false,
+  };
+
+  bool get _isEditing => widget.tutorial != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEditing) {
+      final t = widget.tutorial!;
+      _titleController.text = t.title;
+      _descController.text = t.description;
+      _urlController.text = t.videoUrl;
+      _orderController.text = t.orderIndex.toString();
+      _selectedPlaylistId = t.playlistId;
+      for (var role in t.visibleTo) {
+        if (_visibleTo.containsKey(role)) {
+          _visibleTo[role] = true;
+        }
+      }
+    }
+  }
+
+  Future<void> _saveTutorial() async {
+    if (!_formKey.currentState!.validate()) return;
+    final selectedRoles =
+        _visibleTo.entries.where((e) => e.value).map((e) => e.key).toList();
+    if (selectedRoles.isEmpty) {
+      showBjjSnackBar(context, 'Selecione pelo menos um perfil de usuário.',
+          type: 'error');
+      return;
+    }
+
+    final tutorialData = {
+      'title': _titleController.text.trim(),
+      'description': _descController.text.trim(),
+      'videoUrl': _urlController.text.trim(),
+      'orderIndex': int.tryParse(_orderController.text) ?? 99,
+      'visibleTo': selectedRoles,
+      'playlistId': _selectedPlaylistId,
+    };
+
+    if (_isEditing) {
+      await FirebaseFirestore.instance
+          .collection('tutorials')
+          .doc(widget.tutorial!.id)
+          .update(tutorialData);
+    } else {
+      await FirebaseFirestore.instance
+          .collection('tutorials')
+          .add(tutorialData);
+    }
+
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_isEditing ? 'Editar Vídeo' : 'Novo Vídeo'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _titleController,
+                decoration: const InputDecoration(labelText: 'Título'),
+                validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
+              ),
+              const SizedBox(height: 16), // Espaçamento adicionado
+              TextFormField(
+                controller: _descController,
+                decoration: const InputDecoration(labelText: 'Descrição breve'),
+                validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
+              ),
+              const SizedBox(height: 16), // Espaçamento adicionado
+              TextFormField(
+                controller: _urlController,
+                decoration:
+                    const InputDecoration(labelText: 'URL do Vídeo (YouTube)'),
+                validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
+              ),
+              const SizedBox(height: 16), // Espaçamento adicionado
+              TextFormField(
+                controller: _orderController,
+                decoration:
+                    const InputDecoration(labelText: 'Ordem (ex: 1, 2)'),
+                keyboardType: TextInputType.number,
+                validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
+              ),
+              const SizedBox(height: 16), // Espaçamento adicionado
+              DropdownButtonFormField<String>(
+                value: _selectedPlaylistId,
+                decoration:
+                    const InputDecoration(labelText: 'Playlist (Opcional)'),
+                items: [
+                  const DropdownMenuItem<String>(
+                      value: null, child: Text('Nenhuma')),
+                  ...widget.playlists
+                      .map((p) =>
+                          DropdownMenuItem(value: p.id, child: Text(p.name)))
+                      .toList()
+                ],
+                onChanged: (value) =>
+                    setState(() => _selectedPlaylistId = value),
+              ),
+              const SizedBox(height: 16),
+              Text('Visível para:',
+                  style: Theme.of(context).textTheme.titleSmall),
+              ..._visibleTo.keys.map((role) {
+                return CheckboxListTile(
+                  title: Text(_roleTranslations[role] ??
+                      role.capitalize()), // <-- CORREÇÃO AQUI
+                  value: _visibleTo[role],
+                  onChanged: (val) => setState(() => _visibleTo[role] = val!),
+                );
+              }).toList(),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar')),
+        ElevatedButton(onPressed: _saveTutorial, child: const Text('Salvar')),
+      ],
+    );
+  }
+}
+
+// O restante do arquivo super_admin_module.dart continua o mesmo...
 
 // --- NOVA TELA DE CONFIGURAÇÕES ---
 class AdminSettingsPage extends StatefulWidget {
@@ -368,17 +879,12 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
     }
   }
 
-  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-  // >>>>>> AQUI ESTÁ A FUNÇÃO CORRIGIDA <<<<<<<<<<<<<<<<<
-  // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
   Future<List<UserModel>> _fetchUsers() async {
     final academyId = widget.academyDoc.id;
     final firestore = FirebaseFirestore.instance;
 
-    // Mapa para garantir que não haverá usuários duplicados
     final Map<String, UserModel> allUsersMap = {};
 
-    // 1. Busca todos os usuários com login (gerentes, professores, alunos com acesso)
     final usersSnapshot = await firestore
         .collection('users')
         .where('academyId', isEqualTo: academyId)
@@ -389,7 +895,6 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
       allUsersMap[user.uid] = user;
     }
 
-    // 2. Busca todos os alunos cadastrados (com ou sem login)
     final studentsSnapshot = await firestore
         .collection('academies')
         .doc(academyId)
@@ -398,29 +903,23 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
 
     for (var doc in studentsSnapshot.docs) {
       final aluno = Aluno.fromJson(doc.id, doc.data() as Map<String, dynamic>);
-      // Se o aluno já tem um login, o registro dele na coleção 'users' é mais completo,
-      // então não sobrescrevemos. Adicionamos apenas se ele não tiver um login.
       if (aluno.userId == null || aluno.userId!.isEmpty) {
-        // Converte o Aluno para um UserModel para unificar a lista
         final userModel = UserModel(
-            uid: aluno.id, // Usa o ID do documento do aluno como UID temporário
+            uid: aluno.id,
             name: aluno.nome,
-            email: 'N/A', // Não possui e-mail de login
+            email: 'N/A',
             academyId: academyId,
             role: UserRole.student,
             mustChangePassword: false,
             isActive: aluno.isActive,
-            // Preenche outros campos se necessário para a UI
             faixa: aluno.faixa,
             graus: aluno.graus,
             peso: aluno.peso,
             dataNascimento: aluno.dataNascimento);
-        // Usamos o ID do documento de aluno como chave para evitar colisões
         allUsersMap[aluno.id] = userModel;
       }
     }
 
-    // 3. Converte o mapa para uma lista e ordena por nome
     final unifiedList = allUsersMap.values.toList();
     unifiedList.sort((a, b) => a.name.compareTo(b.name));
 
