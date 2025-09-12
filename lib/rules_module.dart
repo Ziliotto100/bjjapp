@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'app_theme.dart';
 import 'models.dart';
+import 'dart:collection'; // Import para o LinkedHashMap
 
 // --- Estrutura de Dados para as Tabelas de Peso ---
 class WeightCategory {
@@ -544,7 +545,7 @@ class MatchTimeTab extends StatelessWidget {
   }
 }
 
-// --- ABA DE GOLPES PROIBIDOS ---
+// --- ABA DE GOLPES PROIBIDOS (COM PESQUISA) ---
 class IllegalMovesTab extends StatefulWidget {
   const IllegalMovesTab({super.key});
 
@@ -553,8 +554,12 @@ class IllegalMovesTab extends StatefulWidget {
 }
 
 class _IllegalMovesTabState extends State<IllegalMovesTab> {
-  IllegalMoveCategory? _selectedCategory;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+  Map<String, List<String>> _movesToCategoriesMap = {};
+  List<IllegalMove> _filteredMoves = [];
 
+  // Dados estáticos como antes
   static final List<IllegalMove> allIllegalMoves = [
     IllegalMove(
         number: 1,
@@ -664,134 +669,299 @@ class _IllegalMovesTabState extends State<IllegalMovesTab> {
         name: 'Suplex derrubando o adversário de cabeça ou pescoço ao solo',
         imagePath: 'assets/images/golpes_proibidos/golpe26.png'),
   ];
-
   static final List<IllegalMoveCategory> illegalMovesData = [
     IllegalMoveCategory(
-      title: '4 a 12 anos',
-      ageGroup: '',
-      moves: allIllegalMoves
-          .where((m) => [
-                1,
-                2,
-                3,
-                4,
-                5,
-                6,
-                7,
-                8,
-                9,
-                10,
-                11,
-                12,
-                13,
-                14,
-                15,
-                16,
-                17,
-                18,
-                19,
-                20,
-                21,
-                22,
-                23,
-                24,
-                25,
-                26
-              ].contains(m.number))
-          .toList(),
-    ),
+        title: '4 a 12 anos',
+        ageGroup: '',
+        moves: allIllegalMoves
+            .where((m) => [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26
+                ].contains(m.number))
+            .toList()),
     IllegalMoveCategory(
-      title: '13 a 15 anos',
-      ageGroup: '',
-      moves: allIllegalMoves
-          .where((m) => [
-                2,
-                3,
-                4,
-                5,
-                6,
-                7,
-                8,
-                9,
-                10,
-                11,
-                12,
-                13,
-                14,
-                15,
-                16,
-                17,
-                18,
-                19,
-                20,
-                21,
-                22,
-                23,
-                24,
-                25,
-                26
-              ].contains(m.number))
-          .toList(),
-    ),
+        title: '13 a 15 anos',
+        ageGroup: '',
+        moves: allIllegalMoves
+            .where((m) => [
+                  2,
+                  3,
+                  4,
+                  5,
+                  6,
+                  7,
+                  8,
+                  9,
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26
+                ].contains(m.number))
+            .toList()),
     IllegalMoveCategory(
-      title: '16 e 17 (Todas as faixas) e Faixa Branca (Adulto a Master)',
-      ageGroup: '',
-      moves: allIllegalMoves
-          .where((m) => [
-                10,
-                11,
-                12,
-                13,
-                14,
-                15,
-                16,
-                17,
-                18,
-                19,
-                20,
-                21,
-                22,
-                23,
-                24,
-                25,
-                26
-              ].contains(m.number))
-          .toList(),
-    ),
+        title: '16 e 17 (Todas as faixas) e Faixa Branca (Adulto a Master)',
+        ageGroup: '',
+        moves: allIllegalMoves
+            .where((m) => [
+                  10,
+                  11,
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25,
+                  26
+                ].contains(m.number))
+            .toList()),
     IllegalMoveCategory(
-      title: 'Adulto a Master (Azul e Roxa)',
-      ageGroup: '',
-      moves: allIllegalMoves
-          .where((m) => [12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
-              .contains(m.number))
-          .toList(),
-    ),
+        title: 'Adulto a Master (Azul e Roxa)',
+        ageGroup: '',
+        moves: allIllegalMoves
+            .where((m) => [
+                  12,
+                  13,
+                  14,
+                  15,
+                  16,
+                  17,
+                  18,
+                  19,
+                  20,
+                  21,
+                  22,
+                  23,
+                  24,
+                  25
+                ].contains(m.number))
+            .toList()),
     IllegalMoveCategory(
-      title: 'Adulto a Master (Marrom e Preta) - Com Kimono',
-      ageGroup: '',
-      moves: allIllegalMoves
-          .where((m) => [17, 18, 19, 21, 22, 23, 24, 25, 26].contains(m.number))
-          .toList(),
-    ),
+        title: 'Adulto a Master (Marrom e Preta) - Com Kimono',
+        ageGroup: '',
+        moves: allIllegalMoves
+            .where(
+                (m) => [17, 18, 19, 21, 22, 23, 24, 25, 26].contains(m.number))
+            .toList()),
     IllegalMoveCategory(
-      title: 'Adultos (Marrom e Preta) - Sem Kimono',
-      ageGroup: '',
-      moves: allIllegalMoves
-          .where((m) => [21, 22, 23, 26].contains(m.number))
-          .toList(),
-    ),
+        title: 'Adultos (Marrom e Preta) - Sem Kimono',
+        ageGroup: '',
+        moves: allIllegalMoves
+            .where((m) => [21, 22, 23, 26].contains(m.number))
+            .toList()),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _buildSearchMap();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+        _filterMoves();
+      });
+    });
+  }
+
+  void _buildSearchMap() {
+    _movesToCategoriesMap = LinkedHashMap();
+    for (var move in allIllegalMoves) {
+      _movesToCategoriesMap[move.name] = [];
+    }
+    for (var category in illegalMovesData) {
+      for (var move in category.moves) {
+        _movesToCategoriesMap[move.name]?.add(category.title);
+      }
+    }
+  }
+
+  void _filterMoves() {
+    if (_searchQuery.isEmpty) {
+      _filteredMoves = [];
+    } else {
+      _filteredMoves = allIllegalMoves
+          .where((move) => move.name.toLowerCase().contains(_searchQuery))
+          .toList();
+    }
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       padding: const EdgeInsets.all(16.0),
       children: [
+        TextField(
+          controller: _searchController,
+          decoration: InputDecoration(
+            labelText: 'Pesquisar golpe...',
+            prefixIcon: const Icon(Icons.search),
+            suffixIcon: _searchQuery.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear),
+                    onPressed: () => _searchController.clear(),
+                  )
+                : null,
+          ),
+        ),
+        const SizedBox(height: 16),
+        if (_searchQuery.isNotEmpty) _buildSearchResults() else _OriginalView(),
+      ],
+    );
+  }
+
+  Widget _buildSearchResults() {
+    if (_filteredMoves.isEmpty) {
+      return const Center(
+        child: Padding(
+          padding: EdgeInsets.all(32.0),
+          child: Text('Nenhum golpe encontrado.'),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: _filteredMoves.map((move) {
+        final prohibitedIn = _movesToCategoriesMap[move.name] ?? [];
+        final allCategoryTitles = illegalMovesData.map((c) => c.title).toList();
+        final allowedIn = allCategoryTitles
+            .where((title) => !prohibitedIn.contains(title))
+            .toList();
+
+        return Card(
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(move.name,
+                      style: Theme.of(context).textTheme.titleMedium),
+                  trailing:
+                      const Icon(Icons.photo_library_outlined, color: textHint),
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => IllegalMoveDetailPage(move: move),
+                    ));
+                  },
+                ),
+                const Divider(),
+                const Text('Proibido para:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                if (prohibitedIn.isEmpty)
+                  const Text(
+                      'Este golpe não é proibido em nenhuma categoria listada.',
+                      style: TextStyle(color: textHint))
+                else
+                  ...prohibitedIn.map((categoryTitle) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4.0),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.block,
+                                color: errorColor, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(categoryTitle)),
+                          ],
+                        ),
+                      )),
+                const SizedBox(height: 16),
+                const Text('Permitido para:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                if (allowedIn.isEmpty)
+                  const Text(
+                      'Este golpe não é permitido em nenhuma categoria listada.',
+                      style: TextStyle(color: textHint))
+                else
+                  ...allowedIn.map((categoryTitle) => Padding(
+                        padding: const EdgeInsets.only(bottom: 4.0),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.check_circle,
+                                color: successColor, size: 16),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(categoryTitle)),
+                          ],
+                        ),
+                      )),
+              ],
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _OriginalView extends StatefulWidget {
+  @override
+  State<_OriginalView> createState() => _OriginalViewState();
+}
+
+class _OriginalViewState extends State<_OriginalView> {
+  IllegalMoveCategory? _selectedCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
         DropdownButtonFormField<IllegalMoveCategory>(
           value: _selectedCategory,
-          hint: const Text('Filtrar por idade/faixa...'),
+          hint: const Text('Ou filtre por idade/faixa...'),
           isExpanded: true,
-          items: illegalMovesData.map((category) {
+          items: _IllegalMovesTabState.illegalMovesData.map((category) {
             return DropdownMenuItem(
               value: category,
               child: Text(category.title, overflow: TextOverflow.ellipsis),
@@ -820,7 +990,7 @@ class _IllegalMovesTabState extends State<IllegalMovesTab> {
               IllegalMoveCategory(
                   title: "Todos os Golpes Proibidos",
                   ageGroup: "Lista de referência completa",
-                  moves: allIllegalMoves)),
+                  moves: _IllegalMovesTabState.allIllegalMoves)),
       ],
     );
   }
