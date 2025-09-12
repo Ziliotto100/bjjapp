@@ -10,7 +10,6 @@ import 'schedule_module.dart';
 import 'scoreboard_module.dart';
 import 'study_notebook_module.dart';
 import 'shop_module.dart';
-import 'notifications_module.dart';
 import 'birthdays_module.dart';
 import 'video_library_module.dart';
 import 'rules_module.dart';
@@ -196,13 +195,6 @@ class NavigationService {
                 user: user,
                 academyId: user.academyId,
                 todosParticipantesDaAcademia: students),
-          ),
-          AppModule(
-            id: 'common_notifications',
-            title: 'Avisos',
-            icon: Icons.notifications_rounded,
-            pageBuilder: (user, teachers, students) =>
-                NotificationsPage(user: user),
           ),
           AppModule(
             id: 'common_birthdays',

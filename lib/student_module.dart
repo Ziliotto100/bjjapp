@@ -50,10 +50,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
   List<UserModel> _teachers = [];
   List<Aluno> _students = [];
-  StreamSubscription? _notificationSubscription;
   StreamSubscription? _settingsSubscription;
-
-  bool _isNotificationDialogShowing = false;
 
   @override
   void initState() {
@@ -61,83 +58,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
     _navService =
         NavigationService(userId: widget.user.uid, userRole: widget.user.role);
     _loadInitialData();
-    _checkForNewNotifications();
   }
 
   @override
   void dispose() {
-    _notificationSubscription?.cancel();
     _settingsSubscription?.cancel();
     super.dispose();
-  }
-
-  // >>>>> INÍCIO DA CORREÇÃO <<<<<
-  void _checkForNewNotifications() {
-    final userLastCheck = widget.user.lastNotificationCheck ??
-        Timestamp.fromMillisecondsSinceEpoch(0);
-
-    _notificationSubscription = FirebaseFirestore.instance
-        .collection('academies')
-        .doc(widget.user.academyId)
-        .collection('notifications')
-        .where('createdAt', isGreaterThan: userLastCheck)
-        .orderBy('createdAt', descending: true)
-        .limit(1)
-        .snapshots()
-        .listen((snapshot) async {
-      if (!mounted || snapshot.docs.isEmpty || _isNotificationDialogShowing) {
-        return;
-      }
-
-      // Pausa a escuta para evitar múltiplos disparos
-      _notificationSubscription?.pause();
-
-      setState(() {
-        _isNotificationDialogShowing = true;
-      });
-
-      final notification = NotificationModel.fromFirestore(snapshot.docs.first);
-
-      showDialog(
-        context: context,
-        barrierDismissible:
-            false, // Impede que o diálogo seja fechado ao clicar fora
-        builder: (dialogContext) => AlertDialog(
-          title: Text(notification.title),
-          content: Text(notification.message),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await _updateLastNotificationCheck();
-                // Usa o dialogContext para garantir que está fechando o diálogo correto
-                if (mounted) Navigator.of(dialogContext).pop();
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      ).then((_) {
-        if (mounted) {
-          setState(() {
-            _isNotificationDialogShowing = false;
-          });
-          // Reativa a escuta depois que o diálogo foi fechado
-          _notificationSubscription?.resume();
-        }
-      });
-    });
-  }
-  // >>>>> FIM DA CORREÇÃO <<<<<
-
-  Future<void> _updateLastNotificationCheck() async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.user.uid)
-          .update({'lastNotificationCheck': Timestamp.now()});
-    } catch (e) {
-      debugPrint("Falha ao atualizar o horário de checagem: $e");
-    }
   }
 
   Future<void> _loadInitialData() async {

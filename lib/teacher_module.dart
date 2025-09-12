@@ -107,8 +107,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   bool _isSparringMode = false;
   StreamSubscription? _sparringStateSubscription;
   StreamSubscription? _settingsSubscription;
-  StreamSubscription? _notificationSubscription;
-  bool _isNotificationDialogShowing = false;
 
   @override
   void initState() {
@@ -117,14 +115,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         NavigationService(userId: widget.user.uid, userRole: widget.user.role);
     _loadInitialData();
     _listenToSparringState();
-    _checkForNewNotifications();
   }
 
   @override
   void dispose() {
     _sparringStateSubscription?.cancel();
     _settingsSubscription?.cancel();
-    _notificationSubscription?.cancel();
     super.dispose();
   }
 
@@ -184,80 +180,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         });
       }
     });
-  }
-
-  // >>>>> INÍCIO DA CORREÇÃO <<<<<
-  void _checkForNewNotifications() {
-    final userLastCheck = widget.user.lastNotificationCheck ??
-        Timestamp.fromMillisecondsSinceEpoch(0);
-
-    _notificationSubscription = FirebaseFirestore.instance
-        .collection('academies')
-        .doc(widget.user.academyId)
-        .collection('notifications')
-        .where('createdAt', isGreaterThan: userLastCheck)
-        .orderBy('createdAt', descending: true)
-        .limit(1)
-        .snapshots()
-        .listen((snapshot) async {
-      if (!mounted || snapshot.docs.isEmpty || _isNotificationDialogShowing) {
-        return;
-      }
-
-      final notification = NotificationModel.fromFirestore(snapshot.docs.first);
-
-      if (notification.senderId == widget.user.uid) {
-        final timeSinceSent =
-            DateTime.now().difference(notification.createdAt.toDate());
-        if (timeSinceSent.inSeconds < 15) {
-          await _updateLastNotificationCheck();
-          return;
-        }
-      }
-
-      _notificationSubscription?.pause();
-
-      setState(() {
-        _isNotificationDialogShowing = true;
-      });
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => AlertDialog(
-          title: Text(notification.title),
-          content: Text(notification.message),
-          actions: [
-            TextButton(
-              onPressed: () async {
-                await _updateLastNotificationCheck();
-                if (mounted) Navigator.of(dialogContext).pop();
-              },
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      ).then((_) {
-        if (mounted) {
-          setState(() {
-            _isNotificationDialogShowing = false;
-          });
-          _notificationSubscription?.resume();
-        }
-      });
-    });
-  }
-  // >>>>> FIM DA CORREÇÃO <<<<<
-
-  Future<void> _updateLastNotificationCheck() async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.user.uid)
-          .update({'lastNotificationCheck': Timestamp.now()});
-    } catch (e) {
-      debugPrint("Falha ao atualizar o horário de checagem: $e");
-    }
   }
 
   Future<void> _iniciarSparring(List<List<Map<String, String>>> rounds,

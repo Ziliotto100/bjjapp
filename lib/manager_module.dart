@@ -21,7 +21,10 @@ import 'user_card_widget.dart';
 import 'graduation_timeline_page.dart';
 import 'teacher_module.dart';
 import 'manager_units_module.dart';
-import 'academy_profile_page.dart'; // NOVO IMPORT
+import 'academy_profile_page.dart';
+// Imports adicionados para a nova dashboard
+import 'manager_reports_page.dart';
+import 'financial_student_list_page.dart';
 
 // --- FUNÇÃO DE LOG DE AUDITORIA ---
 Future<void> _createAuditLog({
@@ -695,10 +698,8 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   }
 }
 
-// >>>>> INÍCIO DA CORREÇÃO <<<<<
 void showCreateAccessDialog(BuildContext context, Aluno aluno, String academyId,
     UserModel manager) async {
-  // A função agora é chamada de um contexto que permanecerá válido.
   final result = await showDialog<Map<String, dynamic>?>(
     context: context,
     builder: (_) => CreateStudentAccessDialog(
@@ -710,7 +711,6 @@ void showCreateAccessDialog(BuildContext context, Aluno aluno, String academyId,
 
   if (result?['success'] == true && context.mounted) {
     final email = result!['email'];
-    // Este showDialog agora usa o contexto válido da página.
     showDialog(
       context: context,
       builder: (_) => AlertDialog(
@@ -742,32 +742,290 @@ void showCreateAccessDialog(BuildContext context, Aluno aluno, String academyId,
     );
   }
 }
-// >>>>> FIM DA CORREÇÃO <<<<<
 
-class ManagerDashboardPage extends StatelessWidget {
+// =========================================================================
+// ==           INÍCIO DA DASHBOARD COM LAYOUT ADAPTÁVEL                  ==
+// =========================================================================
+
+class ManagerDashboardPage extends StatefulWidget {
   final UserModel user;
   const ManagerDashboardPage({super.key, required this.user});
 
   @override
+  State<ManagerDashboardPage> createState() => _ManagerDashboardPageState();
+}
+
+class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
+  late Future<ManagerDashboardMetrics> _metricsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _metricsFuture = _fetchMetrics();
+  }
+
+  Future<void> _refreshMetrics() async {
+    setState(() {
+      _metricsFuture = _fetchMetrics();
+    });
+  }
+
+  Future<ManagerDashboardMetrics> _fetchMetrics() async {
+    // A lógica de busca de dados permanece a mesma
+    final firestore = FirebaseFirestore.instance;
+    final now = DateTime.now();
+    final startOfMonth = DateTime(now.year, now.month, 1);
+    final thirtyDaysAgo = now.subtract(const Duration(days: 30));
+
+    final studentsSnapshot = await firestore
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('students')
+        .where('isActive', isEqualTo: true)
+        .get();
+    final allActiveStudents = studentsSnapshot.docs
+        .map((doc) => Aluno.fromJson(doc.id, doc.data()))
+        .toList();
+
+    final newStudentsThisMonth = allActiveStudents.where((student) {
+      final createdAt = student.createdAt?.toDate();
+      return createdAt != null && createdAt.isAfter(startOfMonth);
+    }).length;
+
+    final feesSnapshot = await firestore
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('monthly_fees')
+        .where('paymentYear', isEqualTo: now.year)
+        .where('paymentMonth', isEqualTo: now.month)
+        .get();
+
+    final feesMap = {
+      for (var doc in feesSnapshot.docs)
+        doc['studentId']: MonthlyFee.fromFirestore(doc)
+    };
+    double monthlyRevenue = 0;
+    List<Aluno> pendingStudents = [];
+    List<Aluno> overdueStudents = [];
+
+    for (final student in allActiveStudents) {
+      final fee = feesMap[student.id];
+      if (fee != null) {
+        if (fee.status == PaymentStatus.pago) {
+          monthlyRevenue += fee.amount;
+        } else if (now.day > 10) {
+          overdueStudents.add(student);
+        } else {
+          pendingStudents.add(student);
+        }
+      } else {
+        if (now.day > 10) {
+          overdueStudents.add(student);
+        } else {
+          pendingStudents.add(student);
+        }
+      }
+    }
+
+    final checkinsSnapshot = await firestore
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .collection('checkins')
+        .where('date', isGreaterThanOrEqualTo: thirtyDaysAgo)
+        .get();
+
+    Set<String> studentsWithRecentCheckin = {
+      for (var doc in checkinsSnapshot.docs) doc['studentId']
+    };
+    final inactiveStudentsLast30Days = allActiveStudents
+        .where((s) => !studentsWithRecentCheckin.contains(s.id))
+        .length;
+
+    return ManagerDashboardMetrics(
+      monthlyRevenue: monthlyRevenue,
+      pendingStudents: pendingStudents,
+      overdueStudents: overdueStudents,
+      activeStudentsCount: allActiveStudents.length,
+      newStudentsThisMonth: newStudentsThisMonth,
+      inactiveStudentsLast30Days: inactiveStudentsLast30Days,
+    );
+  }
+
+  void _navigateToStudentList(String title, List<Aluno> students) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => FinancialStudentListPage(
+        title: title,
+        students: students,
+        currentUser: widget.user,
+        academyId: widget.user.academyId,
+      ),
+    ));
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        UserProfileHeader(user: user),
-        const SizedBox(height: 8),
-        Card(
-          margin: EdgeInsets.zero,
-          child: ListTile(
-            leading: const Icon(Icons.business, color: primaryAccent),
-            title: const Text("ID da sua Academia"),
-            subtitle:
-                Text(user.academyId, style: const TextStyle(fontSize: 16)),
+    final priceFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+    return RefreshIndicator(
+      onRefresh: _refreshMetrics,
+      child: ListView(
+        children: [
+          UserProfileHeader(user: widget.user),
+          FutureBuilder<ManagerDashboardMetrics>(
+            future: _metricsFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError || !snapshot.hasData) {
+                return Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        const Text("Não foi possível carregar os dados."),
+                        TextButton(
+                          onPressed: _refreshMetrics,
+                          child: const Text("Tentar Novamente"),
+                        )
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final metrics = snapshot.data!;
+
+              // --- CORREÇÃO DE OVERFLOW AQUI ---
+              // Usamos um GridView.builder com SliverGridDelegateWithMaxCrossAxisExtent
+              // para criar um layout que se adapta à largura da tela.
+              return GridView.builder(
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 150.0, // Largura máxima de cada item
+                  mainAxisSpacing: 8.0,
+                  crossAxisSpacing: 8.0,
+                  childAspectRatio: 0.9,
+                ),
+                itemCount: 6,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(12.0),
+                itemBuilder: (context, index) {
+                  switch (index) {
+                    case 0:
+                      return _MinimalMetricCard(
+                        icon: Icons.show_chart_rounded,
+                        value: priceFormat.format(metrics.monthlyRevenue),
+                        label: 'Receita',
+                        color: successColor,
+                      );
+                    case 1:
+                      return _MinimalMetricCard(
+                        icon: Icons.hourglass_empty_rounded,
+                        value: metrics.pendingStudents.length.toString(),
+                        label: 'Pendentes',
+                        color: warningColor,
+                        onTap: () => _navigateToStudentList(
+                            'Alunos Pendentes', metrics.pendingStudents),
+                      );
+                    case 2:
+                      return _MinimalMetricCard(
+                        icon: Icons.error_outline_rounded,
+                        value: metrics.overdueStudents.length.toString(),
+                        label: 'Atrasados',
+                        color: errorColor,
+                        onTap: () => _navigateToStudentList(
+                            'Alunos Atrasados', metrics.overdueStudents),
+                      );
+                    case 3:
+                      return _MinimalMetricCard(
+                        icon: Icons.people_alt_rounded,
+                        value: metrics.activeStudentsCount.toString(),
+                        label: 'Ativos',
+                        color: primaryAccent,
+                      );
+                    case 4:
+                      return _MinimalMetricCard(
+                        icon: Icons.person_add_alt_1_rounded,
+                        value: metrics.newStudentsThisMonth.toString(),
+                        label: 'Novos',
+                        color: infoColor,
+                      );
+                    case 5:
+                      return _MinimalMetricCard(
+                        icon: Icons.person_off_rounded,
+                        value: metrics.inactiveStudentsLast30Days.toString(),
+                        label: 'Ausentes',
+                        color: textHint,
+                      );
+                    default:
+                      return const SizedBox.shrink();
+                  }
+                },
+              );
+            },
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
+
+class _MinimalMetricCard extends StatelessWidget {
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+  final VoidCallback? onTap;
+
+  const _MinimalMetricCard({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12.0),
+        child: Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: color, size: 32),
+              const SizedBox(height: 8),
+              // FittedBox garante que o texto não quebre o layout
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  value,
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(color: color, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: const TextStyle(color: textHint, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+// =========================================================================
+// ==                   FIM DA DASHBOARD ADAPTÁVEL                      ==
+// =========================================================================
 
 class AlunosManagerPage extends StatefulWidget {
   final String academyId;
@@ -1464,7 +1722,6 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
       await batch.commit();
       await tempApp.delete();
 
-      // **LOG DE AUDITORIA**
       await _createAuditLog(
         academyId: widget.academyId,
         actor: widget.manager,
@@ -1937,7 +2194,6 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                   onPressed: () async {
                     final currentContext = context;
                     Navigator.of(currentContext).pop();
-                    // CORREÇÃO: Chamando a função pública global
                     showCreateAccessDialog(
                         currentContext,
                         widget.alunoParaEditar!,
@@ -2265,7 +2521,6 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
           .doc(widget.professor.uid)
           .update(updatedData);
 
-      // **LOG DE AUDITORIA**
       await _createAuditLog(
         academyId: widget.academyId,
         actor: widget.manager,
@@ -2665,7 +2920,6 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
 
       await tempApp.delete();
 
-      // **LOG DE AUDITORIA**
       await _createAuditLog(
         academyId: widget.academyId,
         actor: widget.manager,
@@ -2907,7 +3161,6 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
     final batch = firestore.batch();
     int generatedCount = 0;
 
-    // Pega as mensalidades já geradas este mês para não duplicar
     final feesSnapshot = await firestore
         .collection('academies')
         .doc(widget.academyId)
@@ -2930,7 +3183,7 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
           id: newFeeRef.id,
           studentId: student.id,
           studentName: student.nome,
-          amount: 0, // ou um valor padrão
+          amount: 0,
           paymentYear: now.year,
           paymentMonth: now.month,
           status: PaymentStatus.pendente,
@@ -2945,7 +3198,7 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
       showBjjSnackBar(context,
           '$generatedCount novas mensalidades foram geradas para este mês!',
           type: 'success');
-      _fetchStudentsWithPaymentStatus(); // Atualiza a lista
+      _fetchStudentsWithPaymentStatus();
     } else {
       showBjjSnackBar(context,
           'Todos os alunos ativos já possuem mensalidades geradas para este mês.',
@@ -3162,7 +3415,6 @@ class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
 
     final payments = snapshot.docs
         .map((doc) => PaymentRecord.fromFirestore(doc))
-        // Filtra para garantir que a nota contenha o nome do aluno
         .where((p) => p.notes?.contains(widget.student.nome) ?? false)
         .toList();
 
@@ -3289,7 +3541,6 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
 
     final batch = FirebaseFirestore.instance.batch();
 
-    // 1. Adiciona ao histórico de pagamentos
     final newPaymentRecordRef = FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.academyId)
@@ -3304,7 +3555,6 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
       'recordedByUid': FirebaseAuth.instance.currentUser?.uid ?? 'manager',
     });
 
-    // 2. Atualiza (ou cria) o registro de mensalidade do mês
     final feeQuery = await FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.academyId)
@@ -3316,7 +3566,6 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
         .get();
 
     if (feeQuery.docs.isNotEmpty) {
-      // Atualiza a mensalidade existente
       final feeDocRef = feeQuery.docs.first.reference;
       batch.update(feeDocRef, {
         'status': PaymentStatus.pago.name,
@@ -3325,7 +3574,6 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
         'amount': amount,
       });
     } else {
-      // Cria uma nova mensalidade se não existir (caso de pagamento adiantado)
       final newFeeRef = FirebaseFirestore.instance
           .collection('academies')
           .doc(widget.academyId)
@@ -3857,109 +4105,126 @@ class _ManagerSettingsPageState extends State<ManagerSettingsPage> {
       ),
       body: AppBackground(
         child: SafeArea(
-          child: ListView(
-            padding: const EdgeInsets.all(8.0),
+          child: Column(
             children: [
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.storefront_outlined),
-                  title: const Text("Perfil da Academia"),
-                  trailing:
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) =>
-                          AcademyProfilePage(academyId: widget.user.academyId),
-                    ));
-                  },
-                ),
-              ),
-              const Divider(),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.person_outline_rounded),
-                  title: const Text("Meu Perfil de Gerente"),
-                  trailing:
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => EditUserProfilePage(user: widget.user),
-                    ));
-                  },
-                ),
-              ),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.lock_reset_rounded),
-                  title: const Text("Alterar Senha"),
-                  trailing:
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const ChangePasswordPage(),
-                    ));
-                  },
-                ),
-              ),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.email_outlined),
-                  title: const Text("Alterar E-mail"),
-                  trailing:
-                      const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                  onTap: () {
-                    Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => const ChangeEmailPage(),
-                    ));
-                  },
-                ),
-              ),
-              if (!_isLoadingSupportNumber && _supportPhoneNumber != null)
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.support_agent_rounded,
-                        color: infoColor),
-                    title: const Text("Falar com o Suporte"),
-                    trailing:
-                        const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                    onTap: _launchWhatsApp,
-                  ),
-                ),
-              const SizedBox(height: 20),
-              Card(
-                child: ListTile(
-                  leading: const Icon(Icons.logout, color: errorColor),
-                  title: const Text("Sair (Deslogar)",
-                      style: TextStyle(color: errorColor)),
-                  onTap: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: const Text('Confirmar Saída'),
-                        content: const Text(
-                            'Tem certeza que deseja sair do aplicativo?'),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: const Text('Cancelar'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: const Text('Sair'),
-                          ),
-                        ],
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.all(8.0),
+                  children: [
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.storefront_outlined),
+                        title: const Text("Perfil da Academia"),
+                        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 16),
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => AcademyProfilePage(
+                                academyId: widget.user.academyId),
+                          ));
+                        },
                       ),
-                    );
-                    if (confirm == true && context.mounted) {
-                      await FirebaseAuth.instance.signOut();
-                      Navigator.of(context, rootNavigator: true)
-                          .pushAndRemoveUntil(
-                        MaterialPageRoute(
-                            builder: (context) => const AuthGate()),
-                        (route) => false,
-                      );
-                    }
-                  },
+                    ),
+                    const Divider(),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.person_outline_rounded),
+                        title: const Text("Meu Perfil de Gerente"),
+                        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 16),
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) =>
+                                EditUserProfilePage(user: widget.user),
+                          ));
+                        },
+                      ),
+                    ),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.lock_reset_rounded),
+                        title: const Text("Alterar Senha"),
+                        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 16),
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const ChangePasswordPage(),
+                          ));
+                        },
+                      ),
+                    ),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.email_outlined),
+                        title: const Text("Alterar E-mail"),
+                        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 16),
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const ChangeEmailPage(),
+                          ));
+                        },
+                      ),
+                    ),
+                    if (!_isLoadingSupportNumber && _supportPhoneNumber != null)
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.support_agent_rounded,
+                              color: infoColor),
+                          title: const Text("Falar com o Suporte"),
+                          trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                              size: 16),
+                          onTap: _launchWhatsApp,
+                        ),
+                      ),
+                    const SizedBox(height: 20),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.logout, color: errorColor),
+                        title: const Text("Sair (Deslogar)",
+                            style: TextStyle(color: errorColor)),
+                        onTap: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (context) => AlertDialog(
+                              title: const Text('Confirmar Saída'),
+                              content: const Text(
+                                  'Tem certeza que deseja sair do aplicativo?'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(false),
+                                  child: const Text('Cancelar'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(context).pop(true),
+                                  child: const Text('Sair'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm == true && context.mounted) {
+                            await FirebaseAuth.instance.signOut();
+                            Navigator.of(context, rootNavigator: true)
+                                .pushAndRemoveUntil(
+                              MaterialPageRoute(
+                                  builder: (context) => const AuthGate()),
+                              (route) => false,
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Text(
+                  "ID da sua academia: ${widget.user.academyId}",
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: textHint, fontSize: 12),
                 ),
               ),
             ],
@@ -3972,7 +4237,7 @@ class _ManagerSettingsPageState extends State<ManagerSettingsPage> {
 
 class GraduationDialog extends StatefulWidget {
   final String academyId;
-  final dynamic user; // Pode ser Aluno ou UserModel
+  final dynamic user;
   final UserModel currentUser;
 
   const GraduationDialog({
@@ -3987,7 +4252,6 @@ class GraduationDialog extends StatefulWidget {
 }
 
 class _GraduationDialogState extends State<GraduationDialog> {
-  // Lists of belts and degrees
   final List<String> _faixasList = [
     'Branca',
     'Cinza/Branca',
@@ -4009,7 +4273,6 @@ class _GraduationDialogState extends State<GraduationDialog> {
   ];
   List<int> _grausList = [];
 
-  // Selected values
   String? _selectedFaixa;
   int? _selectedGrau;
   DateTime _selectedDate = DateTime.now();
@@ -4023,7 +4286,6 @@ class _GraduationDialogState extends State<GraduationDialog> {
     _grausList = _getGrausForFaixa(_selectedFaixa);
   }
 
-  // Helper to get degrees for a given belt
   List<int> _getGrausForFaixa(String? faixa) {
     if (faixa == 'Preta') return List.generate(10, (i) => i + 1);
     if (faixa != null) return [1, 2, 3, 4];
