@@ -2,11 +2,15 @@
 // ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps, deprecated_member_use, unused_element, unused_import
 
 import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:collection/collection.dart';
@@ -595,7 +599,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
             context: context,
             builder: (_) => AdicionarAlunoDialog(
                 currentUser: widget.user,
-                onAlunoAdicionado: (novoAluno) async {
+                onAlunoAdicionado: (novoAluno, newImageFile) async {
                   try {
                     final studentCollection = FirebaseFirestore.instance
                         .collection('academies')
@@ -1785,14 +1789,14 @@ class _CreateStudentAccessDialogState extends State<CreateStudentAccessDialog> {
 }
 
 class AdicionarAlunoDialog extends StatefulWidget {
-  final Function(Aluno) onAlunoAdicionado;
+  final Function(Aluno, XFile?)? onAlunoAdicionado;
   final Aluno? alunoParaEditar;
   final String? academyId;
   final UserModel currentUser;
 
   const AdicionarAlunoDialog(
       {super.key,
-      required this.onAlunoAdicionado,
+      this.onAlunoAdicionado,
       this.alunoParaEditar,
       this.academyId,
       required this.currentUser});
@@ -1817,6 +1821,9 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
   String? selectedUnitName;
   List<DocumentSnapshot> units = [];
   bool isLoadingUnits = true;
+  XFile? _newProfileImageFile;
+  String? _currentProfileImageUrl;
+  bool _isUserDataLoading = true;
 
   final List<String> faixasList = [
     'Branca',
@@ -1848,24 +1855,45 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
     _fetchUnits();
     if (isEditing) {
       final aluno = widget.alunoParaEditar!;
-      nC.text = aluno.nome;
-      pC.text = aluno.peso.toString();
-      fS = aluno.faixa;
-      gS = aluno.graus;
-      phoneC.text = aluno.phoneNumber ?? '';
-      if (aluno.address != null) {
-        logradouroC.text = aluno.address!['logradouro'] ?? '';
-        numeroC.text = aluno.address!['numero'] ?? '';
-        bairroC.text = aluno.address!['bairro'] ?? '';
-        cidadeC.text = aluno.address!['cidade'] ?? '';
-        cepC.text = aluno.address!['cep'] ?? '';
+      _loadInitialData(aluno);
+    } else {
+      setState(() => _isUserDataLoading = false);
+    }
+  }
+
+  Future<void> _loadInitialData(Aluno aluno) async {
+    nC.text = aluno.nome;
+    pC.text = aluno.peso.toString();
+    fS = aluno.faixa;
+    gS = aluno.graus;
+    phoneC.text = aluno.phoneNumber ?? '';
+    if (aluno.address != null) {
+      logradouroC.text = aluno.address!['logradouro'] ?? '';
+      numeroC.text = aluno.address!['numero'] ?? '';
+      bairroC.text = aluno.address!['bairro'] ?? '';
+      cidadeC.text = aluno.address!['cidade'] ?? '';
+      cepC.text = aluno.address!['cep'] ?? '';
+    }
+    selectedUnitId = aluno.unitId;
+    selectedUnitName = aluno.unitName;
+    if (aluno.dataNascimento != null) {
+      dNascC.text = DateFormat('dd/MM/yyyy').format(aluno.dataNascimento!);
+    }
+    grausList = _getGrausForFaixa(fS);
+
+    if (aluno.userId != null) {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(aluno.userId!)
+          .get();
+      if (userDoc.exists && mounted) {
+        setState(() {
+          _currentProfileImageUrl = userDoc.data()?['profileImagePath'];
+        });
       }
-      selectedUnitId = aluno.unitId;
-      selectedUnitName = aluno.unitName;
-      if (aluno.dataNascimento != null) {
-        dNascC.text = DateFormat('dd/MM/yyyy').format(aluno.dataNascimento!);
-      }
-      grausList = _getGrausForFaixa(fS);
+    }
+    if (mounted) {
+      setState(() => _isUserDataLoading = false);
     }
   }
 
@@ -1909,6 +1937,17 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
     if (faixa == 'Preta') return List.generate(10, (i) => i + 1);
     if (faixa != null) return [1, 2, 3, 4];
     return [];
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery, imageQuality: 80, maxWidth: 600);
+    if (pickedFile != null) {
+      setState(() {
+        _newProfileImageFile = pickedFile;
+      });
+    }
   }
 
   Future<void> _deleteAluno(Aluno aluno) async {
@@ -1980,6 +2019,14 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
   @override
   Widget build(BuildContext context) {
     bool mostrarGrausDropdown = fS != null;
+    ImageProvider? backgroundImage;
+    if (_newProfileImageFile != null && !kIsWeb) {
+      backgroundImage = FileImage(File(_newProfileImageFile!.path));
+    } else if (_currentProfileImageUrl != null &&
+        _currentProfileImageUrl!.isNotEmpty) {
+      backgroundImage = NetworkImage(_currentProfileImageUrl!);
+    }
+
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
       title: Row(
@@ -1993,360 +2040,438 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
           ),
         ],
       ),
-      content: SingleChildScrollView(
-        child: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                  controller: nC,
-                  decoration: const InputDecoration(
-                      labelText: 'Nome',
-                      prefixIcon: Icon(Icons.person_add_alt_1_rounded)),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Nome inválido' : null),
-              const SizedBox(height: 16),
-              if (isLoadingUnits)
-                const Center(child: CircularProgressIndicator())
-              else
-                DropdownButtonFormField<String>(
-                  value: selectedUnitId,
-                  decoration: const InputDecoration(
-                    labelText: 'Unidade (Matriz/Filial)',
-                    prefixIcon: Icon(Icons.store_mall_directory_outlined),
-                  ),
-                  isExpanded: true,
-                  hint: const Text("Selecione a Unidade"),
-                  items: units.map((unit) {
-                    return DropdownMenuItem<String>(
-                      value: unit.id,
-                      child: Text(unit['name']),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      selectedUnitId = value;
-                      selectedUnitName =
-                          units.firstWhere((u) => u.id == value)['name'];
-                    });
-                  },
-                  validator: (v) => v == null ? 'Selecione uma unidade' : null,
-                ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: phoneC,
-                decoration: const InputDecoration(
-                  labelText: 'Telefone',
-                  prefixIcon: Icon(Icons.phone),
-                ),
-                keyboardType: TextInputType.phone,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  PhoneInputFormatter(),
-                ],
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: dNascC,
-                decoration: const InputDecoration(
-                  labelText: 'Data de Nascimento',
-                  hintText: 'DD/MM/AAAA',
-                  prefixIcon: Icon(Icons.cake_rounded),
-                  counterText: '',
-                ),
-                keyboardType: TextInputType.number,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  DateInputFormatter(),
-                ],
-                maxLength: 10,
-                validator: (v) {
-                  if (v == null || v.trim().isEmpty) {
-                    return null;
-                  }
-                  if (v.length != 10) {
-                    return 'Data incompleta.';
-                  }
-                  try {
-                    DateFormat('dd/MM/yyyy').parseStrict(v);
-                    return null;
-                  } catch (e) {
-                    return 'Data inválida.';
-                  }
-                },
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  value: fS,
-                  decoration: const InputDecoration(
-                      labelText: 'Faixa',
-                      prefixIcon: Icon(Icons.shield_outlined)),
-                  hint: const Text("Selecione a Faixa"),
-                  onChanged: (v) => setState(() {
-                        fS = v;
-                        grausList = _getGrausForFaixa(fS);
-                        gS = null;
-                      }),
-                  items: faixasList
-                      .map((v) => DropdownMenuItem<String>(
-                          value: v,
-                          child: Text(v, overflow: TextOverflow.ellipsis)))
-                      .toList(),
-                  validator: (v) => v == null ? 'Selecione uma faixa' : null),
-              if (mostrarGrausDropdown) ...[
-                const SizedBox(height: 16),
-                DropdownButtonFormField<int>(
-                    isExpanded: true,
-                    value: gS,
-                    decoration: const InputDecoration(
-                        isDense: true,
-                        labelText: 'Graus',
-                        prefixIcon: Icon(Icons.star_outline_rounded)),
-                    hint: const Text("Graus (opcional)"),
-                    onChanged: (v) => setState(() => gS = v),
-                    items: [
-                      const DropdownMenuItem<int>(
-                          value: null, child: Text("Nenhum")),
-                      ...grausList.map((v) => DropdownMenuItem<int>(
-                          value: v,
-                          child: Text('$vº Grau',
-                              overflow: TextOverflow.ellipsis)))
-                    ].toList())
-              ],
-              const SizedBox(height: 16),
-              TextFormField(
-                  controller: pC,
-                  decoration: const InputDecoration(
-                      labelText: 'Peso (kg)',
-                      prefixIcon: Icon(Icons.fitness_center_rounded)),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return 'Peso inválido';
-                    final x = double.tryParse(v.replaceAll(',', '.'));
-                    return (x == null || x <= 0)
-                        ? 'Peso inválido (deve ser > 0)'
-                        : null;
-                  }),
-              const SizedBox(height: 24),
-              Text("Endereço", style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: logradouroC,
-                decoration:
-                    const InputDecoration(labelText: 'Logradouro (Rua, Av...)'),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 2,
-                    child: TextFormField(
-                      controller: numeroC,
-                      decoration: const InputDecoration(labelText: 'Nº'),
+      content: _isUserDataLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isEditing && widget.alunoParaEditar!.userId != null)
+                      Center(
+                        child: Stack(
+                          children: [
+                            CircleAvatar(
+                              radius: 50,
+                              backgroundColor: primaryAccent.withOpacity(0.2),
+                              backgroundImage: backgroundImage,
+                              child: _newProfileImageFile != null && kIsWeb
+                                  ? ClipOval(
+                                      child: FutureBuilder<Uint8List>(
+                                        future:
+                                            _newProfileImageFile!.readAsBytes(),
+                                        builder: (context, snapshot) {
+                                          if (snapshot.hasData) {
+                                            return Image.memory(
+                                              snapshot.data!,
+                                              fit: BoxFit.cover,
+                                              width: 100,
+                                              height: 100,
+                                            );
+                                          }
+                                          return const CircularProgressIndicator();
+                                        },
+                                      ),
+                                    )
+                                  : backgroundImage == null
+                                      ? const Icon(Icons.person,
+                                          size: 50, color: primaryAccent)
+                                      : null,
+                            ),
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: CircleAvatar(
+                                radius: 18,
+                                backgroundColor: Theme.of(context).cardColor,
+                                child: IconButton(
+                                  icon: const Icon(Icons.camera_alt_outlined,
+                                      size: 18),
+                                  onPressed: _pickImage,
+                                  tooltip: 'Alterar foto',
+                                ),
+                              ),
+                            )
+                          ],
+                        ),
+                      ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                        controller: nC,
+                        decoration: const InputDecoration(
+                            labelText: 'Nome',
+                            prefixIcon: Icon(Icons.person_add_alt_1_rounded)),
+                        validator: (v) => (v == null || v.trim().isEmpty)
+                            ? 'Nome inválido'
+                            : null),
+                    const SizedBox(height: 16),
+                    if (isLoadingUnits)
+                      const Center(child: CircularProgressIndicator())
+                    else
+                      DropdownButtonFormField<String>(
+                        value: selectedUnitId,
+                        decoration: const InputDecoration(
+                          labelText: 'Unidade (Matriz/Filial)',
+                          prefixIcon: Icon(Icons.store_mall_directory_outlined),
+                        ),
+                        isExpanded: true,
+                        hint: const Text("Selecione a Unidade"),
+                        items: units.map((unit) {
+                          return DropdownMenuItem<String>(
+                            value: unit.id,
+                            child: Text(unit['name']),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          setState(() {
+                            selectedUnitId = value;
+                            selectedUnitName =
+                                units.firstWhere((u) => u.id == value)['name'];
+                          });
+                        },
+                        validator: (v) =>
+                            v == null ? 'Selecione uma unidade' : null,
+                      ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: phoneC,
+                      decoration: const InputDecoration(
+                        labelText: 'Telefone',
+                        prefixIcon: Icon(Icons.phone),
+                      ),
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        PhoneInputFormatter(),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 3,
-                    child: TextFormField(
-                      controller: bairroC,
-                      decoration: const InputDecoration(labelText: 'Bairro'),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: TextFormField(
-                      controller: cidadeC,
-                      decoration: const InputDecoration(labelText: 'Cidade'),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    flex: 2,
-                    child: TextFormField(
-                      controller: cepC,
-                      decoration: const InputDecoration(labelText: 'CEP'),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: dNascC,
+                      decoration: const InputDecoration(
+                        labelText: 'Data de Nascimento',
+                        hintText: 'DD/MM/AAAA',
+                        prefixIcon: Icon(Icons.cake_rounded),
+                        counterText: '',
+                      ),
                       keyboardType: TextInputType.number,
                       inputFormatters: [
                         FilteringTextInputFormatter.digitsOnly,
-                        CepInputFormatter(),
+                        DateInputFormatter(),
+                      ],
+                      maxLength: 10,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return null;
+                        }
+                        if (v.length != 10) {
+                          return 'Data incompleta.';
+                        }
+                        try {
+                          DateFormat('dd/MM/yyyy').parseStrict(v);
+                          return null;
+                        } catch (e) {
+                          return 'Data inválida.';
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: fS,
+                        decoration: const InputDecoration(
+                            labelText: 'Faixa',
+                            prefixIcon: Icon(Icons.shield_outlined)),
+                        hint: const Text("Selecione a Faixa"),
+                        onChanged: (v) => setState(() {
+                              fS = v;
+                              grausList = _getGrausForFaixa(fS);
+                              gS = null;
+                            }),
+                        items: faixasList
+                            .map((v) => DropdownMenuItem<String>(
+                                value: v,
+                                child:
+                                    Text(v, overflow: TextOverflow.ellipsis)))
+                            .toList(),
+                        validator: (v) =>
+                            v == null ? 'Selecione uma faixa' : null),
+                    if (mostrarGrausDropdown) ...[
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<int>(
+                          isExpanded: true,
+                          value: gS,
+                          decoration: const InputDecoration(
+                              isDense: true,
+                              labelText: 'Graus',
+                              prefixIcon: Icon(Icons.star_outline_rounded)),
+                          hint: const Text("Graus (opcional)"),
+                          onChanged: (v) => setState(() => gS = v),
+                          items: [
+                            const DropdownMenuItem<int>(
+                                value: null, child: Text("Nenhum")),
+                            ...grausList.map((v) => DropdownMenuItem<int>(
+                                value: v,
+                                child: Text('$vº Grau',
+                                    overflow: TextOverflow.ellipsis)))
+                          ].toList())
+                    ],
+                    const SizedBox(height: 16),
+                    TextFormField(
+                        controller: pC,
+                        decoration: const InputDecoration(
+                            labelText: 'Peso (kg)',
+                            prefixIcon: Icon(Icons.fitness_center_rounded)),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return 'Peso inválido';
+                          final x = double.tryParse(v.replaceAll(',', '.'));
+                          return (x == null || x <= 0)
+                              ? 'Peso inválido (deve ser > 0)'
+                              : null;
+                        }),
+                    const SizedBox(height: 24),
+                    Text("Endereço",
+                        style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: logradouroC,
+                      decoration: const InputDecoration(
+                          labelText: 'Logradouro (Rua, Av...)'),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: numeroC,
+                            decoration: const InputDecoration(labelText: 'Nº'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          flex: 3,
+                          child: TextFormField(
+                            controller: bairroC,
+                            decoration:
+                                const InputDecoration(labelText: 'Bairro'),
+                          ),
+                        ),
                       ],
                     ),
-                  ),
-                ],
-              ),
-              if (isEditing && widget.alunoParaEditar?.userId == null) ...[
-                const SizedBox(height: 24),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.login_rounded, color: infoColor),
-                  label: const Text("Criar Acesso de Login",
-                      style: TextStyle(color: infoColor)),
-                  onPressed: () async {
-                    final currentContext = context;
-                    Navigator.of(currentContext).pop();
-                    showCreateAccessDialog(
-                        currentContext,
-                        widget.alunoParaEditar!,
-                        widget.academyId!,
-                        widget.currentUser);
-                  },
-                )
-              ],
-              if (isEditing) ...[
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    if (widget.alunoParaEditar?.userId != null &&
-                        widget.currentUser.role == UserRole.manager)
-                      Expanded(
-                        child: TextButton.icon(
-                          icon: const Icon(Icons.school_rounded, size: 18),
-                          label: const Text("Promover"),
-                          style: TextButton.styleFrom(
-                              foregroundColor: primaryAccent,
-                              textStyle: const TextStyle(
-                                  fontSize: 14)), // Reduzindo a fonte
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                            showDialog(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('Confirmar Promoção'),
-                                content: Text(
-                                    'Você tem certeza que deseja promover ${widget.alunoParaEditar!.nome} para Professor?'),
-                                actions: [
-                                  TextButton(
-                                    child: const Text('Cancelar'),
-                                    onPressed: () => Navigator.of(ctx).pop(),
-                                  ),
-                                  ElevatedButton(
-                                    child: const Text('Promover'),
-                                    onPressed: () {
-                                      Navigator.of(ctx).pop();
-                                      UserManagementService.promoteToTeacher(
-                                        context,
-                                        academyId: widget.academyId!,
-                                        aluno: widget.alunoParaEditar!,
-                                        manager: widget.currentUser,
-                                      );
-                                    },
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextFormField(
+                            controller: cidadeC,
+                            decoration:
+                                const InputDecoration(labelText: 'Cidade'),
+                          ),
                         ),
-                      ),
-                    if (widget.alunoParaEditar?.userId != null &&
-                        widget.currentUser.role == UserRole.manager)
-                      const SizedBox(width: 8),
-                    Expanded(
-                      child: TextButton.icon(
-                        icon: const Icon(Icons.military_tech_rounded, size: 18),
-                        label: const Text("Graduar"),
-                        style: TextButton.styleFrom(
-                            foregroundColor: successColor,
-                            textStyle: const TextStyle(
-                                fontSize: 14)), // Reduzindo a fonte
-                        onPressed: () {
-                          Navigator.of(context).pop(); // Close current dialog
-                          showDialog(
-                            context: context,
-                            builder: (_) => GraduationDialog(
-                              academyId: widget.academyId!,
-                              user: widget.alunoParaEditar!,
-                              currentUser: widget.currentUser,
-                            ),
-                          );
+                        const SizedBox(width: 16),
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: cepC,
+                            decoration: const InputDecoration(labelText: 'CEP'),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              CepInputFormatter(),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (isEditing &&
+                        widget.alunoParaEditar?.userId == null) ...[
+                      const SizedBox(height: 24),
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.login_rounded, color: infoColor),
+                        label: const Text("Criar Acesso de Login",
+                            style: TextStyle(color: infoColor)),
+                        onPressed: () async {
+                          final currentContext = context;
+                          Navigator.of(currentContext).pop();
+                          showCreateAccessDialog(
+                              currentContext,
+                              widget.alunoParaEditar!,
+                              widget.academyId!,
+                              widget.currentUser);
                         },
+                      )
+                    ],
+                    if (isEditing) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (widget.alunoParaEditar?.userId != null &&
+                              widget.currentUser.role == UserRole.manager)
+                            Expanded(
+                              child: TextButton.icon(
+                                icon:
+                                    const Icon(Icons.school_rounded, size: 18),
+                                label: const Text("Promover"),
+                                style: TextButton.styleFrom(
+                                    foregroundColor: primaryAccent,
+                                    textStyle: const TextStyle(
+                                        fontSize: 14)), // Reduzindo a fonte
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                  showDialog(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Confirmar Promoção'),
+                                      content: Text(
+                                          'Você tem certeza que deseja promover ${widget.alunoParaEditar!.nome} para Professor?'),
+                                      actions: [
+                                        TextButton(
+                                          child: const Text('Cancelar'),
+                                          onPressed: () =>
+                                              Navigator.of(ctx).pop(),
+                                        ),
+                                        ElevatedButton(
+                                          child: const Text('Promover'),
+                                          onPressed: () {
+                                            Navigator.of(ctx).pop();
+                                            UserManagementService
+                                                .promoteToTeacher(
+                                              context,
+                                              academyId: widget.academyId!,
+                                              aluno: widget.alunoParaEditar!,
+                                              manager: widget.currentUser,
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          if (widget.alunoParaEditar?.userId != null &&
+                              widget.currentUser.role == UserRole.manager)
+                            const SizedBox(width: 8),
+                          Expanded(
+                            child: TextButton.icon(
+                              icon: const Icon(Icons.military_tech_rounded,
+                                  size: 18),
+                              label: const Text("Graduar"),
+                              style: TextButton.styleFrom(
+                                  foregroundColor: successColor,
+                                  textStyle: const TextStyle(
+                                      fontSize: 14)), // Reduzindo a fonte
+                              onPressed: () {
+                                Navigator.of(context)
+                                    .pop(); // Close current dialog
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => GraduationDialog(
+                                    academyId: widget.academyId!,
+                                    user: widget.alunoParaEditar!,
+                                    currentUser: widget.currentUser,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
+                    ],
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        if (isEditing &&
+                            widget.currentUser.role == UserRole.manager)
+                          TextButton.icon(
+                            icon: const Icon(Icons.delete_outline_rounded,
+                                color: errorColor),
+                            label: const Text('Excluir',
+                                style: TextStyle(color: errorColor)),
+                            onPressed: () =>
+                                _confirmDeleteAluno(widget.alunoParaEditar!),
+                          )
+                        else
+                          const SizedBox(),
+                        ElevatedButton.icon(
+                            icon: const Icon(Icons.save_outlined, size: 18),
+                            label: Text(isEditing ? 'Salvar' : 'Adicionar'),
+                            onPressed: () {
+                              if (formKey.currentState!.validate()) {
+                                if (isEditing) {
+                                  // Lógica de salvar edição movida para cá
+                                  _saveEditedAluno();
+                                } else {
+                                  // Lógica original de adicionar
+                                  _addNewAluno();
+                                }
+                              }
+                            }),
+                      ],
                     ),
                   ],
                 ),
-              ],
-              const SizedBox(height: 24),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (isEditing && widget.currentUser.role == UserRole.manager)
-                    TextButton.icon(
-                      icon: const Icon(Icons.delete_outline_rounded,
-                          color: errorColor),
-                      label: const Text('Excluir',
-                          style: TextStyle(color: errorColor)),
-                      onPressed: () =>
-                          _confirmDeleteAluno(widget.alunoParaEditar!),
-                    )
-                  else
-                    const SizedBox(),
-                  ElevatedButton.icon(
-                      icon: const Icon(Icons.save_outlined, size: 18),
-                      label: Text(isEditing ? 'Salvar' : 'Adicionar'),
-                      onPressed: () {
-                        if (formKey.currentState!.validate()) {
-                          DateTime? dataNascimento;
-                          if (dNascC.text.isNotEmpty) {
-                            try {
-                              dataNascimento = DateFormat('dd/MM/yyyy')
-                                  .parseStrict(dNascC.text);
-                            } catch (e) {
-                              showBjjSnackBar(
-                                  context, 'Formato de data inválido.',
-                                  type: 'error');
-                              return;
-                            }
-                          }
-
-                          final double peso =
-                              double.parse(pC.text.replaceAll(',', '.'));
-                          final alunoResult = Aluno(
-                              id: isEditing ? widget.alunoParaEditar!.id : '',
-                              nome: nC.text.trim().capitalizeWords(),
-                              faixa: fS!,
-                              peso: peso,
-                              graus: gS,
-                              dataNascimento: dataNascimento,
-                              phoneNumber: phoneC.text.trim(),
-                              address: {
-                                'logradouro': logradouroC.text.trim(),
-                                'numero': numeroC.text.trim(),
-                                'bairro': bairroC.text.trim(),
-                                'cidade': cidadeC.text.trim(),
-                                'cep': cepC.text.trim(),
-                              },
-                              userId: isEditing
-                                  ? widget.alunoParaEditar!.userId
-                                  : null,
-                              unitId: selectedUnitId,
-                              unitName: selectedUnitName,
-                              createdByUid: isEditing
-                                  ? widget.alunoParaEditar!.createdByUid
-                                  : widget.currentUser.uid,
-                              createdByName: isEditing
-                                  ? widget.alunoParaEditar!.createdByName
-                                  : widget.currentUser.name,
-                              lastUpdatedByUid: widget.currentUser.uid,
-                              lastUpdatedByName: widget.currentUser.name);
-
-                          widget.onAlunoAdicionado(alunoResult);
-                          Navigator.of(context).pop();
-                        }
-                      }),
-                ],
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
+    );
+  }
+
+  void _addNewAluno() {
+    final alunoResult = _buildAlunoFromForm();
+    widget.onAlunoAdicionado?.call(alunoResult, _newProfileImageFile);
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _saveEditedAluno() async {
+    final alunoAtualizado = _buildAlunoFromForm();
+    widget.onAlunoAdicionado?.call(alunoAtualizado, _newProfileImageFile);
+  }
+
+  Aluno _buildAlunoFromForm() {
+    DateTime? dataNascimento;
+    if (dNascC.text.isNotEmpty) {
+      try {
+        dataNascimento = DateFormat('dd/MM/yyyy').parseStrict(dNascC.text);
+      } catch (e) {
+        showBjjSnackBar(context, 'Formato de data inválido.', type: 'error');
+        // Retorna um objeto vazio para não quebrar, a validação deve pegar
+        return Aluno.novo(nome: '', faixa: '', peso: 0);
+      }
+    }
+    final double peso = double.parse(pC.text.replaceAll(',', '.'));
+    return Aluno(
+      id: isEditing ? widget.alunoParaEditar!.id : '',
+      nome: nC.text.trim().capitalizeWords(),
+      faixa: fS!,
+      peso: peso,
+      graus: gS,
+      dataNascimento: dataNascimento,
+      phoneNumber: phoneC.text.trim(),
+      address: {
+        'logradouro': logradouroC.text.trim(),
+        'numero': numeroC.text.trim(),
+        'bairro': bairroC.text.trim(),
+        'cidade': cidadeC.text.trim(),
+        'cep': cepC.text.trim(),
+      },
+      userId: isEditing ? widget.alunoParaEditar!.userId : null,
+      unitId: selectedUnitId,
+      unitName: selectedUnitName,
+      createdByUid: isEditing
+          ? widget.alunoParaEditar!.createdByUid
+          : widget.currentUser.uid,
+      createdByName: isEditing
+          ? widget.alunoParaEditar!.createdByName
+          : widget.currentUser.name,
+      lastUpdatedByUid: widget.currentUser.uid,
+      lastUpdatedByName: widget.currentUser.name,
     );
   }
 }
@@ -2376,6 +2501,8 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
   List<DocumentSnapshot> units = [];
   bool isLoadingUnits = true;
   bool _isLoading = false;
+  XFile? _newProfileImageFile;
+  String? _currentProfileImageUrl;
 
   final List<String> _faixasList = [
     'Branca',
@@ -2409,6 +2536,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
     _graus = widget.professor.graus;
     selectedUnitId = widget.professor.unitId;
     selectedUnitName = widget.professor.unitName;
+    _currentProfileImageUrl = widget.professor.profileImagePath;
     if (_faixa != null) {
       _grausList = _getGrausForFaixa(_faixa);
     }
@@ -2433,6 +2561,17 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
         setState(() => isLoadingUnits = false);
         showBjjSnackBar(context, 'Erro ao carregar unidades.', type: 'error');
       }
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery, imageQuality: 80, maxWidth: 600);
+    if (pickedFile != null) {
+      setState(() {
+        _newProfileImageFile = pickedFile;
+      });
     }
   }
 
@@ -2500,6 +2639,20 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
+    String? newImageUrl = _currentProfileImageUrl;
+    if (_newProfileImageFile != null) {
+      final ref = FirebaseStorage.instance
+          .ref()
+          .child('profile_images')
+          .child('${widget.professor.uid}.jpg');
+      if (kIsWeb) {
+        await ref.putData(await _newProfileImageFile!.readAsBytes());
+      } else {
+        await ref.putFile(File(_newProfileImageFile!.path));
+      }
+      newImageUrl = await ref.getDownloadURL();
+    }
+
     final pesoStr = _pesoController.text.replaceAll(',', '.');
     final Map<String, dynamic> updatedData = {
       'name': _nameController.text.trim().capitalizeWords(),
@@ -2508,6 +2661,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
       'peso': pesoStr.isNotEmpty ? double.tryParse(pesoStr) : null,
       'unitId': selectedUnitId,
       'unitName': selectedUnitName,
+      'profileImagePath': newImageUrl,
       'lastUpdatedByUid': widget.manager.uid,
       'lastUpdatedByName': widget.manager.name,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -2546,6 +2700,13 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
   @override
   Widget build(BuildContext context) {
     final bool isSelf = widget.professor.uid == widget.manager.uid;
+    ImageProvider? backgroundImage;
+    if (_newProfileImageFile != null && !kIsWeb) {
+      backgroundImage = FileImage(File(_newProfileImageFile!.path));
+    } else if (_currentProfileImageUrl != null &&
+        _currentProfileImageUrl!.isNotEmpty) {
+      backgroundImage = NetworkImage(_currentProfileImageUrl!);
+    }
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
       title: Row(
@@ -2566,6 +2727,52 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Center(
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 50,
+                      backgroundColor: primaryAccent.withOpacity(0.2),
+                      backgroundImage: backgroundImage,
+                      child: _newProfileImageFile != null && kIsWeb
+                          ? ClipOval(
+                              child: FutureBuilder<Uint8List>(
+                                future: _newProfileImageFile!.readAsBytes(),
+                                builder: (context, snapshot) {
+                                  if (snapshot.hasData) {
+                                    return Image.memory(
+                                      snapshot.data!,
+                                      fit: BoxFit.cover,
+                                      width: 100,
+                                      height: 100,
+                                    );
+                                  }
+                                  return const CircularProgressIndicator();
+                                },
+                              ),
+                            )
+                          : backgroundImage == null
+                              ? const Icon(Icons.person,
+                                  size: 50, color: primaryAccent)
+                              : null,
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: CircleAvatar(
+                        radius: 18,
+                        backgroundColor: Theme.of(context).cardColor,
+                        child: IconButton(
+                          icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                          onPressed: _pickImage,
+                          tooltip: 'Alterar foto',
+                        ),
+                      ),
+                    )
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(

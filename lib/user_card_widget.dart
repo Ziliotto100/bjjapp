@@ -1,7 +1,13 @@
 // lib/user_card_widget.dart
+// ignore_for_file: unused_import
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'models.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
@@ -216,9 +222,15 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
       alunoParaEditar: aluno,
       academyId: academyId,
       currentUser: currentUser,
-      onAlunoAdicionado: (alunoAtualizado) async {
+      onAlunoAdicionado: (alunoAtualizado, newImageFile) async {
         try {
-          // >>>>> INÍCIO DA CORREÇÃO <<<<<
+          final batch = FirebaseFirestore.instance.batch();
+          final studentRef = FirebaseFirestore.instance
+              .collection('academies')
+              .doc(academyId)
+              .collection('students')
+              .doc(alunoAtualizado.id);
+
           final dataToUpdate = {
             'nome': alunoAtualizado.nome,
             'faixa': alunoAtualizado.faixa,
@@ -236,29 +248,40 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
             'updatedAt': FieldValue.serverTimestamp(),
           };
 
-          await FirebaseFirestore.instance
-              .collection('academies')
-              .doc(academyId)
-              .collection('students')
-              .doc(alunoAtualizado.id)
-              .update(dataToUpdate);
+          batch.update(studentRef, dataToUpdate);
 
           if (alunoAtualizado.userId != null) {
-            await FirebaseFirestore.instance
+            final userRef = FirebaseFirestore.instance
                 .collection('users')
-                .doc(alunoAtualizado.userId!)
-                .update({
+                .doc(alunoAtualizado.userId!);
+
+            String? newImageUrl;
+            if (newImageFile != null) {
+              final ref = FirebaseStorage.instance
+                  .ref()
+                  .child('profile_images')
+                  .child('${alunoAtualizado.userId}.jpg');
+              if (kIsWeb) {
+                await ref.putData(await newImageFile.readAsBytes());
+              } else {
+                await ref.putFile(File(newImageFile.path));
+              }
+              newImageUrl = await ref.getDownloadURL();
+            }
+
+            batch.update(userRef, {
               'name': alunoAtualizado.nome,
               'phoneNumber': alunoAtualizado.phoneNumber,
               'address': alunoAtualizado.address,
               'lastUpdatedByUid': currentUser.uid,
               'lastUpdatedByName': currentUser.name,
               'updatedAt': FieldValue.serverTimestamp(),
+              if (newImageUrl != null) 'profileImagePath': newImageUrl,
             });
           }
-          // >>>>> FIM DA CORREÇÃO <<<<<
 
-          // **LOG DE AUDITORIA PARA EDIÇÃO**
+          await batch.commit();
+
           await _createAuditLog(
             academyId: academyId,
             actor: currentUser,
@@ -272,6 +295,7 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
           if (context.mounted) {
             showBjjSnackBar(context, 'Aluno atualizado com sucesso!',
                 type: 'success');
+            Navigator.of(context).pop();
           }
         } catch (e) {
           if (context.mounted) {

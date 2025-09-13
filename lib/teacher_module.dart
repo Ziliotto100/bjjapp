@@ -154,7 +154,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
 
       _settingsSubscription =
           _navService.getTabSettingsStream().listen((settingsDoc) {
-        _configureNavigation(settingsDoc);
+        if (mounted) {
+          _configureNavigation(settingsDoc);
+        }
       });
     } catch (e) {
       if (mounted) {
@@ -446,7 +448,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             builder: (_) => AdicionarAlunoDialog(
                 currentUser: widget.user,
                 academyId: widget.user.academyId,
-                onAlunoAdicionado: (novoAluno) async {
+                onAlunoAdicionado: (novoAluno, newImageFile) async {
                   try {
                     final studentCollection = FirebaseFirestore.instance
                         .collection('academies')
