@@ -21,6 +21,7 @@ import 'update_checker.dart';
 import 'super_admin_module.dart';
 import 'dev_quick_login.dart';
 import 'tutorials_module.dart'; // NOVO IMPORT
+import 'notification_service.dart';
 
 // --- CLASSE DE CONFIGURAÇÃO ---
 class EnvConfig {
@@ -165,6 +166,15 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
+  void _initializeNotifications() {
+    if (kIsWeb) {
+      // Inicia o serviço e, em seguida, salva o token
+      NotificationService().initNotifications().then((_) {
+        NotificationService().saveTokenForCurrentUser();
+      });
+    }
+  }
+
   Widget _buildUserFlow(String uid, {required bool isImpersonating}) {
     const loadingScaffold = Scaffold(
         body: AppBackground(child: Center(child: CircularProgressIndicator())));
@@ -184,6 +194,8 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
+
+        _initializeNotifications();
 
         // --- CHAMADA DO DIÁLOGO DE BOAS-VINDAS ---
         if (!isImpersonating) {
@@ -506,7 +518,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  // --- NOVO MÉTODO PARA MOSTRAR INSTRUÇÕES DE INSTALAÇÃO ---
   void _showInstallInstructionsDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -585,7 +596,6 @@ class _LoginPageState extends State<LoginPage> {
                           padding: const EdgeInsets.symmetric(vertical: 16)),
                       child: const Text('ENTRAR'),
                     ),
-                  // --- NOVO BOTÃO DE INSTALAÇÃO (APENAS PARA WEB) ---
                   if (kIsWeb)
                     Padding(
                       padding: const EdgeInsets.only(top: 16.0),

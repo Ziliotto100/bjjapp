@@ -75,6 +75,7 @@ class UserModel {
 
   // NOVO CAMPO PARA O POP-UP DE BOAS-VINDAS
   final bool hasSeenWelcomePopup;
+  final List<String>? fcmTokens; // NOVO CAMPO ADICIONADO
 
   UserModel({
     required this.uid,
@@ -104,6 +105,7 @@ class UserModel {
     this.lastUpdatedByUid,
     this.lastUpdatedByName,
     this.hasSeenWelcomePopup = false, // NOVO CAMPO
+    this.fcmTokens, // NOVO PARÂMETRO ADICIONADO
   });
 
   int? get idade {
@@ -174,6 +176,9 @@ class UserModel {
       lastUpdatedByUid: data['lastUpdatedByUid'],
       lastUpdatedByName: data['lastUpdatedByName'],
       hasSeenWelcomePopup: data['hasSeenWelcomePopup'] ?? false, // NOVO CAMPO
+      fcmTokens: data['fcmTokens'] != null
+          ? List<String>.from(data['fcmTokens'])
+          : null, // NOVO CAMPO
     );
   }
 }
