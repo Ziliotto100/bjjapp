@@ -8,7 +8,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:io';
-import 'package:flutter/services.dart'; // IMPORT ADICIONADO AQUI
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'models.dart';
@@ -20,7 +20,7 @@ import 'student_module.dart';
 import 'update_checker.dart';
 import 'super_admin_module.dart';
 import 'dev_quick_login.dart';
-import 'tutorials_module.dart'; // NOVO IMPORT
+import 'tutorials_module.dart';
 import 'notification_service.dart';
 
 // --- CLASSE DE CONFIGURAÇÃO ---
@@ -166,13 +166,12 @@ class _AuthGateState extends State<AuthGate> {
     }
   }
 
+  // <<< ALTERAÇÃO AQUI >>>
+  // Removemos o 'if (kIsWeb)' para que as notificações sejam inicializadas em todas as plataformas.
   void _initializeNotifications() {
-    if (kIsWeb) {
-      // Inicia o serviço e, em seguida, salva o token
-      NotificationService().initNotifications().then((_) {
-        NotificationService().saveTokenForCurrentUser();
-      });
-    }
+    NotificationService().initNotifications().then((_) {
+      NotificationService().saveTokenForCurrentUser();
+    });
   }
 
   Widget _buildUserFlow(String uid, {required bool isImpersonating}) {
