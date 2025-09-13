@@ -506,6 +506,26 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  // --- NOVO MÉTODO PARA MOSTRAR INSTRUÇÕES DE INSTALAÇÃO ---
+  void _showInstallInstructionsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Instalar Aplicativo"),
+        content: const Text(
+          "Para uma melhor experiência, você pode adicionar este aplicativo à sua tela inicial.\n\n"
+          "No seu navegador, procure pelo botão de menu (geralmente três pontos ou uma seta) e selecione a opção 'Instalar aplicativo' ou 'Adicionar à tela inicial'.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text("OK"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -564,6 +584,22 @@ class _LoginPageState extends State<LoginPage> {
                       style: ElevatedButton.styleFrom(
                           padding: const EdgeInsets.symmetric(vertical: 16)),
                       child: const Text('ENTRAR'),
+                    ),
+                  // --- NOVO BOTÃO DE INSTALAÇÃO (APENAS PARA WEB) ---
+                  if (kIsWeb)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.download_for_offline_outlined),
+                        label: const Text('Instalar App no Dispositivo'),
+                        onPressed: () =>
+                            _showInstallInstructionsDialog(context),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: textHint,
+                          side: const BorderSide(color: borderNormal),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
                     ),
                   TextButton(
                     onPressed: _resetPassword,

@@ -2,6 +2,7 @@
 // ignore_for_file: unused_import, unnecessary_to_list_in_spreads
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -12,7 +13,7 @@ import 'app_theme.dart';
 import 'auth_gate.dart';
 import 'tutorials_module.dart'; // CORREÇÃO: Import que estava faltando
 
-class AppDrawer extends StatelessWidget {
+class AppDrawer extends StatefulWidget {
   final UserModel user;
   final List<AppModule> drawerModules;
   final List<AppModule> allPageModules;
@@ -27,8 +28,40 @@ class AppDrawer extends StatelessWidget {
   });
 
   @override
+  State<AppDrawer> createState() => _AppDrawerState();
+}
+
+class _AppDrawerState extends State<AppDrawer> {
+  String? _academyLogoUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchAcademyLogo();
+  }
+
+  Future<void> _fetchAcademyLogo() async {
+    if (widget.user.academyId.isNotEmpty) {
+      try {
+        final doc = await FirebaseFirestore.instance
+            .collection('academies')
+            .doc(widget.user.academyId)
+            .get();
+        if (doc.exists && mounted) {
+          setState(() {
+            _academyLogoUrl = doc.data()?['logoUrl'];
+          });
+        }
+      } catch (e) {
+        debugPrint("Error fetching academy logo: $e");
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
-    List<AppModule> sortedDrawerModules = _getSortedModules(drawerModules);
+    List<AppModule> sortedDrawerModules =
+        _getSortedModules(widget.drawerModules);
 
     return Drawer(
       backgroundColor: darkScaffoldBackground,
@@ -37,7 +70,6 @@ class AppDrawer extends StatelessWidget {
         children: [
           _buildDrawerHeader(context),
           const Divider(color: borderNormal),
-
           ...sortedDrawerModules.map((module) {
             if (module.subModules != null && module.subModules!.isNotEmpty) {
               return ExpansionTile(
@@ -52,7 +84,7 @@ class AppDrawer extends StatelessWidget {
                     contentPadding: const EdgeInsets.only(left: 32.0),
                     onTap: () {
                       Navigator.pop(context);
-                      onSelectItem(subModule.id);
+                      widget.onSelectItem(subModule.id);
                     },
                   );
                 }).toList(),
@@ -65,13 +97,11 @@ class AppDrawer extends StatelessWidget {
                   style: const TextStyle(color: textSecondary)),
               onTap: () {
                 Navigator.pop(context);
-                onSelectItem(module.id);
+                widget.onSelectItem(module.id);
               },
             );
           }).toList(),
-
           const Divider(color: borderNormal),
-          // --- NOVA SEÇÃO DE AJUDA ---
           ListTile(
             leading:
                 const Icon(Icons.help_outline_rounded, color: primaryAccent),
@@ -80,11 +110,10 @@ class AppDrawer extends StatelessWidget {
             onTap: () {
               Navigator.pop(context);
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => TutorialsPage(user: user),
+                builder: (_) => TutorialsPage(user: widget.user),
               ));
             },
           ),
-          // --- FIM DA SEÇÃO DE AJUDA ---
           ListTile(
             leading: const Icon(Icons.tune_rounded, color: primaryAccent),
             title: const Text('Personalizar Abas',
@@ -92,11 +121,10 @@ class AppDrawer extends StatelessWidget {
             onTap: () {
               Navigator.pop(context);
               Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => CustomizeTabsPage(user: user),
+                builder: (_) => CustomizeTabsPage(user: widget.user),
               ));
             },
           ),
-          // --- BOTÃO SAIR REMOVIDO DAQUI ---
         ],
       ),
     );
@@ -131,22 +159,20 @@ class AppDrawer extends StatelessWidget {
   }
 
   Widget _buildDrawerHeader(BuildContext context) {
-    final profileImage = user.profileImagePath;
     return UserAccountsDrawerHeader(
-      accountName:
-          Text(user.name, style: Theme.of(context).textTheme.titleMedium),
-      accountEmail: Text(user.email, style: const TextStyle(color: textHint)),
+      accountName: Text(widget.user.name,
+          style: Theme.of(context).textTheme.titleMedium),
+      accountEmail:
+          Text(widget.user.email, style: const TextStyle(color: textHint)),
       currentAccountPicture: CircleAvatar(
-        backgroundColor: primaryAccent,
-        backgroundImage: (profileImage != null && profileImage.isNotEmpty)
-            ? CachedNetworkImageProvider(profileImage)
-            : null,
-        child: (profileImage == null || profileImage.isEmpty)
-            ? Text(
-                user.name.isNotEmpty ? user.name[0].toUpperCase() : 'U',
-                style: const TextStyle(
-                    fontSize: 40.0, color: primaryAccentForeground),
-              )
+        radius: 30,
+        backgroundColor: Colors.white,
+        backgroundImage:
+            (_academyLogoUrl != null && _academyLogoUrl!.isNotEmpty)
+                ? CachedNetworkImageProvider(_academyLogoUrl!)
+                : null,
+        child: (_academyLogoUrl == null || _academyLogoUrl!.isEmpty)
+            ? const Icon(Icons.business, color: textHint, size: 30)
             : null,
       ),
       decoration: const BoxDecoration(
