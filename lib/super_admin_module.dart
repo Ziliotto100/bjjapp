@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'admin_dashboard_module.dart';
 import 'admin_financial_page.dart';
+import 'admin_notifications_page.dart'; // <<< NOVO IMPORT
 import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
@@ -28,20 +29,23 @@ class SuperAdminPage extends StatefulWidget {
 class _SuperAdminPageState extends State<SuperAdminPage> {
   int _currentIndex = 0;
 
+  // <<< ALTERAÇÃO AQUI >>>
   final List<Widget> _pages = [
     const AdminDashboardPage(),
     const AdminFinancialPage(),
     const AcademyListPage(),
+    const AdminNotificationsPage(), // <<< PÁGINA ADICIONADA
     const VideoAuditPage(),
-    const TutorialsAdminPage(), // NOVA PÁGINA
+    const TutorialsAdminPage(),
   ];
 
   final List<String> _pageTitles = [
     'Dashboard',
     'Financeiro',
     'Academias',
+    'Comunicados', // <<< TÍTULO ADICIONADO
     'Vídeos',
-    'Tutoriais', // NOVO TÍTULO
+    'Tutoriais',
   ];
 
   @override
@@ -77,6 +81,7 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
             _currentIndex = index;
           });
         },
+        // <<< ALTERAÇÃO AQUI >>>
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_rounded),
@@ -91,12 +96,17 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
             label: 'Academias',
           ),
           BottomNavigationBarItem(
+            // <<< ITEM ADICIONADO
+            icon: Icon(Icons.campaign_rounded),
+            label: 'Comunicados',
+          ),
+          BottomNavigationBarItem(
             icon: Icon(Icons.video_library_outlined),
             label: 'Vídeos',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.help_outline_rounded), // NOVO ÍCONE
-            label: 'Tutoriais', // NOVO LABEL
+            icon: Icon(Icons.help_outline_rounded),
+            label: 'Tutoriais',
           ),
         ],
       ),

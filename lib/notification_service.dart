@@ -1,10 +1,12 @@
 // lib/notification_service.dart
+// ignore_for_file: avoid_print
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
-// Helper para obter a chave correta com base no flavor (permanece o mesmo)
+// Helper para obter a chave correta com base no flavor
 class _VapidKeyConfig {
   static const _flavor = String.fromEnvironment('FLAVOR');
 
@@ -26,33 +28,36 @@ class NotificationService {
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
 
   Future<void> initNotifications() async {
-    // Pede permissão ao usuário (funciona para iOS, Android e Web)
     await _fcm.requestPermission();
 
-    // Listener para quando o app está aberto (em primeiro plano)
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       print(
           'Recebeu uma mensagem em primeiro plano: ${message.notification?.title}');
-      // No futuro, você pode mostrar um diálogo ou uma snackbar aqui
+    });
+
+    // Ouve por atualizações de token (quando um token expira e um novo é gerado)
+    _fcm.onTokenRefresh.listen((newToken) {
+      saveTokenForCurrentUser(tokenToSave: newToken);
     });
   }
 
-  Future<void> saveTokenForCurrentUser() async {
+  // <<< FUNÇÃO ATUALIZADA >>>
+  Future<void> saveTokenForCurrentUser({String? tokenToSave}) async {
     final currentUser = FirebaseAuth.instance.currentUser;
     if (currentUser == null) {
       return;
     }
 
     try {
-      String? token;
-      // <<< ALTERAÇÃO AQUI >>>
-      // Pega o token de forma diferente dependendo da plataforma.
-      if (kIsWeb) {
-        // Para a web, precisa da chave VAPID.
-        token = await _fcm.getToken(vapidKey: _VapidKeyConfig.current);
-      } else {
-        // Para Android e iOS, não precisa da chave.
-        token = await _fcm.getToken();
+      // Se um token não foi passado (ex: no login), pega o atual.
+      // Se foi passado (pelo onTokenRefresh), usa ele.
+      String? token = tokenToSave;
+      if (token == null) {
+        if (kIsWeb) {
+          token = await _fcm.getToken(vapidKey: _VapidKeyConfig.current);
+        } else {
+          token = await _fcm.getToken();
+        }
       }
 
       if (token == null) {
@@ -62,19 +67,15 @@ class NotificationService {
 
       final userRef =
           FirebaseFirestore.instance.collection('users').doc(currentUser.uid);
-      final userDoc = await userRef.get();
 
-      if (userDoc.exists) {
-        final tokens = List<String>.from(userDoc.data()?['fcmTokens'] ?? []);
-        if (!tokens.contains(token)) {
-          await userRef.update({
-            'fcmTokens': FieldValue.arrayUnion([token]),
-          });
-          print('Token de notificação salvo para o usuário!');
-        } else {
-          print('Token já existe para este usuário.');
-        }
-      }
+      // Lógica de atualização: Substitui a lista de tokens pela nova.
+      // Isso garante que apenas o token mais recente esteja associado.
+      // Para suportar múltiplos dispositivos (ex: web e celular), a lógica seria
+      // mais complexa, mas para um único dispositivo, isso resolve o problema.
+      await userRef.update({
+        'fcmTokens': [token], // Salva o novo token em uma lista
+      });
+      print('Token de notificação salvo/atualizado para o usuário!');
     } catch (e) {
       print('Erro ao salvar o token de notificação: $e');
     }
