@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 // Enum para os diferentes tipos de papéis de usuário no sistema.
 enum UserRole {
+  superAdmin, // <<< NOVO PERFIL ADICIONADO AQUI
   manager, // Gerente da academia
   teacher, // Professor
   student, // Aluno
@@ -104,8 +105,8 @@ class UserModel {
     this.createdByName,
     this.lastUpdatedByUid,
     this.lastUpdatedByName,
-    this.hasSeenWelcomePopup = false, // NOVO CAMPO
-    this.fcmTokens, // NOVO PARÂMETRO ADICIONADO
+    this.hasSeenWelcomePopup = false,
+    this.fcmTokens,
   });
 
   int? get idade {
@@ -124,6 +125,10 @@ class UserModel {
     final data = doc.data() as Map<String, dynamic>;
     UserRole role;
     switch (data['role']) {
+      // <<< NOVA VERIFICAÇÃO ADICIONADA AQUI >>>
+      case 'superadmin':
+        role = UserRole.superAdmin;
+        break;
       case 'manager':
         role = UserRole.manager;
         break;
@@ -175,10 +180,10 @@ class UserModel {
       createdByName: data['createdByName'],
       lastUpdatedByUid: data['lastUpdatedByUid'],
       lastUpdatedByName: data['lastUpdatedByName'],
-      hasSeenWelcomePopup: data['hasSeenWelcomePopup'] ?? false, // NOVO CAMPO
+      hasSeenWelcomePopup: data['hasSeenWelcomePopup'] ?? false,
       fcmTokens: data['fcmTokens'] != null
           ? List<String>.from(data['fcmTokens'])
-          : null, // NOVO CAMPO
+          : null,
     );
   }
 }
@@ -367,8 +372,6 @@ class MatchSettings {
   }
 }
 
-// MonthlyFee foi movido para o final do arquivo
-
 class CheckinEntry {
   final String id;
   final String studentId;
@@ -498,7 +501,7 @@ class StudyVolume {
 
 class StudyNote {
   final String id;
-  String? title; // ALTERADO PARA OPCIONAL
+  String? title;
   String content;
   List<String> tags;
   String? videoUrl;
@@ -510,7 +513,7 @@ class StudyNote {
 
   StudyNote({
     required this.id,
-    this.title, // ALTERADO PARA OPCIONAL
+    this.title,
     required this.content,
     required this.tags,
     this.videoUrl,
@@ -522,7 +525,7 @@ class StudyNote {
   });
 
   factory StudyNote.create({
-    String? title, // ALTERADO PARA OPCIONAL
+    String? title,
     required String content,
     String? subjectId,
     String? volumeId,
@@ -563,7 +566,7 @@ class StudyNote {
     final json = doc.data() as Map<String, dynamic>;
     return StudyNote(
       id: doc.id,
-      title: json['title'], // Pode ser nulo
+      title: json['title'],
       content: json['content'] ?? '',
       tags: List<String>.from(json['tags'] ?? []),
       videoUrl: json['videoUrl'],
@@ -949,8 +952,8 @@ class VideoItem {
   final Timestamp createdAt;
   final List<String> tags;
   final String? playlistId;
-  final Map<String, dynamic> watchedBy; // Alterado para Map
-  final int? fileSizeBytes; // NOVO CAMPO
+  final Map<String, dynamic> watchedBy;
+  final int? fileSizeBytes;
 
   VideoItem({
     required this.id,
@@ -965,7 +968,7 @@ class VideoItem {
     required this.tags,
     this.playlistId,
     this.watchedBy = const {},
-    this.fileSizeBytes, // NOVO CAMPO
+    this.fileSizeBytes,
   });
 
   factory VideoItem.fromFirestore(DocumentSnapshot doc) {
@@ -975,10 +978,8 @@ class VideoItem {
     final watchedByData = data['watchedBy'];
 
     if (watchedByData is Map) {
-      // Formato novo ou intermediário, apenas converte
       parsedWatchedBy = Map<String, dynamic>.from(watchedByData);
     } else if (watchedByData is List) {
-      // Formato antigo (List<String>), converte para o novo
       for (var userId in watchedByData) {
         if (userId is String) {
           parsedWatchedBy[userId] = {
@@ -1004,7 +1005,7 @@ class VideoItem {
       tags: List<String>.from(data['tags'] ?? []),
       playlistId: data['playlistId'],
       watchedBy: parsedWatchedBy,
-      fileSizeBytes: data['fileSizeBytes'], // NOVO CAMPO
+      fileSizeBytes: data['fileSizeBytes'],
     );
   }
 
@@ -1021,7 +1022,7 @@ class VideoItem {
       'tags': tags,
       'playlistId': playlistId,
       'watchedBy': watchedBy,
-      'fileSizeBytes': fileSizeBytes, // NOVO CAMPO
+      'fileSizeBytes': fileSizeBytes,
     };
   }
 }
@@ -1031,8 +1032,7 @@ class SparringSession {
   final Timestamp startedAt;
   final String generationType;
   final List<String> participantIds;
-  final List<Map<String, dynamic>>
-      allRounds; // Estrutura { 'fights': [{'p1': id, 'p2': id}] }
+  final List<Map<String, dynamic>> allRounds;
   final String createdByUid;
   final String createdByName;
 
@@ -1071,7 +1071,6 @@ class SparringSession {
   }
 }
 
-// NOVO MODELO PARA MENSALIDADES - MUITO MAIS ROBUSTO
 class MonthlyFee {
   final String id;
   final String studentId;
@@ -1132,12 +1131,11 @@ class MonthlyFee {
       'paymentMethod': paymentMethod,
       'paymentYear': paymentYear,
       'paymentMonth': paymentMonth,
-      'status': status.name, // Salva o enum como string
+      'status': status.name,
     };
   }
 }
 
-// --- MODELOS PARA TUTORIAIS ---
 class TutorialPlaylist {
   final String id;
   final String name;
@@ -1164,9 +1162,9 @@ class Tutorial {
   final String title;
   final String description;
   final String videoUrl;
-  final List<String> visibleTo; // Lista de UserRole.name
+  final List<String> visibleTo;
   final int orderIndex;
-  final String? playlistId; // NOVO CAMPO
+  final String? playlistId;
 
   Tutorial({
     required this.id,
@@ -1175,7 +1173,7 @@ class Tutorial {
     required this.videoUrl,
     required this.visibleTo,
     required this.orderIndex,
-    this.playlistId, // NOVO CAMPO
+    this.playlistId,
   });
 
   factory Tutorial.fromFirestore(DocumentSnapshot doc) {
@@ -1187,7 +1185,7 @@ class Tutorial {
       videoUrl: data['videoUrl'] ?? '',
       visibleTo: List<String>.from(data['visibleTo'] ?? []),
       orderIndex: data['orderIndex'] ?? 99,
-      playlistId: data['playlistId'], // NOVO CAMPO
+      playlistId: data['playlistId'],
     );
   }
 
@@ -1198,7 +1196,7 @@ class Tutorial {
       'videoUrl': videoUrl,
       'visibleTo': visibleTo,
       'orderIndex': orderIndex,
-      'playlistId': playlistId, // NOVO CAMPO
+      'playlistId': playlistId,
     };
   }
 }
