@@ -337,6 +337,7 @@ class NavigationService {
           user: user,
           isSparringMode: false, // Controlado na home page
           onNavigateToSparring: () {},
+          todosParticipantesDaAcademia: students, // <<< CORREÇÃO AQUI
         ),
       ),
       AppModule(

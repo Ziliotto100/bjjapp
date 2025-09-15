@@ -226,7 +226,6 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   bool _isLoading = true;
 
   late NavigationService _navService;
-  // >>>>> CORREÇÃO 1: Manter uma cópia local e mutável do usuário <<<<<
   late UserModel _currentUser;
   List<AppModule> _allPageModules = [];
   List<AppModule> _drawerModules = [];
@@ -243,7 +242,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   @override
   void initState() {
     super.initState();
-    _currentUser = widget.user; // Inicializa com os dados recebidos
+    _currentUser = widget.user;
     _navService = NavigationService(
         userId: _currentUser.uid, userRole: _currentUser.role);
     _loadInitialData();
@@ -280,13 +279,11 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     try {
       final firestore = FirebaseFirestore.instance;
 
-      // >>>>> CORREÇÃO 2: Recarrega os dados do usuário atual <<<<<
       final userDoc =
           await firestore.collection('users').doc(widget.user.uid).get();
       if (userDoc.exists) {
         _currentUser = UserModel.fromFirestore(userDoc);
       }
-      // >>>>> FIM DA CORREÇÃO <<<<<
 
       final academyId = _currentUser.academyId;
 
@@ -308,8 +305,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
           .map((doc) => Aluno.fromJson(doc.id, doc.data()))
           .toList();
 
-      _settingsSubscription
-          ?.cancel(); // Cancela a inscrição anterior para evitar duplicatas
+      _settingsSubscription?.cancel();
       _settingsSubscription =
           _navService.getTabSettingsStream().listen((settingsDoc) {
         if (mounted) {
@@ -495,7 +491,6 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     _navigateToModuleId(selectedModuleId);
   }
 
-  // >>>>> CORREÇÃO 3: _navigateToSettings agora chama _loadInitialData ao voltar <<<<<
   void _navigateToSettings() async {
     _settingsSubscription?.pause();
     await Navigator.of(context).push(MaterialPageRoute(
@@ -503,7 +498,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     ));
     if (mounted) {
       _settingsSubscription?.resume();
-      _loadInitialData(); // Recarrega todos os dados, incluindo o usuário
+      _loadInitialData();
     }
   }
 
@@ -588,16 +583,20 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
-        onTap: _onItemTapped,
-        items: _visibleModules.map((module) {
-          return BottomNavigationBarItem(
-            icon: Icon(module.icon),
-            label: module.title,
-          );
-        }).toList(),
-      ),
+      // --- INÍCIO DA CORREÇÃO ---
+      bottomNavigationBar: _visibleModules.isNotEmpty
+          ? BottomNavigationBar(
+              currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
+              onTap: _onItemTapped,
+              items: _visibleModules.map((module) {
+                return BottomNavigationBarItem(
+                  icon: Icon(module.icon),
+                  label: module.title,
+                );
+              }).toList(),
+            )
+          : null, // Se não houver abas visíveis, a barra não é construída
+      // --- FIM DA CORREÇÃO ---
       floatingActionButton: _buildFloatingActionButton(),
     );
   }
@@ -790,7 +789,6 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
   }
 
   Future<ManagerDashboardMetrics> _fetchMetrics() async {
-    // A lógica de busca de dados permanece a mesma
     final firestore = FirebaseFirestore.instance;
     final now = DateTime.now();
     final startOfMonth = DateTime(now.year, now.month, 1);
@@ -2424,10 +2422,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                             onPressed: () {
                               if (formKey.currentState!.validate()) {
                                 if (isEditing) {
-                                  // Lógica de salvar edição movida para cá
                                   _saveEditedAluno();
                                 } else {
-                                  // Lógica original de adicionar
                                   _addNewAluno();
                                 }
                               }
@@ -2459,7 +2455,6 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
         dataNascimento = DateFormat('dd/MM/yyyy').parseStrict(dNascC.text);
       } catch (e) {
         showBjjSnackBar(context, 'Formato de data inválido.', type: 'error');
-        // Retorna um objeto vazio para não quebrar, a validação deve pegar
         return Aluno.novo(nome: '', faixa: '', peso: 0);
       }
     }
@@ -2512,12 +2507,12 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _pesoController;
-  late final TextEditingController _phoneController; // NOVO
-  late final TextEditingController _logradouroController; // NOVO
-  late final TextEditingController _numeroController; // NOVO
-  late final TextEditingController _bairroController; // NOVO
-  late final TextEditingController _cidadeController; // NOVO
-  late final TextEditingController _cepController; // NOVO
+  late final TextEditingController _phoneController;
+  late final TextEditingController _logradouroController;
+  late final TextEditingController _numeroController;
+  late final TextEditingController _bairroController;
+  late final TextEditingController _cidadeController;
+  late final TextEditingController _cepController;
   String? _faixa;
   int? _graus;
   String? selectedUnitId;
@@ -2562,18 +2557,17 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
     _nameController = TextEditingController(text: professor.name);
     _pesoController =
         TextEditingController(text: professor.peso?.toString() ?? '');
-    _phoneController =
-        TextEditingController(text: professor.phoneNumber ?? ''); // NOVO
-    _logradouroController = TextEditingController(
-        text: professor.address?['logradouro'] ?? ''); // NOVO
+    _phoneController = TextEditingController(text: professor.phoneNumber ?? '');
+    _logradouroController =
+        TextEditingController(text: professor.address?['logradouro'] ?? '');
     _numeroController =
-        TextEditingController(text: professor.address?['numero'] ?? ''); // NOVO
+        TextEditingController(text: professor.address?['numero'] ?? '');
     _bairroController =
-        TextEditingController(text: professor.address?['bairro'] ?? ''); // NOVO
+        TextEditingController(text: professor.address?['bairro'] ?? '');
     _cidadeController =
-        TextEditingController(text: professor.address?['cidade'] ?? ''); // NOVO
+        TextEditingController(text: professor.address?['cidade'] ?? '');
     _cepController =
-        TextEditingController(text: professor.address?['cep'] ?? ''); // NOVO
+        TextEditingController(text: professor.address?['cep'] ?? '');
 
     _faixa = professor.faixa;
     _graus = professor.graus;
@@ -2705,7 +2699,6 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
     }
 
     final pesoStr = _pesoController.text.replaceAll(',', '.');
-    // NOVO MAPA DE ENDEREÇO
     final addressMap = {
       'logradouro': _logradouroController.text.trim(),
       'numero': _numeroController.text.trim(),
@@ -2722,8 +2715,8 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
       'unitId': selectedUnitId,
       'unitName': selectedUnitName,
       'profileImagePath': newImageUrl,
-      'phoneNumber': _phoneController.text.trim(), // NOVO
-      'address': addressMap, // NOVO
+      'phoneNumber': _phoneController.text.trim(),
+      'address': addressMap,
       'lastUpdatedByUid': widget.manager.uid,
       'lastUpdatedByName': widget.manager.name,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -2876,7 +2869,6 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                     ),
                     const SizedBox(height: 16),
                     TextFormField(
-                      // NOVO CAMPO
                       controller: _phoneController,
                       decoration: const InputDecoration(
                         labelText: 'Telefone',
@@ -3079,7 +3071,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                         ],
                       ),
                     ],
-                    const SizedBox(height: 24), // Espaço antes dos botões
+                    const SizedBox(height: 24),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [

@@ -298,6 +298,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           onNavigateToSparring: () {
             _navigateToModuleId('teacher_sparring');
           },
+          todosParticipantesDaAcademia: _students,
         );
       case 'teacher_sparring':
         if (_isSparringMode) {
@@ -423,16 +424,18 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
-        onTap: _onItemTapped,
-        items: _visibleModules.map((module) {
-          return BottomNavigationBarItem(
-            icon: Icon(module.icon),
-            label: module.title,
-          );
-        }).toList(),
-      ),
+      bottomNavigationBar: _visibleModules.isNotEmpty
+          ? BottomNavigationBar(
+              currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
+              onTap: _onItemTapped,
+              items: _visibleModules.map((module) {
+                return BottomNavigationBarItem(
+                  icon: Icon(module.icon),
+                  label: module.title,
+                );
+              }).toList(),
+            )
+          : null,
       floatingActionButton: _buildFloatingActionButton(),
     );
   }
@@ -833,23 +836,128 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
   }
 }
 
-class TeacherDashboardPage extends StatelessWidget {
+class TeacherDashboardPage extends StatefulWidget {
   final UserModel user;
   final bool isSparringMode;
   final VoidCallback onNavigateToSparring;
+  final List<Aluno> todosParticipantesDaAcademia;
 
-  const TeacherDashboardPage(
-      {super.key,
-      required this.user,
-      required this.isSparringMode,
-      required this.onNavigateToSparring});
+  const TeacherDashboardPage({
+    super.key,
+    required this.user,
+    required this.isSparringMode,
+    required this.onNavigateToSparring,
+    required this.todosParticipantesDaAcademia,
+  });
+
+  @override
+  State<TeacherDashboardPage> createState() => _TeacherDashboardPageState();
+}
+
+class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
+  List<DocumentSnapshot> _units = [];
+  bool _isLoadingUnits = true;
+  TrainingClass? _nextClass;
+  int _checkinCount = 0;
+  bool _isLoadingNextClass = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUnits();
+    _fetchNextClass();
+  }
+
+  Future<void> _fetchUnits() async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .collection('units')
+          .orderBy('name')
+          .get();
+      if (mounted) {
+        setState(() {
+          _units = snapshot.docs;
+          _isLoadingUnits = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingUnits = false);
+      }
+    }
+  }
+
+  Future<void> _fetchNextClass() async {
+    setState(() => _isLoadingNextClass = true);
+    try {
+      final now = DateTime.now();
+      final dayOfWeek = DateFormat('EEEE', 'pt_BR').format(now);
+      final currentTime = TimeOfDay.fromDateTime(now);
+
+      final scheduleSnapshot = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .collection('schedule')
+          .where('dayOfWeek', isEqualTo: dayOfWeek)
+          .orderBy('startTime')
+          .get();
+
+      final classesToday = scheduleSnapshot.docs
+          .map((doc) => TrainingClass.fromFirestore(doc))
+          .toList();
+
+      TrainingClass? nextClass;
+      for (final trainingClass in classesToday) {
+        final endTime = TimeOfDay(
+          hour: int.parse(trainingClass.endTime.split(':')[0]),
+          minute: int.parse(trainingClass.endTime.split(':')[1]),
+        );
+        final endTimeDouble = endTime.hour + endTime.minute / 60.0;
+        final currentTimeDouble = currentTime.hour + currentTime.minute / 60.0;
+
+        if (endTimeDouble > currentTimeDouble) {
+          nextClass = trainingClass;
+          break;
+        }
+      }
+
+      int checkinCount = 0;
+      if (nextClass != null) {
+        final dateOnly = DateTime(now.year, now.month, now.day);
+        final checkinsSnapshot = await FirebaseFirestore.instance
+            .collection('academies')
+            .doc(widget.user.academyId)
+            .collection('checkins')
+            .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
+            .where('classId', isEqualTo: nextClass.id)
+            .where('status', isEqualTo: 'approved')
+            .get();
+        checkinCount = checkinsSnapshot.docs.length;
+      }
+
+      if (mounted) {
+        setState(() {
+          _nextClass = nextClass;
+          _checkinCount = checkinCount;
+          _isLoadingNextClass = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingNextClass = false);
+      }
+      debugPrint("Erro ao buscar próxima aula: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return ListView(
       children: [
-        UserProfileHeader(user: user),
-        if (isSparringMode)
+        UserProfileHeader(user: widget.user),
+        if (widget.isSparringMode)
           Padding(
             padding:
                 const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -860,7 +968,7 @@ class TeacherDashboardPage extends StatelessWidget {
                 side: const BorderSide(color: primaryAccent, width: 2),
               ),
               child: InkWell(
-                onTap: onNavigateToSparring,
+                onTap: widget.onNavigateToSparring,
                 borderRadius: BorderRadius.circular(12),
                 child: Padding(
                   padding: const EdgeInsets.all(20.0),
@@ -882,15 +990,186 @@ class TeacherDashboardPage extends StatelessWidget {
             ),
           )
         else
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Text(
-              'Use a barra de navegação abaixo para gerenciar suas turmas e aulas.',
-              style: TextStyle(color: textHint, fontSize: 16),
-              textAlign: TextAlign.center,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Column(
+              children: [
+                const SizedBox(height: 16),
+                _NextClassCard(
+                  isLoading: _isLoadingNextClass,
+                  nextClass: _nextClass,
+                  checkinCount: _checkinCount,
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _MinimalActionCard(
+                      icon: Icons.checklist_rtl_rounded,
+                      label: 'Fazer Chamada',
+                      onTap: _isLoadingUnits
+                          ? null
+                          : () {
+                              Navigator.of(context).push(MaterialPageRoute(
+                                builder: (_) => BulkCheckinPage(
+                                  academyId: widget.user.academyId,
+                                  todosParticipantesDaAcademia:
+                                      widget.todosParticipantesDaAcademia,
+                                  user: widget.user,
+                                  units: _units,
+                                ),
+                              ));
+                            },
+                    ),
+                    _MinimalActionCard(
+                      icon: Icons.fact_check_outlined,
+                      label: 'Aprovar\nCheck-ins',
+                      onTap: () {
+                        Navigator.of(context).push(MaterialPageRoute(
+                          builder: (_) => ApproveCheckinsPage(
+                              academyId: widget.user.academyId),
+                        ));
+                      },
+                    ),
+                    _MinimalActionCard(
+                      icon: Icons.shuffle_rounded,
+                      label: 'Sorteio de Treinos',
+                      onTap: widget.onNavigateToSparring,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+              ],
             ),
           ),
       ],
+    );
+  }
+}
+
+class _MinimalActionCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback? onTap;
+
+  const _MinimalActionCard({
+    required this.icon,
+    required this.label,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 110,
+      child: Card(
+        elevation: 1,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12.0),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, size: 28, color: textHint),
+                const SizedBox(height: 8),
+                Text(
+                  label,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 12, color: textHint, height: 1.2),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _NextClassCard extends StatelessWidget {
+  final bool isLoading;
+  final TrainingClass? nextClass;
+  final int checkinCount;
+
+  const _NextClassCard({
+    required this.isLoading,
+    this.nextClass,
+    required this.checkinCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Card(
+        child: SizedBox(
+          height: 100,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+
+    if (nextClass == null) {
+      return const Card(
+        child: ListTile(
+          leading: Icon(Icons.check_circle_outline, color: successColor),
+          title: Text("Treinos do dia finalizados!"),
+          subtitle: Text("Bom descanso."),
+        ),
+      );
+    }
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        side: const BorderSide(color: primaryAccent, width: 1.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              "PRÓXIMA AULA",
+              style: TextStyle(
+                color: primaryAccent,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.5,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              nextClass!.level,
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              "${nextClass!.startTime} - ${nextClass!.endTime}",
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(color: textHint),
+            ),
+            const Divider(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text("Check-ins Confirmados:"),
+                Text(
+                  checkinCount.toString(),
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(color: primaryAccent),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -1684,7 +1963,6 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
   bool _isLoading = false;
   final _searchController = TextEditingController();
   List<Aluno> _filteredParticipants = [];
-  // --- NOVOS ESTADOS PARA O FILTRO DE UNIDADE ---
   List<DocumentSnapshot> _units = [];
   String? _selectedUnitId;
   bool _isLoadingUnits = true;

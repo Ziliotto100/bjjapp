@@ -211,16 +211,18 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
-        onTap: _onItemTapped,
-        items: _visibleModules.map((module) {
-          return BottomNavigationBarItem(
-            icon: Icon(module.icon),
-            label: module.title,
-          );
-        }).toList(),
-      ),
+      bottomNavigationBar: _visibleModules.isNotEmpty
+          ? BottomNavigationBar(
+              currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
+              onTap: _onItemTapped,
+              items: _visibleModules.map((module) {
+                return BottomNavigationBarItem(
+                  icon: Icon(module.icon),
+                  label: module.title,
+                );
+              }).toList(),
+            )
+          : null,
     );
   }
 }
