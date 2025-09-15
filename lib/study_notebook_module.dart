@@ -1657,22 +1657,23 @@ class _EditStudyNotePageState extends State<EditStudyNotePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: Text(_isQuickNote
-            ? 'Anotação Rápida'
-            : (_isEditing ? 'Editar Anotação' : 'Nova Anotação')),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.save),
-            onPressed: _isSaving ? null : _saveNote,
-            tooltip: 'Salvar Anotação',
-          )
-        ],
-      ),
-      body: AppBackground(
-        child: SafeArea(
+    // AQUI ESTÁ A CORREÇÃO
+    return AppBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          title: Text(_isQuickNote
+              ? 'Anotação Rápida'
+              : (_isEditing ? 'Editar Anotação' : 'Nova Anotação')),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.save),
+              onPressed: _isSaving ? null : _saveNote,
+              tooltip: 'Salvar Anotação',
+            )
+          ],
+        ),
+        body: SafeArea(
           child: _isSaving
               ? Center(
                   child: Padding(

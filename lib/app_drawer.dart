@@ -5,13 +5,14 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import 'models.dart';
 import 'navigation_service.dart';
 import 'customize_tabs_page.dart';
 import 'app_theme.dart';
 import 'auth_gate.dart';
-import 'tutorials_module.dart'; // CORREÇÃO: Import que estava faltando
+import 'tutorials_module.dart';
 
 class AppDrawer extends StatefulWidget {
   final UserModel user;
@@ -33,11 +34,22 @@ class AppDrawer extends StatefulWidget {
 
 class _AppDrawerState extends State<AppDrawer> {
   String? _academyLogoUrl;
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
     _fetchAcademyLogo();
+    _loadVersionInfo();
+  }
+
+  Future<void> _loadVersionInfo() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _appVersion = 'Versão ${packageInfo.version}';
+      });
+    }
   }
 
   Future<void> _fetchAcademyLogo() async {
@@ -65,65 +77,78 @@ class _AppDrawerState extends State<AppDrawer> {
 
     return Drawer(
       backgroundColor: darkScaffoldBackground,
-      child: ListView(
-        padding: EdgeInsets.zero,
+      child: Column(
         children: [
-          _buildDrawerHeader(context),
-          const Divider(color: borderNormal),
-          ...sortedDrawerModules.map((module) {
-            if (module.subModules != null && module.subModules!.isNotEmpty) {
-              return ExpansionTile(
-                leading: Icon(module.icon, color: textSecondary),
-                title: Text(module.title,
-                    style: const TextStyle(color: textSecondary)),
-                children: module.subModules!.map((subModule) {
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                _buildDrawerHeader(context),
+                const Divider(color: borderNormal),
+                ...sortedDrawerModules.map((module) {
+                  if (module.subModules != null &&
+                      module.subModules!.isNotEmpty) {
+                    return ExpansionTile(
+                      leading: Icon(module.icon, color: textSecondary),
+                      title: Text(module.title,
+                          style: const TextStyle(color: textSecondary)),
+                      children: module.subModules!.map((subModule) {
+                        return ListTile(
+                          leading: Icon(subModule.icon,
+                              color: textSecondary, size: 20),
+                          title: Text(subModule.title),
+                          contentPadding: const EdgeInsets.only(left: 32.0),
+                          onTap: () {
+                            Navigator.pop(context);
+                            widget.onSelectItem(subModule.id);
+                          },
+                        );
+                      }).toList(),
+                    );
+                  }
                   return ListTile(
-                    leading:
-                        Icon(subModule.icon, color: textSecondary, size: 20),
-                    title: Text(subModule.title),
-                    contentPadding: const EdgeInsets.only(left: 32.0),
+                    leading: Icon(module.icon, color: textSecondary),
+                    title: Text(module.title,
+                        style: const TextStyle(color: textSecondary)),
                     onTap: () {
                       Navigator.pop(context);
-                      widget.onSelectItem(subModule.id);
+                      widget.onSelectItem(module.id);
                     },
                   );
                 }).toList(),
-              );
-            }
-
-            return ListTile(
-              leading: Icon(module.icon, color: textSecondary),
-              title: Text(module.title,
-                  style: const TextStyle(color: textSecondary)),
-              onTap: () {
-                Navigator.pop(context);
-                widget.onSelectItem(module.id);
-              },
-            );
-          }).toList(),
-          const Divider(color: borderNormal),
-          ListTile(
-            leading:
-                const Icon(Icons.help_outline_rounded, color: primaryAccent),
-            title: const Text('Ajuda / Tutoriais',
-                style: TextStyle(color: primaryAccent)),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => TutorialsPage(user: widget.user),
-              ));
-            },
+                const Divider(color: borderNormal),
+                ListTile(
+                  leading: const Icon(Icons.help_outline_rounded,
+                      color: primaryAccent),
+                  title: const Text('Ajuda / Tutoriais',
+                      style: TextStyle(color: primaryAccent)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => TutorialsPage(user: widget.user),
+                    ));
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.tune_rounded, color: primaryAccent),
+                  title: const Text('Personalizar Abas',
+                      style: TextStyle(color: primaryAccent)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => CustomizeTabsPage(user: widget.user),
+                    ));
+                  },
+                ),
+              ],
+            ),
           ),
-          ListTile(
-            leading: const Icon(Icons.tune_rounded, color: primaryAccent),
-            title: const Text('Personalizar Abas',
-                style: TextStyle(color: primaryAccent)),
-            onTap: () {
-              Navigator.pop(context);
-              Navigator.of(context).push(MaterialPageRoute(
-                builder: (_) => CustomizeTabsPage(user: widget.user),
-              ));
-            },
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Text(
+              _appVersion,
+              style: const TextStyle(color: textHint, fontSize: 12),
+            ),
           ),
         ],
       ),

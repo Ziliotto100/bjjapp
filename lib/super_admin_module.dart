@@ -10,13 +10,15 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'admin_dashboard_module.dart';
 import 'admin_financial_page.dart';
-import 'admin_notifications_page.dart'; // <<< NOVO IMPORT
+import 'admin_notifications_page.dart';
+import 'app_drawer.dart'; // <<< CORREÇÃO AQUI
 import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
 import 'auth_gate.dart';
 import 'video_library_module.dart';
 import 'tutorials_module.dart';
+import 'navigation_service.dart';
 
 // --- TELA CONTAINER DO SUPER ADMIN COM NAVEGAÇÃO ---
 class SuperAdminPage extends StatefulWidget {
@@ -29,12 +31,17 @@ class SuperAdminPage extends StatefulWidget {
 class _SuperAdminPageState extends State<SuperAdminPage> {
   int _currentIndex = 0;
 
-  // <<< ALTERAÇÃO AQUI >>>
+  // Variáveis para o Drawer
+  late final NavigationService _navService;
+  late final UserModel _superAdminUser;
+  List<AppModule> _drawerModules = [];
+  List<AppModule> _allPageModules = [];
+
   final List<Widget> _pages = [
     const AdminDashboardPage(),
     const AdminFinancialPage(),
     const AcademyListPage(),
-    const AdminNotificationsPage(), // <<< PÁGINA ADICIONADA
+    const AdminNotificationsPage(),
     const VideoAuditPage(),
     const TutorialsAdminPage(),
   ];
@@ -43,10 +50,38 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     'Dashboard',
     'Financeiro',
     'Academias',
-    'Comunicados', // <<< TÍTULO ADICIONADO
+    'Comunicados',
     'Vídeos',
     'Tutoriais',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _superAdminUser = UserModel(
+      uid: FirebaseAuth.instance.currentUser?.uid ?? 'superadmin',
+      name: 'Super Admin',
+      email: FirebaseAuth.instance.currentUser?.email ?? '',
+      academyId: '',
+      role: UserRole.superAdmin,
+      mustChangePassword: false,
+      isActive: true,
+    );
+
+    _navService = NavigationService(
+        userId: _superAdminUser.uid, userRole: _superAdminUser.role);
+    _drawerModules = _navService.getDrawerModulesForCurrentUser();
+    _allPageModules = _navService.getFlatPageModulesForCurrentUser();
+  }
+
+  void _navigateToModuleId(String moduleId) {
+    final newIndex = _allPageModules.indexWhere((m) => m.id == moduleId);
+    if (newIndex != -1 && newIndex < _pages.length) {
+      setState(() {
+        _currentIndex = newIndex;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -66,6 +101,12 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
           )
         ],
       ),
+      drawer: AppDrawer(
+        user: _superAdminUser,
+        drawerModules: _drawerModules,
+        allPageModules: _allPageModules,
+        onSelectItem: _navigateToModuleId,
+      ),
       body: AppBackground(
         child: SafeArea(
           child: IndexedStack(
@@ -81,7 +122,6 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
             _currentIndex = index;
           });
         },
-        // <<< ALTERAÇÃO AQUI >>>
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.dashboard_rounded),
@@ -96,7 +136,6 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
             label: 'Academias',
           ),
           BottomNavigationBarItem(
-            // <<< ITEM ADICIONADO
             icon: Icon(Icons.campaign_rounded),
             label: 'Comunicados',
           ),

@@ -1236,7 +1236,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           subtitle: Text(
                             _currentMonthFee?.status == PaymentStatus.pago &&
                                     _currentMonthFee!.paymentDate != null
-                                ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate!)}' // <-- CORREÇÃO AQUI
+                                ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate!)}'
                                 : 'Pendente para este mês',
                             style: Theme.of(context)
                                 .textTheme

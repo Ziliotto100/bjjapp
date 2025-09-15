@@ -252,7 +252,7 @@ class _SchedulePageState extends State<SchedulePage>
       ),
       floatingActionButton: isManager || isTeacher
           ? FloatingActionButton(
-              heroTag: 'schedule_fab', // CORREÇÃO AQUI
+              heroTag: 'schedule_fab',
               onPressed: () async {
                 final students = await _allStudentsFuture;
                 Navigator.of(context).push(MaterialPageRoute(
@@ -861,7 +861,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
   @override
   void initState() {
     super.initState();
-    _fetchDropdownOptions();
     if (_isEditing) {
       final c = widget.classToEdit!;
       _selectedDays.add(c.dayOfWeek);
@@ -882,6 +881,7 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
       _selectedUnitId = c.unitId;
       _selectedUnitName = c.unitName;
     }
+    _fetchDropdownOptions();
   }
 
   Future<void> _fetchDropdownOptions() async {
@@ -902,9 +902,26 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
           .collection('units')
           .orderBy('name')
           .get();
+      // >>>>> CORREÇÃO APLICADA AQUI <<<<<
+      final List<DocumentSnapshot> fetchedUnits = snapshot.docs;
+
+      if (_isEditing &&
+          _selectedUnitId != null &&
+          !fetchedUnits.any((u) => u.id == _selectedUnitId)) {
+        final missingUnitDoc = await FirebaseFirestore.instance
+            .collection('academies')
+            .doc(widget.academyId)
+            .collection('units')
+            .doc(_selectedUnitId)
+            .get();
+        if (missingUnitDoc.exists) {
+          fetchedUnits.insert(0, missingUnitDoc);
+        }
+      }
+
       if (mounted) {
         setState(() {
-          _units = snapshot.docs;
+          _units = fetchedUnits;
           _isLoadingUnits = false;
         });
       }
@@ -1325,6 +1342,22 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
 
   @override
   Widget build(BuildContext context) {
+    final List<UserModel> teacherDropdownItems = List.from(widget.teachers);
+    if (_isEditing &&
+        _selectedTeacherId != null &&
+        !teacherDropdownItems.any((t) => t.uid == _selectedTeacherId)) {
+      final ghostTeacher = UserModel(
+        uid: widget.classToEdit!.teacherId,
+        name: '${widget.classToEdit!.teacherName} (Excluído)',
+        email: '',
+        academyId: '',
+        role: UserRole.unknown,
+        mustChangePassword: false,
+        isActive: false,
+      );
+      teacherDropdownItems.insert(0, ghostTeacher);
+    }
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -1429,7 +1462,7 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
                 DropdownButtonFormField<String>(
                   value: _selectedTeacherId,
                   decoration: const InputDecoration(labelText: 'Professor'),
-                  items: widget.teachers
+                  items: teacherDropdownItems
                       .map((teacher) => DropdownMenuItem(
                           value: teacher.uid, child: Text(teacher.name)))
                       .toList(),

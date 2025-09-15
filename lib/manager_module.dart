@@ -225,7 +225,9 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   int _paginaAtual = 0;
   bool _isLoading = true;
 
-  late final NavigationService _navService;
+  late NavigationService _navService;
+  // >>>>> CORREÇÃO 1: Manter uma cópia local e mutável do usuário <<<<<
+  late UserModel _currentUser;
   List<AppModule> _allPageModules = [];
   List<AppModule> _drawerModules = [];
   List<AppModule> _visibleModules = [];
@@ -241,8 +243,9 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   @override
   void initState() {
     super.initState();
-    _navService =
-        NavigationService(userId: widget.user.uid, userRole: widget.user.role);
+    _currentUser = widget.user; // Inicializa com os dados recebidos
+    _navService = NavigationService(
+        userId: _currentUser.uid, userRole: _currentUser.role);
     _loadInitialData();
     _listenToSparringState();
   }
@@ -257,7 +260,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   void _listenToSparringState() {
     _sparringStateSubscription = FirebaseFirestore.instance
         .collection('academies')
-        .doc(widget.user.academyId)
+        .doc(_currentUser.academyId)
         .collection('state')
         .doc('sparring')
         .snapshots()
@@ -276,9 +279,20 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     setState(() => _isLoading = true);
     try {
       final firestore = FirebaseFirestore.instance;
+
+      // >>>>> CORREÇÃO 2: Recarrega os dados do usuário atual <<<<<
+      final userDoc =
+          await firestore.collection('users').doc(widget.user.uid).get();
+      if (userDoc.exists) {
+        _currentUser = UserModel.fromFirestore(userDoc);
+      }
+      // >>>>> FIM DA CORREÇÃO <<<<<
+
+      final academyId = _currentUser.academyId;
+
       _teachers = (await firestore
               .collection('users')
-              .where('academyId', isEqualTo: widget.user.academyId)
+              .where('academyId', isEqualTo: academyId)
               .where('role', isEqualTo: 'teacher')
               .get())
           .docs
@@ -287,16 +301,20 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
 
       _students = (await firestore
               .collection('academies')
-              .doc(widget.user.academyId)
+              .doc(academyId)
               .collection('students')
               .get())
           .docs
           .map((doc) => Aluno.fromJson(doc.id, doc.data()))
           .toList();
 
+      _settingsSubscription
+          ?.cancel(); // Cancela a inscrição anterior para evitar duplicatas
       _settingsSubscription =
           _navService.getTabSettingsStream().listen((settingsDoc) {
-        _configureNavigation(settingsDoc);
+        if (mounted) {
+          _configureNavigation(settingsDoc);
+        }
       });
     } catch (e) {
       if (mounted) {
@@ -331,17 +349,17 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     try {
       await FirebaseFirestore.instance
           .collection('academies')
-          .doc(widget.user.academyId)
+          .doc(_currentUser.academyId)
           .collection('state')
           .doc('sparring')
           .set(stateData);
 
       await _createAuditLog(
-        academyId: widget.user.academyId,
-        actor: widget.user,
+        academyId: _currentUser.academyId,
+        actor: _currentUser,
         actionType: 'START_SPARRING',
         description:
-            '${widget.user.name} iniciou um treino de sparring com ${participants.length} participantes.',
+            '${_currentUser.name} iniciou um treino de sparring com ${participants.length} participantes.',
       );
     } catch (e) {
       if (mounted) {
@@ -355,7 +373,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     final dateOnly = DateTime(now.year, now.month, now.day);
     final checkinRef = FirebaseFirestore.instance
         .collection('academies')
-        .doc(widget.user.academyId)
+        .doc(_currentUser.academyId)
         .collection('checkins');
 
     final participantIds = participants.map((p) => p.id).toList();
@@ -389,11 +407,11 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       await batch.commit();
 
       await _createAuditLog(
-        academyId: widget.user.academyId,
-        actor: widget.user,
+        academyId: _currentUser.academyId,
+        actor: _currentUser,
         actionType: 'BULK_CHECKIN',
         description:
-            '${widget.user.name} fez check-in para $newCheckins alunos.',
+            '${_currentUser.name} fez check-in para $newCheckins alunos.',
       );
 
       if (mounted) {
@@ -415,20 +433,20 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     if (module.id == 'teacher_sparring') {
       if (_isSparringMode) {
         return SparringTeacherPage(
-          academyId: widget.user.academyId,
+          academyId: _currentUser.academyId,
           todosAlunos: _students,
         );
       }
       return SorteioTeacherPage(
-        user: widget.user,
-        academyId: widget.user.academyId,
+        user: _currentUser,
+        academyId: _currentUser.academyId,
         todosParticipantesDaAcademia: _students,
         isSparringMode: _isSparringMode,
         onIniciarSparring: _iniciarSparring,
         onCheckinAlunos: _checkinAlunos,
       );
     }
-    return module.pageBuilder!(widget.user, _teachers, _students);
+    return module.pageBuilder!(_currentUser, _teachers, _students);
   }
 
   void _configureNavigation(DocumentSnapshot? settingsDoc) {
@@ -477,20 +495,16 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     _navigateToModuleId(selectedModuleId);
   }
 
-  void _navigateToSettings() {
+  // >>>>> CORREÇÃO 3: _navigateToSettings agora chama _loadInitialData ao voltar <<<<<
+  void _navigateToSettings() async {
     _settingsSubscription?.pause();
-    Future.delayed(Duration.zero, () {
-      if (!mounted) return;
-      Navigator.of(context)
-          .push(MaterialPageRoute(
-        builder: (_) => ManagerSettingsPage(user: widget.user),
-      ))
-          .then((_) {
-        if (mounted) {
-          _settingsSubscription?.resume();
-        }
-      });
-    });
+    await Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ManagerSettingsPage(user: _currentUser),
+    ));
+    if (mounted) {
+      _settingsSubscription?.resume();
+      _loadInitialData(); // Recarrega todos os dados, incluindo o usuário
+    }
   }
 
   Widget _buildImpersonationBanner() {
@@ -505,7 +519,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                'Você está vendo como ${widget.user.name}.',
+                'Você está vendo como ${_currentUser.name}.',
                 style: const TextStyle(
                     color: Colors.black, fontWeight: FontWeight.bold),
               ),
@@ -556,7 +570,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
         ],
       ),
       drawer: AppDrawer(
-        user: widget.user,
+        user: _currentUser,
         drawerModules: _drawerModules,
         allPageModules: _allPageModules,
         onSelectItem: _navigateToModuleId,
@@ -598,12 +612,12 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
           showDialog(
             context: context,
             builder: (_) => AdicionarAlunoDialog(
-                currentUser: widget.user,
+                currentUser: _currentUser,
                 onAlunoAdicionado: (novoAluno, newImageFile) async {
                   try {
                     final studentCollection = FirebaseFirestore.instance
                         .collection('academies')
-                        .doc(widget.user.academyId)
+                        .doc(_currentUser.academyId)
                         .collection('students');
 
                     final docRef =
@@ -614,8 +628,8 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
                       belt: novoAluno.faixa,
                       degree: novoAluno.graus,
                       date: DateTime.now(),
-                      promotedByUid: widget.user.uid,
-                      promotedByName: widget.user.name,
+                      promotedByUid: _currentUser.uid,
+                      promotedByName: _currentUser.name,
                     );
 
                     await docRef
@@ -623,11 +637,11 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
                         .add(historyEntry.toMap());
 
                     await _createAuditLog(
-                      academyId: widget.user.academyId,
-                      actor: widget.user,
+                      academyId: _currentUser.academyId,
+                      actor: _currentUser,
                       actionType: 'CREATE_STUDENT',
                       description:
-                          '${widget.user.name} adicionou o aluno ${novoAluno.nome}.',
+                          '${_currentUser.name} adicionou o aluno ${novoAluno.nome}.',
                       targetName: novoAluno.nome,
                     );
 
@@ -656,8 +670,8 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
           final result = await showDialog<Map<String, String>?>(
             context: context,
             builder: (_) => AdicionarProfessorDialog(
-              academyId: widget.user.academyId,
-              manager: widget.user,
+              academyId: _currentUser.academyId,
+              manager: _currentUser,
             ),
           );
 
@@ -905,7 +919,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
                   maxCrossAxisExtent: 150.0,
                   mainAxisSpacing: 8.0,
                   crossAxisSpacing: 8.0,
-                  childAspectRatio: 0.85, // <-- CORREÇÃO AQUI
+                  childAspectRatio: 0.85,
                 ),
                 itemCount: 6,
                 shrinkWrap: true,
@@ -996,12 +1010,10 @@ class _MinimalMetricCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Column(
-            mainAxisAlignment:
-                MainAxisAlignment.spaceAround, // <-- CORREÇÃO AQUI
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
               Icon(icon, color: color, size: 32),
               FittedBox(
-                // <-- CORREÇÃO AQUI
                 fit: BoxFit.scaleDown,
                 child: Text(
                   value,
@@ -1852,16 +1864,20 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
   @override
   void initState() {
     super.initState();
-    _fetchUnits();
+    _loadAllInitialData();
+  }
+
+  Future<void> _loadAllInitialData() async {
+    await _fetchUnits();
     if (isEditing) {
-      final aluno = widget.alunoParaEditar!;
-      _loadInitialData(aluno);
-    } else {
+      await _loadStudentData(widget.alunoParaEditar!);
+    }
+    if (mounted) {
       setState(() => _isUserDataLoading = false);
     }
   }
 
-  Future<void> _loadInitialData(Aluno aluno) async {
+  Future<void> _loadStudentData(Aluno aluno) async {
     nC.text = aluno.nome;
     pC.text = aluno.peso.toString();
     fS = aluno.faixa;
@@ -1874,8 +1890,15 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
       cidadeC.text = aluno.address!['cidade'] ?? '';
       cepC.text = aluno.address!['cep'] ?? '';
     }
-    selectedUnitId = aluno.unitId;
-    selectedUnitName = aluno.unitName;
+
+    if (aluno.unitId != null && units.any((u) => u.id == aluno.unitId)) {
+      selectedUnitId = aluno.unitId;
+      selectedUnitName = aluno.unitName;
+    } else {
+      selectedUnitId = null;
+      selectedUnitName = null;
+    }
+
     if (aluno.dataNascimento != null) {
       dNascC.text = DateFormat('dd/MM/yyyy').format(aluno.dataNascimento!);
     }
@@ -1887,13 +1910,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
           .doc(aluno.userId!)
           .get();
       if (userDoc.exists && mounted) {
-        setState(() {
-          _currentProfileImageUrl = userDoc.data()?['profileImagePath'];
-        });
+        _currentProfileImageUrl = userDoc.data()?['profileImagePath'];
       }
-    }
-    if (mounted) {
-      setState(() => _isUserDataLoading = false);
     }
   }
 
@@ -2494,13 +2512,18 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _nameController;
   late final TextEditingController _pesoController;
+  late final TextEditingController _phoneController; // NOVO
+  late final TextEditingController _logradouroController; // NOVO
+  late final TextEditingController _numeroController; // NOVO
+  late final TextEditingController _bairroController; // NOVO
+  late final TextEditingController _cidadeController; // NOVO
+  late final TextEditingController _cepController; // NOVO
   String? _faixa;
   int? _graus;
   String? selectedUnitId;
   String? selectedUnitName;
   List<DocumentSnapshot> units = [];
-  bool isLoadingUnits = true;
-  bool _isLoading = false;
+  bool _isLoading = true;
   XFile? _newProfileImageFile;
   String? _currentProfileImageUrl;
 
@@ -2528,17 +2551,49 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
   @override
   void initState() {
     super.initState();
-    _fetchUnits();
-    _nameController = TextEditingController(text: widget.professor.name);
+    _loadAllInitialData();
+  }
+
+  Future<void> _loadAllInitialData() async {
+    setState(() => _isLoading = true);
+    await _fetchUnits();
+
+    final professor = widget.professor;
+    _nameController = TextEditingController(text: professor.name);
     _pesoController =
-        TextEditingController(text: widget.professor.peso?.toString() ?? '');
-    _faixa = widget.professor.faixa;
-    _graus = widget.professor.graus;
-    selectedUnitId = widget.professor.unitId;
-    selectedUnitName = widget.professor.unitName;
-    _currentProfileImageUrl = widget.professor.profileImagePath;
+        TextEditingController(text: professor.peso?.toString() ?? '');
+    _phoneController =
+        TextEditingController(text: professor.phoneNumber ?? ''); // NOVO
+    _logradouroController = TextEditingController(
+        text: professor.address?['logradouro'] ?? ''); // NOVO
+    _numeroController =
+        TextEditingController(text: professor.address?['numero'] ?? ''); // NOVO
+    _bairroController =
+        TextEditingController(text: professor.address?['bairro'] ?? ''); // NOVO
+    _cidadeController =
+        TextEditingController(text: professor.address?['cidade'] ?? ''); // NOVO
+    _cepController =
+        TextEditingController(text: professor.address?['cep'] ?? ''); // NOVO
+
+    _faixa = professor.faixa;
+    _graus = professor.graus;
+
+    if (professor.unitId != null &&
+        units.any((u) => u.id == professor.unitId)) {
+      selectedUnitId = professor.unitId;
+      selectedUnitName = professor.unitName;
+    } else {
+      selectedUnitId = null;
+      selectedUnitName = null;
+    }
+
+    _currentProfileImageUrl = professor.profileImagePath;
     if (_faixa != null) {
       _grausList = _getGrausForFaixa(_faixa);
+    }
+
+    if (mounted) {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -2551,14 +2606,10 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
           .orderBy('name')
           .get();
       if (mounted) {
-        setState(() {
-          units = snapshot.docs;
-          isLoadingUnits = false;
-        });
+        units = snapshot.docs;
       }
     } catch (e) {
       if (mounted) {
-        setState(() => isLoadingUnits = false);
         showBjjSnackBar(context, 'Erro ao carregar unidades.', type: 'error');
       }
     }
@@ -2654,6 +2705,15 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
     }
 
     final pesoStr = _pesoController.text.replaceAll(',', '.');
+    // NOVO MAPA DE ENDEREÇO
+    final addressMap = {
+      'logradouro': _logradouroController.text.trim(),
+      'numero': _numeroController.text.trim(),
+      'bairro': _bairroController.text.trim(),
+      'cidade': _cidadeController.text.trim(),
+      'cep': _cepController.text.trim(),
+    };
+
     final Map<String, dynamic> updatedData = {
       'name': _nameController.text.trim().capitalizeWords(),
       'faixa': _faixa,
@@ -2662,6 +2722,8 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
       'unitId': selectedUnitId,
       'unitName': selectedUnitName,
       'profileImagePath': newImageUrl,
+      'phoneNumber': _phoneController.text.trim(), // NOVO
+      'address': addressMap, // NOVO
       'lastUpdatedByUid': widget.manager.uid,
       'lastUpdatedByName': widget.manager.name,
       'updatedAt': FieldValue.serverTimestamp(),
@@ -2720,265 +2782,343 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
           ),
         ],
       ),
-      content: SingleChildScrollView(
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Stack(
+      content: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: primaryAccent.withOpacity(0.2),
-                      backgroundImage: backgroundImage,
-                      child: _newProfileImageFile != null && kIsWeb
-                          ? ClipOval(
-                              child: FutureBuilder<Uint8List>(
-                                future: _newProfileImageFile!.readAsBytes(),
-                                builder: (context, snapshot) {
-                                  if (snapshot.hasData) {
-                                    return Image.memory(
-                                      snapshot.data!,
-                                      fit: BoxFit.cover,
-                                      width: 100,
-                                      height: 100,
-                                    );
-                                  }
-                                  return const CircularProgressIndicator();
-                                },
+                    Center(
+                      child: Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 50,
+                            backgroundColor: primaryAccent.withOpacity(0.2),
+                            backgroundImage: backgroundImage,
+                            child: _newProfileImageFile != null && kIsWeb
+                                ? ClipOval(
+                                    child: FutureBuilder<Uint8List>(
+                                      future:
+                                          _newProfileImageFile!.readAsBytes(),
+                                      builder: (context, snapshot) {
+                                        if (snapshot.hasData) {
+                                          return Image.memory(
+                                            snapshot.data!,
+                                            fit: BoxFit.cover,
+                                            width: 100,
+                                            height: 100,
+                                          );
+                                        }
+                                        return const CircularProgressIndicator();
+                                      },
+                                    ),
+                                  )
+                                : backgroundImage == null
+                                    ? const Icon(Icons.person,
+                                        size: 50, color: primaryAccent)
+                                    : null,
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: CircleAvatar(
+                              radius: 18,
+                              backgroundColor: Theme.of(context).cardColor,
+                              child: IconButton(
+                                icon: const Icon(Icons.camera_alt_outlined,
+                                    size: 18),
+                                onPressed: _pickImage,
+                                tooltip: 'Alterar foto',
                               ),
-                            )
-                          : backgroundImage == null
-                              ? const Icon(Icons.person,
-                                  size: 50, color: primaryAccent)
-                              : null,
+                            ),
+                          )
+                        ],
+                      ),
                     ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: CircleAvatar(
-                        radius: 18,
-                        backgroundColor: Theme.of(context).cardColor,
-                        child: IconButton(
-                          icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                          onPressed: _pickImage,
-                          tooltip: 'Alterar foto',
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _nameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nome',
+                        prefixIcon: Icon(Icons.person_rounded),
+                      ),
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Nome inválido'
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: selectedUnitId,
+                      decoration: const InputDecoration(
+                        labelText: 'Unidade (Matriz/Filial)',
+                        prefixIcon: Icon(Icons.store_mall_directory_outlined),
+                      ),
+                      isExpanded: true,
+                      hint: const Text("Selecione a Unidade"),
+                      items: units.map((unit) {
+                        return DropdownMenuItem<String>(
+                          value: unit.id,
+                          child: Text(unit['name']),
+                        );
+                      }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          selectedUnitId = value;
+                          selectedUnitName =
+                              units.firstWhere((u) => u.id == value)['name'];
+                        });
+                      },
+                      validator: (v) =>
+                          v == null ? 'Selecione uma unidade' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      // NOVO CAMPO
+                      controller: _phoneController,
+                      decoration: const InputDecoration(
+                        labelText: 'Telefone',
+                        prefixIcon: Icon(Icons.phone),
+                      ),
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        PhoneInputFormatter(),
+                      ],
+                    ),
+                    if (!isSelf) ...[
+                      const SizedBox(height: 16),
+                      DropdownButtonFormField<String>(
+                        isExpanded: true,
+                        value: _faixa,
+                        decoration: const InputDecoration(
+                            labelText: 'Faixa',
+                            prefixIcon: Icon(Icons.shield_outlined)),
+                        hint: const Text("Selecione a Faixa"),
+                        items: _faixasList
+                            .map((faixa) => DropdownMenuItem(
+                                value: faixa,
+                                child: Text(faixa,
+                                    overflow: TextOverflow.ellipsis)))
+                            .toList(),
+                        onChanged: (value) => setState(() {
+                          _faixa = value;
+                          _grausList = _getGrausForFaixa(_faixa);
+                          _graus = null;
+                        }),
+                        validator: (value) =>
+                            value == null ? 'Selecione a faixa' : null,
+                      ),
+                      if (_faixa != null) ...[
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<int>(
+                          isExpanded: true,
+                          value: _graus,
+                          decoration: const InputDecoration(
+                              isDense: true,
+                              labelText: 'Graus',
+                              prefixIcon: Icon(Icons.star_outline_rounded)),
+                          hint: const Text("Selecione os Graus"),
+                          items: [
+                            const DropdownMenuItem<int>(
+                                value: null, child: Text("Nenhum")),
+                            ..._grausList.map((g) => DropdownMenuItem(
+                                value: g,
+                                child: Text("$gº Grau",
+                                    overflow: TextOverflow.ellipsis))),
+                          ],
+                          onChanged: (value) => setState(() => _graus = value),
                         ),
+                      ],
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _pesoController,
+                        decoration: const InputDecoration(
+                          labelText: 'Peso (kg)',
+                          prefixIcon: Icon(Icons.fitness_center_rounded),
+                        ),
+                        keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) return null;
+                          final x = double.tryParse(v.replaceAll(',', '.'));
+                          return (x == null || x <= 0)
+                              ? 'Peso inválido (deve ser > 0)'
+                              : null;
+                        },
                       ),
-                    )
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nome',
-                  prefixIcon: Icon(Icons.person_rounded),
-                ),
-                validator: (v) =>
-                    (v == null || v.trim().isEmpty) ? 'Nome inválido' : null,
-              ),
-              const SizedBox(height: 16),
-              if (isLoadingUnits)
-                const Center(child: CircularProgressIndicator())
-              else
-                DropdownButtonFormField<String>(
-                  value: selectedUnitId,
-                  decoration: const InputDecoration(
-                    labelText: 'Unidade (Matriz/Filial)',
-                    prefixIcon: Icon(Icons.store_mall_directory_outlined),
-                  ),
-                  isExpanded: true,
-                  hint: const Text("Selecione a Unidade"),
-                  items: units.map((unit) {
-                    return DropdownMenuItem<String>(
-                      value: unit.id,
-                      child: Text(unit['name']),
-                    );
-                  }).toList(),
-                  onChanged: (value) {
-                    setState(() {
-                      selectedUnitId = value;
-                      selectedUnitName =
-                          units.firstWhere((u) => u.id == value)['name'];
-                    });
-                  },
-                  validator: (v) => v == null ? 'Selecione uma unidade' : null,
-                ),
-              if (!isSelf) ...[
-                const SizedBox(height: 16),
-                DropdownButtonFormField<String>(
-                  isExpanded: true,
-                  value: _faixa,
-                  decoration: const InputDecoration(
-                      labelText: 'Faixa',
-                      prefixIcon: Icon(Icons.shield_outlined)),
-                  hint: const Text("Selecione a Faixa"),
-                  items: _faixasList
-                      .map((faixa) => DropdownMenuItem(
-                          value: faixa,
-                          child: Text(faixa, overflow: TextOverflow.ellipsis)))
-                      .toList(),
-                  onChanged: (value) => setState(() {
-                    _faixa = value;
-                    _grausList = _getGrausForFaixa(_faixa);
-                    _graus = null;
-                  }),
-                  validator: (value) =>
-                      value == null ? 'Selecione a faixa' : null,
-                ),
-                if (_faixa != null) ...[
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<int>(
-                    isExpanded: true,
-                    value: _graus,
-                    decoration: const InputDecoration(
-                        isDense: true,
-                        labelText: 'Graus',
-                        prefixIcon: Icon(Icons.star_outline_rounded)),
-                    hint: const Text("Selecione os Graus"),
-                    items: [
-                      const DropdownMenuItem<int>(
-                          value: null, child: Text("Nenhum")),
-                      ..._grausList.map((g) => DropdownMenuItem(
-                          value: g,
-                          child: Text("$gº Grau",
-                              overflow: TextOverflow.ellipsis))),
                     ],
-                    onChanged: (value) => setState(() => _graus = value),
-                  ),
-                ],
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: _pesoController,
-                  decoration: const InputDecoration(
-                    labelText: 'Peso (kg)',
-                    prefixIcon: Icon(Icons.fitness_center_rounded),
-                  ),
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  validator: (v) {
-                    if (v == null || v.isEmpty) return null;
-                    final x = double.tryParse(v.replaceAll(',', '.'));
-                    return (x == null || x <= 0)
-                        ? 'Peso inválido (deve ser > 0)'
-                        : null;
-                  },
-                ),
-              ],
-              if (!isSelf) ...[
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: TextButton.icon(
-                        icon:
-                            const Icon(Icons.person_remove_outlined, size: 18),
-                        label: const Text("Reverter"),
-                        style: TextButton.styleFrom(
-                            foregroundColor: warningColor,
-                            textStyle: const TextStyle(fontSize: 14)),
-                        onPressed: () {
-                          Navigator.of(context).pop(); // Close edit dialog
-                          showDialog(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('Confirmar Reversão'),
-                              content: Text(
-                                  'Tem certeza que deseja reverter ${widget.professor.name} para a função de Aluno?'),
-                              actions: [
-                                TextButton(
-                                  child: const Text('Cancelar'),
-                                  onPressed: () => Navigator.of(ctx).pop(),
-                                ),
-                                ElevatedButton(
-                                  child: const Text('Confirmar'),
-                                  onPressed: () {
-                                    Navigator.of(ctx)
-                                        .pop(); // Close confirmation
-                                    UserManagementService.demoteToStudent(
-                                      context,
-                                      academyId: widget.academyId,
-                                      teacher: widget.professor,
-                                      manager: widget.manager,
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
+                    const SizedBox(height: 24),
+                    Text("Endereço",
+                        style: Theme.of(context).textTheme.titleLarge),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _logradouroController,
+                      decoration: const InputDecoration(
+                          labelText: 'Logradouro (Rua, Av...)'),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: TextButton.icon(
-                        icon: const Icon(Icons.military_tech_rounded, size: 18),
-                        label: const Text("Graduar"),
-                        style: TextButton.styleFrom(
-                            foregroundColor: successColor,
-                            textStyle: const TextStyle(fontSize: 14)),
-                        onPressed: () {
-                          Navigator.of(context).pop(); // Close current dialog
-                          showDialog(
-                            context: context,
-                            builder: (_) => GraduationDialog(
-                              academyId: widget.academyId,
-                              user: widget.professor,
-                              currentUser: widget.manager,
-                            ),
-                          );
-                        },
-                      ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _numeroController,
+                            decoration: const InputDecoration(labelText: 'Nº'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          flex: 3,
+                          child: TextFormField(
+                            controller: _bairroController,
+                            decoration:
+                                const InputDecoration(labelText: 'Bairro'),
+                          ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ],
-              const SizedBox(height: 24), // Espaço antes dos botões
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (!isSelf)
-                    TextButton.icon(
-                      icon: const Icon(Icons.delete_outline_rounded,
-                          color: errorColor),
-                      label: const Text('Excluir',
-                          style: TextStyle(color: errorColor)),
-                      onPressed: () =>
-                          _confirmDeleteProfessor(widget.professor),
-                    )
-                  else
-                    const SizedBox(), // Placeholder
-                  ElevatedButton(
-                    onPressed: _isLoading ? null : _submit,
-                    child: _isLoading
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                    primaryAccentForeground)))
-                        : const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.save_outlined, size: 18),
-                              SizedBox(width: 8),
-                              Text('Salvar'),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextFormField(
+                            controller: _cidadeController,
+                            decoration:
+                                const InputDecoration(labelText: 'Cidade'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _cepController,
+                            decoration: const InputDecoration(labelText: 'CEP'),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              CepInputFormatter(),
                             ],
                           ),
-                  ),
-                ],
+                        ),
+                      ],
+                    ),
+                    if (!isSelf) ...[
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: TextButton.icon(
+                              icon: const Icon(Icons.person_remove_outlined,
+                                  size: 18),
+                              label: const Text("Reverter"),
+                              style: TextButton.styleFrom(
+                                  foregroundColor: warningColor,
+                                  textStyle: const TextStyle(fontSize: 14)),
+                              onPressed: () {
+                                Navigator.of(context)
+                                    .pop(); // Close edit dialog
+                                showDialog(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Confirmar Reversão'),
+                                    content: Text(
+                                        'Tem certeza que deseja reverter ${widget.professor.name} para a função de Aluno?'),
+                                    actions: [
+                                      TextButton(
+                                        child: const Text('Cancelar'),
+                                        onPressed: () =>
+                                            Navigator.of(ctx).pop(),
+                                      ),
+                                      ElevatedButton(
+                                        child: const Text('Confirmar'),
+                                        onPressed: () {
+                                          Navigator.of(ctx)
+                                              .pop(); // Close confirmation
+                                          UserManagementService.demoteToStudent(
+                                            context,
+                                            academyId: widget.academyId,
+                                            teacher: widget.professor,
+                                            manager: widget.manager,
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: TextButton.icon(
+                              icon: const Icon(Icons.military_tech_rounded,
+                                  size: 18),
+                              label: const Text("Graduar"),
+                              style: TextButton.styleFrom(
+                                  foregroundColor: successColor,
+                                  textStyle: const TextStyle(fontSize: 14)),
+                              onPressed: () {
+                                Navigator.of(context)
+                                    .pop(); // Close current dialog
+                                showDialog(
+                                  context: context,
+                                  builder: (_) => GraduationDialog(
+                                    academyId: widget.academyId,
+                                    user: widget.professor,
+                                    currentUser: widget.manager,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                    const SizedBox(height: 24), // Espaço antes dos botões
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        if (!isSelf)
+                          TextButton.icon(
+                            icon: const Icon(Icons.delete_outline_rounded,
+                                color: errorColor),
+                            label: const Text('Excluir',
+                                style: TextStyle(color: errorColor)),
+                            onPressed: () =>
+                                _confirmDeleteProfessor(widget.professor),
+                          )
+                        else
+                          const SizedBox(), // Placeholder
+                        ElevatedButton(
+                          onPressed: _isLoading ? null : _submit,
+                          child: _isLoading
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                          primaryAccentForeground)))
+                              : const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.save_outlined, size: 18),
+                                    SizedBox(width: 8),
+                                    Text('Salvar'),
+                                  ],
+                                ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 }
@@ -4175,6 +4315,12 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
                               : "Informações do Professor",
                           style: theme.textTheme.titleLarge),
                       const Divider(height: 20),
+                      _buildInfoRow(context, Icons.email_outlined,
+                          "E-mail de Login", widget.professor.email),
+                      if (widget.professor.phoneNumber != null &&
+                          widget.professor.phoneNumber!.isNotEmpty)
+                        _buildInfoRow(context, Icons.phone_outlined, "Telefone",
+                            widget.professor.phoneNumber!),
                       if (!isManager) ...[
                         _buildInfoRow(context, Icons.shield_outlined, "Faixa",
                             widget.professor.faixa ?? 'Não informada'),
@@ -4186,8 +4332,6 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
                           _buildInfoRow(context, Icons.fitness_center_rounded,
                               "Peso", '${widget.professor.peso} kg'),
                       ],
-                      _buildInfoRow(context, Icons.email_outlined,
-                          "E-mail de Login", widget.professor.email),
                       if (widget.professor.dataNascimento != null &&
                           widget.professor.idade != null)
                         _buildInfoRow(context, Icons.cake_rounded, "Idade",

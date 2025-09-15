@@ -773,6 +773,12 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
             Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
       });
 
+      // >>>>> INÍCIO DA CORREÇÃO <<<<<
+      // Cria a unidade "Matriz" padrão para a nova academia.
+      final defaultUnitRef = academyRef.collection('units').doc();
+      batch.set(defaultUnitRef, {'name': 'Matriz'});
+      // >>>>> FIM DA CORREÇÃO <<<<<
+
       batch.set(userRef, {
         'name': managerName,
         'email': newUser.email,
@@ -789,7 +795,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         'createdByName': managerName,
         'lastUpdatedByUid': newUser.uid,
         'lastUpdatedByName': managerName,
-        'hasSeenWelcomePopup': false, // NOVO CAMPO
+        'hasSeenWelcomePopup': false,
       });
 
       final historyEntry = GraduationHistory(
@@ -809,7 +815,10 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
         showBjjSnackBar(
             context, 'Academia registrada com sucesso! Faça o login.',
             type: 'success');
-        Navigator.of(context).pop();
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginPage()),
+          (Route<dynamic> route) => false,
+        );
       }
     } on FirebaseAuthException catch (e) {
       String message = 'Ocorreu um erro no registro.';
@@ -840,8 +849,6 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("Registrar Academia"),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
       ),
       body: AppBackground(
         child: Center(

@@ -58,6 +58,15 @@ class NavigationService {
       bool canView = module.requiredRoles == null ||
           module.requiredRoles!.contains(userRole);
 
+      // >>>>> CORREÇÃO APLICADA AQUI <<<<<
+      // Garante que o Super Admin veja apenas os seus próprios módulos.
+      if (userRole == UserRole.superAdmin) {
+        if (module.requiredRoles == null ||
+            !module.requiredRoles!.contains(UserRole.superAdmin)) {
+          canView = false;
+        }
+      }
+
       if (userRole == UserRole.manager) {
         const hiddenForManager = [
           'student_profile',
