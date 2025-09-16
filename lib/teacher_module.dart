@@ -342,15 +342,20 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             .map((module) => _buildPageForModule(module))
             .toList();
 
-        _visibleModules = visibleIds
-            .map((id) => _allPageModules.firstWhere((m) => m.id == id,
-                orElse: () => _allPageModules.first))
-            .toList();
+        // +++ INÍCIO DA CORREÇÃO +++
+        // Lógica mais robusta para filtrar e ordenar os módulos visíveis.
+        _visibleModules =
+            _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
+
         _visibleModules.sort((a, b) {
           final indexA = savedOrder.indexOf(a.id);
           final indexB = savedOrder.indexOf(b.id);
+          // Se um item não estiver na lista de ordem, coloque-o no final.
+          if (indexA == -1) return 1;
+          if (indexB == -1) return -1;
           return indexA.compareTo(indexB);
         });
+        // +++ FIM DA CORREÇÃO +++
 
         int dashboardIndex =
             _allPageModules.indexWhere((m) => m.id == 'teacher_dashboard');
@@ -424,7 +429,8 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           ),
         ],
       ),
-      bottomNavigationBar: _visibleModules.isNotEmpty
+      // Adicionado um check para garantir que a barra só seja construída com 2 ou mais itens.
+      bottomNavigationBar: _visibleModules.length >= 2
           ? BottomNavigationBar(
               currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
               onTap: _onItemTapped,

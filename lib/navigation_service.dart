@@ -10,6 +10,7 @@ import 'student_module.dart';
 import 'schedule_module.dart';
 import 'scoreboard_module.dart';
 import 'study_notebook_module.dart';
+import 'training_log_module.dart';
 import 'shop_module.dart';
 import 'birthdays_module.dart';
 import 'video_library_module.dart';
@@ -58,8 +59,6 @@ class NavigationService {
       bool canView = module.requiredRoles == null ||
           module.requiredRoles!.contains(userRole);
 
-      // >>>>> CORREÇÃO APLICADA AQUI <<<<<
-      // Garante que o Super Admin veja apenas os seus próprios módulos.
       if (userRole == UserRole.superAdmin) {
         if (module.requiredRoles == null ||
             !module.requiredRoles!.contains(UserRole.superAdmin)) {
@@ -214,7 +213,6 @@ class NavigationService {
         title: 'Academia',
         icon: Icons.business_rounded,
         subModules: [
-          // <<< MÓDULO DE COMUNICADOS ADICIONADO AQUI DENTRO >>>
           AppModule(
             id: 'academy_notifications',
             title: 'Comunicados',
@@ -281,6 +279,16 @@ class NavigationService {
           ),
         ],
       ),
+      // +++ INÍCIO DA MODIFICAÇÃO +++
+      AppModule(
+        id: 'common_training_log',
+        title: 'Diário de Treinos',
+        icon: Icons.auto_stories_outlined,
+        // Sem `requiredRoles`, fica visível para todos
+        pageBuilder: (user, teachers, students) =>
+            TrainingLogPage(userId: user.uid),
+      ),
+      // +++ FIM DA MODIFICAÇÃO +++
       AppModule(
           id: 'common_tools',
           title: 'Ferramentas',
@@ -290,15 +298,12 @@ class NavigationService {
               id: 'teacher_sparring',
               title: 'Sorteio de Treinos',
               icon: Icons.shuffle_rounded,
-              requiredRoles: [
-                UserRole.teacher,
-                UserRole.manager
-              ], // Gerente também pode usar
+              requiredRoles: [UserRole.teacher, UserRole.manager],
               pageBuilder: (user, teachers, students) => SorteioTeacherPage(
                 user: user,
                 academyId: user.academyId,
                 todosParticipantesDaAcademia: students,
-                isSparringMode: false, // Este estado é gerenciado na home page
+                isSparringMode: false,
                 onIniciarSparring: (rounds, type, participants) {},
                 onCheckinAlunos: (students) {},
               ),
@@ -335,9 +340,9 @@ class NavigationService {
         requiredRoles: [UserRole.teacher],
         pageBuilder: (user, teachers, students) => TeacherDashboardPage(
           user: user,
-          isSparringMode: false, // Controlado na home page
+          isSparringMode: false,
           onNavigateToSparring: () {},
-          todosParticipantesDaAcademia: students, // <<< CORREÇÃO AQUI
+          todosParticipantesDaAcademia: students,
         ),
       ),
       AppModule(
@@ -404,29 +409,32 @@ class NavigationService {
           'superadmin_tutorials',
         ];
         break;
+      // +++ INÍCIO DA MODIFICAÇÃO +++
       case UserRole.manager:
         defaultVisibleIds = [
           'manager_dashboard',
           'common_academy',
+          'common_training_log', // Adicionado para Gerente
           'manager_financial',
           'common_tools',
-          'academy_notifications', // Adicionado para gerente
         ];
         break;
       case UserRole.teacher:
         defaultVisibleIds = [
           'teacher_dashboard',
           'common_academy',
-          'academy_notifications', // Adicionado para professor
+          'common_training_log', // Adicionado para Professor
           'common_tools',
           'teacher_history',
         ];
         break;
+      // +++ FIM DA MODIFICAÇÃO +++
       case UserRole.student:
       default:
         defaultVisibleIds = [
           'student_profile',
           'common_academy',
+          'common_training_log',
           'common_tools',
           'student_history',
         ];
@@ -437,7 +445,7 @@ class NavigationService {
         getFlatPageModulesForCurrentUser().map((m) => m.id).toList();
     return {
       'order': allModuleIds,
-      'visible': defaultVisibleIds.toSet().toList(), // Garante valores únicos
+      'visible': defaultVisibleIds.toSet().toList().take(5).toList(),
     };
   }
 

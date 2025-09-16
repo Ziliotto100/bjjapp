@@ -3,6 +3,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'package:bjjapp/training_goals_page.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, Uint8List;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -131,15 +132,20 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 module.pageBuilder!(widget.user, _teachers, _students))
             .toList();
 
-        _visibleModules = visibleIds
-            .map((id) => _allPageModules.firstWhere((m) => m.id == id,
-                orElse: () => _allPageModules.first))
-            .toList();
+        // +++ INÍCIO DA CORREÇÃO +++
+        // Lógica mais robusta para filtrar e ordenar os módulos visíveis.
+        _visibleModules =
+            _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
+
         _visibleModules.sort((a, b) {
           final indexA = savedOrder.indexOf(a.id);
           final indexB = savedOrder.indexOf(b.id);
+          // Se um item não estiver na lista de ordem, coloque-o no final.
+          if (indexA == -1) return 1;
+          if (indexB == -1) return -1;
           return indexA.compareTo(indexB);
         });
+        // +++ FIM DA CORREÇÃO +++
 
         int profileIndex =
             _allPageModules.indexWhere((m) => m.id == 'student_profile');
@@ -211,7 +217,8 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ),
         ],
       ),
-      bottomNavigationBar: _visibleModules.isNotEmpty
+      // Adicionado um check para garantir que a barra só seja construída com 2 ou mais itens.
+      bottomNavigationBar: _visibleModules.length >= 2
           ? BottomNavigationBar(
               currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
               onTap: _onItemTapped,
@@ -1218,6 +1225,31 @@ class _UserProfilePageState extends State<UserProfilePage> {
                         currentUser: _currentUser!,
                         monthlyCheckins: _monthlyCheckins,
                         onTap: _showSetGoalDialog,
+                      ),
+                    if (_currentUser!.role == UserRole.student)
+                      Card(
+                        margin: const EdgeInsets.symmetric(vertical: 4.0),
+                        child: ListTile(
+                          leading: const Icon(Icons.flag_outlined,
+                              color: warningColor, size: 30),
+                          title: const Text("Minhas Metas",
+                              style: TextStyle(color: textHint)),
+                          subtitle: Text(
+                            "Defina e acompanhe seus objetivos",
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(color: textPrimary),
+                          ),
+                          trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                              size: 16),
+                          onTap: () {
+                            Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) =>
+                                  TrainingGoalsPage(userId: _currentUser!.uid),
+                            ));
+                          },
+                        ),
                       ),
                     if (_currentUser!.role == UserRole.student)
                       Card(

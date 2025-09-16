@@ -1200,3 +1200,162 @@ class Tutorial {
     };
   }
 }
+
+// =========================================================================
+// ==           INÍCIO DOS NOVOS MODELOS PARA O DIÁRIO DE TREINOS         ==
+// =========================================================================
+
+/// Representa uma única rodada de sparring dentro de um diário de treino.
+class SparringRound {
+  String partnerName;
+  int submissionsFor;
+  int submissionsAgainst;
+  int sweepsFor;
+  int passesFor;
+
+  SparringRound({
+    this.partnerName = '',
+    this.submissionsFor = 0,
+    this.submissionsAgainst = 0,
+    this.sweepsFor = 0,
+    this.passesFor = 0,
+  });
+
+  // Converte o objeto para um Map, para ser salvo no Firestore.
+  Map<String, dynamic> toMap() {
+    return {
+      'partnerName': partnerName,
+      'submissionsFor': submissionsFor,
+      'submissionsAgainst': submissionsAgainst,
+      'sweepsFor': sweepsFor,
+      'passesFor': passesFor,
+    };
+  }
+
+  // Cria um objeto a partir de um Map vindo do Firestore.
+  factory SparringRound.fromMap(Map<String, dynamic> map) {
+    return SparringRound(
+      partnerName: map['partnerName'] ?? '',
+      submissionsFor: map['submissionsFor'] ?? 0,
+      submissionsAgainst: map['submissionsAgainst'] ?? 0,
+      sweepsFor: map['sweepsFor'] ?? 0,
+      passesFor: map['passesFor'] ?? 0,
+    );
+  }
+}
+
+/// Representa uma entrada completa no diário de treinos do aluno.
+class TrainingLog {
+  final String id;
+  final String userId;
+  final DateTime date;
+  final String? classTopic;
+  final List<String> techniques;
+  final String generalNotes;
+  final int performanceRating; // De 1 a 5
+  final List<SparringRound> sparringRounds;
+  final Timestamp createdAt;
+  Timestamp updatedAt;
+
+  TrainingLog({
+    required this.id,
+    required this.userId,
+    required this.date,
+    this.classTopic,
+    this.techniques = const [],
+    this.generalNotes = '',
+    this.performanceRating = 3,
+    this.sparringRounds = const [],
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  // Converte o objeto para um Map para o Firestore.
+  Map<String, dynamic> toMap() {
+    return {
+      'userId': userId,
+      'date': Timestamp.fromDate(date),
+      'classTopic': classTopic,
+      'techniques': techniques,
+      'generalNotes': generalNotes,
+      'performanceRating': performanceRating,
+      'sparringRounds': sparringRounds.map((round) => round.toMap()).toList(),
+      'createdAt': createdAt,
+      'updatedAt': updatedAt,
+    };
+  }
+
+  // Cria um objeto a partir de um DocumentSnapshot do Firestore.
+  factory TrainingLog.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return TrainingLog(
+      id: doc.id,
+      userId: data['userId'] ?? '',
+      date: (data['date'] as Timestamp).toDate(),
+      classTopic: data['classTopic'],
+      techniques: List<String>.from(data['techniques'] ?? []),
+      generalNotes: data['generalNotes'] ?? '',
+      performanceRating: data['performanceRating'] ?? 3,
+      sparringRounds: (data['sparringRounds'] as List<dynamic>? ?? [])
+          .map((roundData) => SparringRound.fromMap(roundData))
+          .toList(),
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+      updatedAt: data['updatedAt'] ?? Timestamp.now(),
+    );
+  }
+}
+
+enum GoalStatus { pending, completed }
+
+// Helper para converter o enum de status da meta para String e vice-versa
+String goalStatusToString(GoalStatus status) {
+  return status.name;
+}
+
+GoalStatus goalStatusFromString(String? statusString) {
+  if (statusString == 'completed') {
+    return GoalStatus.completed;
+  }
+  return GoalStatus.pending;
+}
+
+/// Modelo para as metas de treino do aluno.
+class TrainingGoal {
+  final String id;
+  final String userId;
+  final String description;
+  final DateTime? deadline;
+  final GoalStatus status;
+  final Timestamp createdAt;
+
+  TrainingGoal({
+    required this.id,
+    required this.userId,
+    required this.description,
+    this.deadline,
+    this.status = GoalStatus.pending,
+    required this.createdAt,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'userId': userId,
+      'description': description,
+      'deadline': deadline != null ? Timestamp.fromDate(deadline!) : null,
+      'status': goalStatusToString(status),
+      'createdAt': createdAt,
+    };
+  }
+
+  factory TrainingGoal.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return TrainingGoal(
+      id: doc.id,
+      userId: data['userId'] ?? '',
+      description: data['description'] ?? '',
+      deadline: (data['deadline'] as Timestamp?)?.toDate(),
+      status: goalStatusFromString(data['status']),
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+    );
+  }
+}
