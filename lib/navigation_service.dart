@@ -279,16 +279,14 @@ class NavigationService {
           ),
         ],
       ),
-      // +++ INÍCIO DA MODIFICAÇÃO +++
       AppModule(
         id: 'common_training_log',
         title: 'Diário de Treinos',
         icon: Icons.auto_stories_outlined,
-        // Sem `requiredRoles`, fica visível para todos
-        pageBuilder: (user, teachers, students) =>
-            TrainingLogPage(userId: user.uid),
+        // +++ INÍCIO DA MODIFICAÇÃO +++
+        pageBuilder: (user, teachers, students) => TrainingLogPage(user: user),
+        // +++ FIM DA MODIFICAÇÃO +++
       ),
-      // +++ FIM DA MODIFICAÇÃO +++
       AppModule(
           id: 'common_tools',
           title: 'Ferramentas',
@@ -409,12 +407,11 @@ class NavigationService {
           'superadmin_tutorials',
         ];
         break;
-      // +++ INÍCIO DA MODIFICAÇÃO +++
       case UserRole.manager:
         defaultVisibleIds = [
           'manager_dashboard',
           'common_academy',
-          'common_training_log', // Adicionado para Gerente
+          'common_training_log',
           'manager_financial',
           'common_tools',
         ];
@@ -423,12 +420,11 @@ class NavigationService {
         defaultVisibleIds = [
           'teacher_dashboard',
           'common_academy',
-          'common_training_log', // Adicionado para Professor
+          'common_training_log',
           'common_tools',
           'teacher_history',
         ];
         break;
-      // +++ FIM DA MODIFICAÇÃO +++
       case UserRole.student:
       default:
         defaultVisibleIds = [

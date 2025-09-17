@@ -1,13 +1,16 @@
 // lib/training_log_module.dart
 // ignore_for_file: use_build_context_synchronously, prefer_final_fields
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
 import 'models.dart';
 import 'common_widgets.dart';
 import 'app_theme.dart';
+import 'training_stats_page.dart';
 
 // --- SERVICE PARA O DIÁRIO DE TREINOS ---
 class TrainingLogService {
@@ -19,36 +22,38 @@ class TrainingLogService {
       .collection('users')
       .doc(userId)
       .collection('training_logs');
-  CollectionReference get _tagsCollection => FirebaseFirestore.instance
+
+  CollectionReference get _techniquesCollection => FirebaseFirestore.instance
       .collection('users')
       .doc(userId)
-      .collection('training_tags'); // Tags específicas para treinos
+      .collection('training_techniques');
 
-  // --- MÉTODOS DE TAGS (pode ser usado para técnicas no futuro) ---
-  Stream<List<String>> getTagsStream() {
-    return _tagsCollection.orderBy('name').snapshots().map((snapshot) =>
+  Stream<List<String>> getTechniquesStream() {
+    return _techniquesCollection.orderBy('name').snapshots().map((snapshot) =>
         snapshot.docs.map((doc) => doc['name'] as String).toList());
   }
 
-  Future<void> addTag(String tagName) async {
-    final query = await _tagsCollection
-        .where('name', isEqualTo: tagName.trim())
+  Future<void> addTechnique(String techniqueName) async {
+    final query = await _techniquesCollection
+        .where('name', isEqualTo: techniqueName.trim().capitalizeWords())
         .limit(1)
         .get();
     if (query.docs.isEmpty) {
-      await _tagsCollection.add({'name': tagName.trim()});
+      await _techniquesCollection
+          .add({'name': techniqueName.trim().capitalizeWords()});
     }
   }
 
-  Future<void> deleteTag(String tagName) async {
-    final query =
-        await _tagsCollection.where('name', isEqualTo: tagName).limit(1).get();
+  Future<void> deleteTechnique(String techniqueName) async {
+    final query = await _techniquesCollection
+        .where('name', isEqualTo: techniqueName)
+        .limit(1)
+        .get();
     if (query.docs.isNotEmpty) {
       await query.docs.first.reference.delete();
     }
   }
 
-  // --- MÉTODOS DE LOGS ---
   Stream<QuerySnapshot> getLogsStream() {
     return _logsCollection.orderBy('date', descending: true).snapshots();
   }
@@ -56,12 +61,10 @@ class TrainingLogService {
   Future<void> saveLog(TrainingLog log) {
     final data = log.toMap();
     if (log.id.isEmpty) {
-      // Adicionando novos campos no momento da criação
       data['createdAt'] = FieldValue.serverTimestamp();
       data['updatedAt'] = FieldValue.serverTimestamp();
       return _logsCollection.add(data).then((_) {});
     } else {
-      // Adicionando campo de atualização
       data['updatedAt'] = FieldValue.serverTimestamp();
       return _logsCollection.doc(log.id).update(data);
     }
@@ -74,104 +77,151 @@ class TrainingLogService {
 
 // --- TELA PRINCIPAL DO DIÁRIO ---
 class TrainingLogPage extends StatefulWidget {
-  final String userId;
-  const TrainingLogPage({super.key, required this.userId});
+  final UserModel user;
+  const TrainingLogPage({super.key, required this.user});
 
   @override
   State<TrainingLogPage> createState() => _TrainingLogPageState();
 }
 
-class _TrainingLogPageState extends State<TrainingLogPage> {
-  late final TrainingLogService _logService;
+class _TrainingLogPageState extends State<TrainingLogPage>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  int _currentTabIndex = 0;
 
   @override
   void initState() {
     super.initState();
-    _logService = TrainingLogService(userId: widget.userId);
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) return;
+      setState(() {
+        _currentTabIndex = _tabController.index;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.removeListener(() {});
+    _tabController.dispose();
+    super.dispose();
   }
 
   void _navigateToAddEntry({TrainingLog? logToEdit}) {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) =>
-          EditTrainingLogPage(userId: widget.userId, logToEdit: logToEdit),
+          EditTrainingLogPage(user: widget.user, logToEdit: logToEdit),
     ));
-  }
-
-  void _confirmDelete(String logId) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Excluir Registro?'),
-        content: const Text(
-            'Tem certeza que deseja excluir este registro de treino?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              await _logService.deleteLog(logId);
-              Navigator.of(ctx).pop(true);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
-            child: const Text('Excluir'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
+      appBar: TabBar(
+        controller: _tabController,
+        tabs: const [
+          Tab(icon: Icon(Icons.book_outlined), text: 'Diário'),
+          Tab(icon: Icon(Icons.bar_chart_rounded), text: 'Estatísticas'),
+        ],
+      ),
       body: AppBackground(
         child: SafeArea(
-          child: StreamBuilder<QuerySnapshot>(
-            stream: _logService.getLogsStream(),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return const EmptyStateWidget(
-                    icon: Icons.error, title: 'Erro ao carregar diário');
-              }
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const EmptyStateWidget(
-                  icon: Icons.auto_stories_outlined,
-                  title: 'Diário Vazio',
-                  message:
-                      'Clique no botão "+" para registrar seu primeiro treino e acompanhar sua evolução.',
-                );
-              }
-
-              final logs = snapshot.data!.docs
-                  .map((doc) => TrainingLog.fromFirestore(doc))
-                  .toList();
-
-              return ListView.builder(
-                padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
-                itemCount: logs.length,
-                itemBuilder: (context, index) {
-                  final log = logs[index];
-                  return _TrainingLogCard(
-                    log: log,
-                    onTap: () => _navigateToAddEntry(logToEdit: log),
-                    onDelete: () => _confirmDelete(log.id),
-                  );
-                },
-              );
-            },
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _TrainingLogListView(
+                user: widget.user,
+                onEdit: (log) => _navigateToAddEntry(logToEdit: log),
+              ),
+              TrainingStatsPage(user: widget.user),
+            ],
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _navigateToAddEntry(),
-        label: const Text('Registrar Treino'),
-        icon: const Icon(Icons.add),
-      ),
+      floatingActionButton: _currentTabIndex == 0
+          ? FloatingActionButton.extended(
+              onPressed: () => _navigateToAddEntry(),
+              label: const Text('Registrar Treino'),
+              icon: const Icon(Icons.add),
+            )
+          : null,
+    );
+  }
+}
+
+// --- WIDGET PARA A LISTA DE TREINOS ---
+class _TrainingLogListView extends StatelessWidget {
+  final UserModel user;
+  final Function(TrainingLog) onEdit;
+  const _TrainingLogListView({required this.user, required this.onEdit});
+
+  @override
+  Widget build(BuildContext context) {
+    final logService = TrainingLogService(userId: user.uid);
+
+    void confirmDelete(String logId) {
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Excluir Registro?'),
+          content: const Text(
+              'Tem certeza que deseja excluir este registro de treino?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                await logService.deleteLog(logId);
+                Navigator.of(ctx).pop(true);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+              child: const Text('Excluir'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return StreamBuilder<QuerySnapshot>(
+      stream: logService.getLogsStream(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return const EmptyStateWidget(
+              icon: Icons.error, title: 'Erro ao carregar diário');
+        }
+        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+          return const EmptyStateWidget(
+            icon: Icons.auto_stories_outlined,
+            title: 'Diário Vazio',
+            message:
+                'Clique no botão "+" para registrar seu primeiro treino e acompanhar sua evolução.',
+          );
+        }
+
+        final logs = snapshot.data!.docs
+            .map((doc) => TrainingLog.fromFirestore(doc))
+            .toList();
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+          itemCount: logs.length,
+          itemBuilder: (context, index) {
+            final log = logs[index];
+            return _TrainingLogCard(
+              log: log,
+              onTap: () => onEdit(log),
+              onDelete: () => confirmDelete(log.id),
+            );
+          },
+        );
+      },
     );
   }
 }
@@ -210,11 +260,10 @@ class _TrainingLogCard extends StatelessWidget {
                         .titleMedium
                         ?.copyWith(color: primaryAccent),
                   ),
-                  // +++ INÍCIO DA MODIFICAÇÃO +++
                   PopupMenuButton<String>(
                     onSelected: (value) {
                       if (value == 'edit') {
-                        onTap(); // A função onTap já navega para a edição
+                        onTap();
                       } else if (value == 'delete') {
                         onDelete();
                       }
@@ -225,7 +274,6 @@ class _TrainingLogCard extends StatelessWidget {
                           value: 'delete', child: Text('Excluir')),
                     ],
                   ),
-                  // +++ FIM DA MODIFICAÇÃO +++
                 ],
               ),
               const SizedBox(height: 8),
@@ -316,10 +364,10 @@ class _StatChip extends StatelessWidget {
 
 // --- TELA DE EDIÇÃO/CRIAÇÃO DE REGISTRO ---
 class EditTrainingLogPage extends StatefulWidget {
-  final String userId;
+  final UserModel user;
   final TrainingLog? logToEdit;
 
-  const EditTrainingLogPage({super.key, required this.userId, this.logToEdit});
+  const EditTrainingLogPage({super.key, required this.user, this.logToEdit});
 
   @override
   State<EditTrainingLogPage> createState() => _EditTrainingLogPageState();
@@ -329,10 +377,9 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
   final _formKey = GlobalKey<FormState>();
   late final TrainingLogService _logService;
 
-  // Controladores de formulário
   final _topicController = TextEditingController();
-  final _techniquesController = TextEditingController();
   final _notesController = TextEditingController();
+  List<String> _selectedTechniques = [];
 
   DateTime _selectedDate = DateTime.now();
   int _performanceRating = 3;
@@ -344,13 +391,13 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
   @override
   void initState() {
     super.initState();
-    _logService = TrainingLogService(userId: widget.userId);
+    _logService = TrainingLogService(userId: widget.user.uid);
 
     if (_isEditing) {
       final log = widget.logToEdit!;
       _selectedDate = log.date;
       _topicController.text = log.classTopic ?? '';
-      _techniquesController.text = log.techniques.join(', ');
+      _selectedTechniques = List<String>.from(log.techniques);
       _notesController.text = log.generalNotes;
       _performanceRating = log.performanceRating;
       _sparringRounds = log.sparringRounds
@@ -362,7 +409,6 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
   @override
   void dispose() {
     _topicController.dispose();
-    _techniquesController.dispose();
     _notesController.dispose();
     super.dispose();
   }
@@ -400,18 +446,12 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
     }
     setState(() => _isSaving = true);
 
-    final techniques = _techniquesController.text
-        .split(',')
-        .map((t) => t.trim())
-        .where((t) => t.isNotEmpty)
-        .toList();
-
     final log = TrainingLog(
       id: _isEditing ? widget.logToEdit!.id : '',
-      userId: widget.userId,
+      userId: widget.user.uid,
       date: _selectedDate,
       classTopic: _topicController.text.trim(),
-      techniques: techniques,
+      techniques: _selectedTechniques,
       generalNotes: _notesController.text.trim(),
       performanceRating: _performanceRating,
       sparringRounds: _sparringRounds,
@@ -459,7 +499,6 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
                   child: ListView(
                     padding: const EdgeInsets.all(16.0),
                     children: [
-                      // --- SEÇÃO DE INFORMAÇÕES GERAIS ---
                       _buildSectionHeader('Detalhes da Aula'),
                       InkWell(
                         onTap: _pickDate,
@@ -481,14 +520,17 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
                             labelText: 'Tópico Principal da Aula'),
                       ),
                       const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _techniquesController,
-                        decoration: const InputDecoration(
-                            labelText: 'Técnicas (separadas por vírgula)'),
+                      // +++ CAMPO DE TÉCNICAS ATUALIZADO +++
+                      _TechniquesInputField(
+                        logService: _logService,
+                        initialTechniques: _selectedTechniques,
+                        onChanged: (newTechniques) {
+                          setState(() {
+                            _selectedTechniques = newTechniques;
+                          });
+                        },
                       ),
                       const SizedBox(height: 24),
-
-                      // --- SEÇÃO DE ROLAS ---
                       _buildSectionHeader('Sparring (Rolas)'),
                       ..._sparringRounds.asMap().entries.map((entry) {
                         int index = entry.key;
@@ -506,8 +548,6 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
                         label: const Text('Adicionar Rola'),
                       ),
                       const SizedBox(height: 24),
-
-                      // --- SEÇÃO DE REFLEXÃO ---
                       _buildSectionHeader('Reflexão Pessoal'),
                       TextFormField(
                         controller: _notesController,
@@ -693,6 +733,267 @@ class _Counter extends StatelessWidget {
               onPressed: () => onChanged(value + 1),
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+// +++ INÍCIO DOS NOVOS WIDGETS PARA SELEÇÃO DE TÉCNICAS +++
+
+class _TechniquesInputField extends StatefulWidget {
+  final TrainingLogService logService;
+  final List<String> initialTechniques;
+  final ValueChanged<List<String>> onChanged;
+
+  const _TechniquesInputField({
+    required this.logService,
+    required this.initialTechniques,
+    required this.onChanged,
+  });
+
+  @override
+  State<_TechniquesInputField> createState() => _TechniquesInputFieldState();
+}
+
+class _TechniquesInputFieldState extends State<_TechniquesInputField> {
+  late List<String> _selectedTechniques;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedTechniques = List<String>.from(widget.initialTechniques);
+  }
+
+  void _showTechniqueSelectionDialog() async {
+    final List<String>? result = await showDialog<List<String>>(
+      context: context,
+      builder: (context) => _TechniqueSelectionDialog(
+        logService: widget.logService,
+        initiallySelected: _selectedTechniques,
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        _selectedTechniques = result;
+      });
+      widget.onChanged(_selectedTechniques);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InputDecorator(
+          decoration: const InputDecoration(
+            labelText: 'Técnicas',
+            contentPadding: EdgeInsets.fromLTRB(12, 12, 12, 0),
+          ),
+          child: Wrap(
+            spacing: 8.0,
+            runSpacing: 4.0,
+            children: _selectedTechniques.map((tech) {
+              return Chip(
+                label: Text(tech),
+                onDeleted: () {
+                  setState(() {
+                    _selectedTechniques.remove(tech);
+                  });
+                  widget.onChanged(_selectedTechniques);
+                },
+              );
+            }).toList(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _showTechniqueSelectionDialog,
+          icon: const Icon(Icons.list_alt_rounded),
+          label: const Text('Selecionar / Adicionar Técnicas'),
+        ),
+      ],
+    );
+  }
+}
+
+class _TechniqueSelectionDialog extends StatefulWidget {
+  final TrainingLogService logService;
+  final List<String> initiallySelected;
+
+  const _TechniqueSelectionDialog({
+    required this.logService,
+    required this.initiallySelected,
+  });
+
+  @override
+  State<_TechniqueSelectionDialog> createState() =>
+      _TechniqueSelectionDialogState();
+}
+
+class _TechniqueSelectionDialogState extends State<_TechniqueSelectionDialog> {
+  late Set<String> _selectedInDialog;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedInDialog = Set<String>.from(widget.initiallySelected);
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text.toLowerCase();
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _showAddTechniqueDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nova Técnica Pessoal'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration:
+              const InputDecoration(hintText: 'Ex: Passagem de guarda...'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                final newTech = controller.text.trim().capitalizeWords();
+                widget.logService.addTechnique(newTech);
+                setState(() {
+                  _selectedInDialog.add(newTech);
+                });
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Adicionar'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDelete(String techniqueName) {
+    showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Excluir Técnica?'),
+              content: Text(
+                  'Tem certeza que deseja excluir "${techniqueName}" da sua lista pessoal?'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Cancelar')),
+                ElevatedButton(
+                  onPressed: () {
+                    widget.logService.deleteTechnique(techniqueName);
+                    setState(() {
+                      _selectedInDialog.remove(techniqueName);
+                    });
+                    Navigator.of(ctx).pop();
+                  },
+                  style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+                  child: const Text('Excluir'),
+                ),
+              ],
+            ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Selecione as Técnicas'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _searchController,
+              decoration: const InputDecoration(
+                labelText: 'Buscar técnica...',
+                prefixIcon: Icon(Icons.search),
+              ),
+            ),
+            Expanded(
+              child: StreamBuilder<List<String>>(
+                stream: widget.logService.getTechniquesStream(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.data!.isEmpty) {
+                    return const Center(
+                        child: Text('Nenhuma técnica cadastrada.'));
+                  }
+                  final filteredTechniques = snapshot.data!
+                      .where(
+                          (tech) => tech.toLowerCase().contains(_searchQuery))
+                      .toList();
+
+                  return ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: filteredTechniques.length,
+                    itemBuilder: (context, index) {
+                      final tech = filteredTechniques[index];
+                      final isSelected = _selectedInDialog.contains(tech);
+                      return CheckboxListTile(
+                        title: Text(tech),
+                        value: isSelected,
+                        onChanged: (value) {
+                          setState(() {
+                            if (value == true) {
+                              _selectedInDialog.add(tech);
+                            } else {
+                              _selectedInDialog.remove(tech);
+                            }
+                          });
+                        },
+                        secondary: IconButton(
+                          icon:
+                              const Icon(Icons.delete_outline, color: textHint),
+                          onPressed: () => _confirmDelete(tech),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _showAddTechniqueDialog,
+          child: const Text('Nova Técnica'),
+        ),
+        const Spacer(),
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            Navigator.of(context).pop(_selectedInDialog.toList());
+          },
+          child: const Text('Confirmar'),
         ),
       ],
     );
