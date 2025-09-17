@@ -279,14 +279,28 @@ class NavigationService {
           ),
         ],
       ),
+      // +++ INÍCIO DA MODIFICAÇÃO +++
       AppModule(
-        id: 'common_training_log',
-        title: 'Diário de Treinos',
-        icon: Icons.auto_stories_outlined,
-        // +++ INÍCIO DA MODIFICAÇÃO +++
-        pageBuilder: (user, teachers, students) => TrainingLogPage(user: user),
-        // +++ FIM DA MODIFICAÇÃO +++
-      ),
+          id: 'personal_development',
+          title: 'Evolução Pessoal',
+          icon: Icons.insights_rounded,
+          subModules: [
+            AppModule(
+              id: 'common_training_log',
+              title: 'Diário de Treinos',
+              icon: Icons.auto_stories_outlined,
+              pageBuilder: (user, teachers, students) =>
+                  TrainingLogPage(user: user),
+            ),
+            AppModule(
+              id: 'common_notebook',
+              title: 'Caderno de Estudos',
+              icon: Icons.book_rounded,
+              pageBuilder: (user, teachers, students) =>
+                  StudyNotebookPage(userId: user.uid),
+            ),
+          ]),
+      // +++ FIM DA MODIFICAÇÃO +++
       AppModule(
           id: 'common_tools',
           title: 'Ferramentas',
@@ -314,13 +328,6 @@ class NavigationService {
                   user: user,
                   academyId: user.academyId,
                   todosAlunosDaAcademia: students),
-            ),
-            AppModule(
-              id: 'common_notebook',
-              title: 'Caderno de Estudos',
-              icon: Icons.book_rounded,
-              pageBuilder: (user, teachers, students) =>
-                  StudyNotebookPage(userId: user.uid),
             ),
             AppModule(
               id: 'common_rules',
@@ -411,7 +418,7 @@ class NavigationService {
         defaultVisibleIds = [
           'manager_dashboard',
           'common_academy',
-          'common_training_log',
+          'personal_development', // <<< ALTERADO AQUI
           'manager_financial',
           'common_tools',
         ];
@@ -420,7 +427,7 @@ class NavigationService {
         defaultVisibleIds = [
           'teacher_dashboard',
           'common_academy',
-          'common_training_log',
+          'personal_development', // <<< ALTERADO AQUI
           'common_tools',
           'teacher_history',
         ];
@@ -430,7 +437,7 @@ class NavigationService {
         defaultVisibleIds = [
           'student_profile',
           'common_academy',
-          'common_training_log',
+          'personal_development', // <<< ALTERADO AQUI
           'common_tools',
           'student_history',
         ];

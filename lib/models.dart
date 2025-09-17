@@ -4,41 +4,34 @@ import 'package:flutter/material.dart';
 
 // Enum para os diferentes tipos de papéis de usuário no sistema.
 enum UserRole {
-  superAdmin, // <<< NOVO PERFIL ADICIONADO AQUI
-  manager, // Gerente da academia
-  teacher, // Professor
-  student, // Aluno
-  unknown, // Papel desconhecido ou não definido
+  superAdmin,
+  manager,
+  teacher,
+  student,
+  unknown,
 }
 
 // Enum para o status de pagamento da mensalidade.
 enum PaymentStatus {
-  pago, // Pagamento realizado
-  pendente, // Pagamento aguardando (dentro do prazo)
-  atrasado, // Pagamento não realizado (após o vencimento)
+  pago,
+  pendente,
+  atrasado,
 }
 
-// NOVO ENUM para o status do check-in
+// Enum para o status do check-in
 enum CheckinStatus {
   pending,
   approved,
 }
 
-// Helper para converter o enum de status do check-in para String e vice-versa
 String checkinStatusToString(CheckinStatus status) {
-  switch (status) {
-    case CheckinStatus.pending:
-      return 'pending';
-    case CheckinStatus.approved:
-      return 'approved';
-  }
+  return status.name;
 }
 
 CheckinStatus checkinStatusFromString(String? statusString) {
-  if (statusString == 'approved') {
-    return CheckinStatus.approved;
-  }
-  return CheckinStatus.pending; // Padrão é pendente
+  return statusString == 'approved'
+      ? CheckinStatus.approved
+      : CheckinStatus.pending;
 }
 
 /// Modelo para representar um Usuário do sistema (login via FirebaseAuth).
@@ -48,10 +41,9 @@ class UserModel {
   final String email;
   final String academyId;
   final UserRole role;
-  final String? studentRecordId; // Link para o registro de 'Aluno'
+  final String? studentRecordId;
   final bool mustChangePassword;
   final bool isActive;
-  // Campos de perfil para gerentes e professores
   final String? faixa;
   final int? graus;
   final double? peso;
@@ -60,23 +52,18 @@ class UserModel {
   final String? phoneNumber;
   final Map<String, String>? address;
   final Map<String, int> monthlyTrainingGoals;
-  // *** NOVOS CAMPOS PARA UNIDADES ***
   final String? unitId;
   final String? unitName;
   final String? lastSelectedUnitId;
   final bool canUploadStudyVideos;
-
-  // [MELHORIA] Campos de Auditoria
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
   final String? createdByUid;
   final String? createdByName;
   final String? lastUpdatedByUid;
   final String? lastUpdatedByName;
-
-  // NOVO CAMPO PARA O POP-UP DE BOAS-VINDAS
   final bool hasSeenWelcomePopup;
-  final List<String>? fcmTokens; // NOVO CAMPO ADICIONADO
+  final List<String>? fcmTokens;
 
   UserModel({
     required this.uid,
@@ -125,7 +112,6 @@ class UserModel {
     final data = doc.data() as Map<String, dynamic>;
     UserRole role;
     switch (data['role']) {
-      // <<< NOVA VERIFICAÇÃO ADICIONADA AQUI >>>
       case 'superadmin':
         role = UserRole.superAdmin;
         break;
@@ -144,9 +130,8 @@ class UserModel {
 
     final goalsData =
         data['monthlyTrainingGoals'] as Map<String, dynamic>? ?? {};
-    final Map<String, int> goals = goalsData.map((key, value) {
-      return MapEntry(key, (value as num).toInt());
-    });
+    final Map<String, int> goals =
+        goalsData.map((key, value) => MapEntry(key, (value as num).toInt()));
 
     Map<String, String>? addressMap;
     if (data['address'] is Map) {
@@ -198,13 +183,10 @@ class Aluno {
   String? userId;
   PaymentStatus paymentStatus;
   bool isActive;
-  // CAMPOS ADICIONADOS
   String? phoneNumber;
   Map<String, String>? address;
-  // *** NOVOS CAMPOS PARA UNIDADES ***
   String? unitId;
   String? unitName;
-
   final Timestamp? createdAt;
   final Timestamp? updatedAt;
   final String? createdByUid;
@@ -719,7 +701,7 @@ extension StringExtension on String {
 
   String capitalizeWords() {
     if (trim().isEmpty) return '';
-    return trim().split(RegExp(r'\s+')).map((word) {
+    return trim().split(RegExp(r'\\s+')).map((word) {
       if (word.isEmpty) return '';
       return word[0].toUpperCase() + word.substring(1).toLowerCase();
     }).join(' ');
@@ -1202,49 +1184,109 @@ class Tutorial {
 }
 
 // =========================================================================
-// ==           INÍCIO DOS NOVOS MODELOS PARA O DIÁRIO DE TREINOS         ==
+// ==           MODELOS PARA O DIÁRIO DE TREINOS (ATUALIZADOS)            ==
 // =========================================================================
 
-/// Representa uma única rodada de sparring dentro de um diário de treino.
-class SparringRound {
-  String partnerName;
-  int submissionsFor;
-  int submissionsAgainst;
-  int sweepsFor;
-  int passesFor;
+enum SparringEventType {
+  finalizacao,
+  joelhoNaBarriga,
+  montada, // <<< ADICIONADO AQUI
+  passagem,
+  queda,
+  raspagem,
+  reversao,
+}
 
-  SparringRound({
-    this.partnerName = '',
-    this.submissionsFor = 0,
-    this.submissionsAgainst = 0,
-    this.sweepsFor = 0,
-    this.passesFor = 0,
+String sparringEventTypeToString(SparringEventType type) {
+  return type.name;
+}
+
+SparringEventType sparringEventTypeFromString(String? s) {
+  return SparringEventType.values.firstWhere((e) => e.name == s,
+      orElse: () => SparringEventType.finalizacao);
+}
+
+String getSparringEventTypeName(SparringEventType type) {
+  switch (type) {
+    case SparringEventType.finalizacao:
+      return 'Finalização';
+    case SparringEventType.joelhoNaBarriga:
+      return 'Joelho na Barriga';
+    case SparringEventType.montada: // <<< ADICIONADO AQUI
+      return 'Montada';
+    case SparringEventType.passagem:
+      return 'Passagem';
+    case SparringEventType.queda:
+      return 'Queda';
+    case SparringEventType.raspagem:
+      return 'Raspagem';
+    case SparringEventType.reversao:
+      return 'Reversão';
+  }
+}
+
+class SparringEvent {
+  SparringEventType type;
+  String technique;
+  bool wasSuccessful;
+
+  SparringEvent({
+    required this.type,
+    required this.technique,
+    required this.wasSuccessful,
   });
 
-  // Converte o objeto para um Map, para ser salvo no Firestore.
   Map<String, dynamic> toMap() {
     return {
-      'partnerName': partnerName,
-      'submissionsFor': submissionsFor,
-      'submissionsAgainst': submissionsAgainst,
-      'sweepsFor': sweepsFor,
-      'passesFor': passesFor,
+      'type': sparringEventTypeToString(type),
+      'technique': technique,
+      'wasSuccessful': wasSuccessful,
     };
   }
 
-  // Cria um objeto a partir de um Map vindo do Firestore.
-  factory SparringRound.fromMap(Map<String, dynamic> map) {
-    return SparringRound(
-      partnerName: map['partnerName'] ?? '',
-      submissionsFor: map['submissionsFor'] ?? 0,
-      submissionsAgainst: map['submissionsAgainst'] ?? 0,
-      sweepsFor: map['sweepsFor'] ?? 0,
-      passesFor: map['passesFor'] ?? 0,
+  factory SparringEvent.fromMap(Map<String, dynamic> map) {
+    return SparringEvent(
+      type: sparringEventTypeFromString(map['type']),
+      technique: map['technique'] ?? '',
+      wasSuccessful: map['wasSuccessful'] ?? false,
     );
   }
 }
 
-/// Representa uma entrada completa no diário de treinos do aluno.
+class SparringRound {
+  String partnerName;
+  String notes;
+  int rating;
+  List<SparringEvent> events;
+
+  SparringRound({
+    this.partnerName = '',
+    this.notes = '',
+    this.rating = 3,
+    List<SparringEvent>? events,
+  }) : events = events ?? [];
+
+  Map<String, dynamic> toMap() {
+    return {
+      'partnerName': partnerName,
+      'notes': notes,
+      'rating': rating,
+      'events': events.map((e) => e.toMap()).toList(),
+    };
+  }
+
+  factory SparringRound.fromMap(Map<String, dynamic> map) {
+    return SparringRound(
+      partnerName: map['partnerName'] ?? '',
+      notes: map['notes'] ?? '',
+      rating: map['rating'] ?? 3,
+      events: (map['events'] as List<dynamic>? ?? [])
+          .map((eventData) => SparringEvent.fromMap(eventData))
+          .toList(),
+    );
+  }
+}
+
 class TrainingLog {
   final String id;
   final String userId;
@@ -1252,7 +1294,7 @@ class TrainingLog {
   final String? classTopic;
   final List<String> techniques;
   final String generalNotes;
-  final int performanceRating; // De 1 a 5
+  final int performanceRating;
   final List<SparringRound> sparringRounds;
   final Timestamp createdAt;
   Timestamp updatedAt;
@@ -1270,7 +1312,6 @@ class TrainingLog {
     required this.updatedAt,
   });
 
-  // Converte o objeto para um Map para o Firestore.
   Map<String, dynamic> toMap() {
     return {
       'userId': userId,
@@ -1285,7 +1326,6 @@ class TrainingLog {
     };
   }
 
-  // Cria um objeto a partir de um DocumentSnapshot do Firestore.
   factory TrainingLog.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return TrainingLog(
@@ -1293,7 +1333,8 @@ class TrainingLog {
       userId: data['userId'] ?? '',
       date: (data['date'] as Timestamp).toDate(),
       classTopic: data['classTopic'],
-      techniques: List<String>.from(data['techniques'] ?? []),
+      techniques:
+          List<String>.from(data['techniques'] ?? data['trainingGoals'] ?? []),
       generalNotes: data['generalNotes'] ?? '',
       performanceRating: data['performanceRating'] ?? 3,
       sparringRounds: (data['sparringRounds'] as List<dynamic>? ?? [])
@@ -1307,19 +1348,16 @@ class TrainingLog {
 
 enum GoalStatus { pending, completed }
 
-// Helper para converter o enum de status da meta para String e vice-versa
 String goalStatusToString(GoalStatus status) {
   return status.name;
 }
 
 GoalStatus goalStatusFromString(String? statusString) {
-  if (statusString == 'completed') {
-    return GoalStatus.completed;
-  }
-  return GoalStatus.pending;
+  return statusString == 'completed'
+      ? GoalStatus.completed
+      : GoalStatus.pending;
 }
 
-/// Modelo para as metas de treino do aluno.
 class TrainingGoal {
   final String id;
   final String userId;

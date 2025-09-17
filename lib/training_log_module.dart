@@ -4,6 +4,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 
@@ -72,6 +73,42 @@ class TrainingLogService {
 
   Future<void> deleteLog(String logId) async {
     await _logsCollection.doc(logId).delete();
+  }
+
+  Future<List<Map<String, dynamic>>> getSparringHistoryWithPartner(
+      String partnerName) async {
+    final List<Map<String, dynamic>> history = [];
+    final snapshot =
+        await _logsCollection.orderBy('date', descending: true).get();
+
+    for (var doc in snapshot.docs) {
+      final log = TrainingLog.fromFirestore(doc);
+      for (var round in log.sparringRounds) {
+        if (round.partnerName == partnerName) {
+          history.add({'date': log.date, 'round': round});
+        }
+      }
+    }
+    return history;
+  }
+
+  // --- NOVA FUNÇÃO PARA BUSCAR PARCEIROS DO ÚLTIMO TREINO ---
+  Future<List<String>> getLatestSparringSessionPartners(
+      String academyId) async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(academyId)
+        .collection('training_history')
+        .orderBy('startedAt', descending: true)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isEmpty) {
+      return [];
+    }
+
+    final session = SparringSession.fromFirestore(snapshot.docs.first);
+    return List<String>.from(session.participantIds);
   }
 }
 
@@ -237,10 +274,19 @@ class _TrainingLogCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    int totalSubmissionsFor =
-        log.sparringRounds.fold(0, (sum, r) => sum + r.submissionsFor);
-    int totalSubmissionsAgainst =
-        log.sparringRounds.fold(0, (sum, r) => sum + r.submissionsAgainst);
+    int submissionsFor = 0;
+    int submissionsAgainst = 0;
+    for (var round in log.sparringRounds) {
+      for (var event in round.events) {
+        if (event.type == SparringEventType.finalizacao) {
+          if (event.wasSuccessful) {
+            submissionsFor++;
+          } else {
+            submissionsAgainst++;
+          }
+        }
+      }
+    }
 
     return Card(
       child: InkWell(
@@ -293,11 +339,11 @@ class _TrainingLogCard extends StatelessWidget {
                 children: [
                   _StatChip(
                       label: 'Finalizações',
-                      value: totalSubmissionsFor.toString(),
+                      value: submissionsFor.toString(),
                       color: successColor),
                   _StatChip(
                       label: 'Finalizado',
-                      value: totalSubmissionsAgainst.toString(),
+                      value: submissionsAgainst.toString(),
                       color: errorColor),
                   _StatChip(
                       label: 'Performance',
@@ -358,6 +404,109 @@ class _StatChip extends StatelessWidget {
                 color: color, fontSize: 18, fontWeight: FontWeight.bold)),
         Text(label, style: const TextStyle(color: textHint, fontSize: 12)),
       ],
+    );
+  }
+}
+
+class _SparringRoundSummaryCard extends StatelessWidget {
+  final SparringRound round;
+  final int roundNumber;
+  final VoidCallback onEdit;
+  final VoidCallback onRemove;
+
+  const _SparringRoundSummaryCard({
+    required this.round,
+    required this.roundNumber,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    int submissionsFor = round.events
+        .where(
+            (e) => e.type == SparringEventType.finalizacao && e.wasSuccessful)
+        .length;
+    int submissionsAgainst = round.events
+        .where(
+            (e) => e.type == SparringEventType.finalizacao && !e.wasSuccessful)
+        .length;
+    int sweeps = round.events
+        .where((e) => e.type == SparringEventType.raspagem && e.wasSuccessful)
+        .length;
+    int passes = round.events
+        .where((e) => e.type == SparringEventType.passagem && e.wasSuccessful)
+        .length;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Padding(
+        padding: const EdgeInsets.all(12.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Round $roundNumber: ${round.partnerName.isNotEmpty ? round.partnerName : "Sem Parceiro"}',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit_outlined, color: textHint),
+                      onPressed: onEdit,
+                      tooltip: 'Editar Round',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: errorColor),
+                      onPressed: onRemove,
+                      tooltip: 'Remover Round',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const Divider(),
+            if (round.notes.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Text(round.notes,
+                    style: const TextStyle(color: textSecondary)),
+              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                if (submissionsFor > 0)
+                  _StatChip(
+                      label: 'Finalizações',
+                      value: submissionsFor.toString(),
+                      color: successColor),
+                if (submissionsAgainst > 0)
+                  _StatChip(
+                      label: 'Finalizado',
+                      value: submissionsAgainst.toString(),
+                      color: errorColor),
+                if (sweeps > 0)
+                  _StatChip(
+                      label: 'Raspagens',
+                      value: sweeps.toString(),
+                      color: infoColor),
+                if (passes > 0)
+                  _StatChip(
+                      label: 'Passagens',
+                      value: passes.toString(),
+                      color: primaryAccent),
+                _StatChip(
+                    label: 'Intensidade',
+                    value: '${round.rating}/5',
+                    color: warningColor),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -428,10 +577,26 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
     }
   }
 
-  void _addSparringRound() {
-    setState(() {
-      _sparringRounds.add(SparringRound());
-    });
+  Future<void> _manageSparringRound({SparringRound? round, int? index}) async {
+    final result = await Navigator.of(context).push<SparringRound>(
+      MaterialPageRoute(
+        builder: (_) => EditSparringRoundPage(
+          logService: _logService,
+          round: round,
+          user: widget.user,
+        ),
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        if (index != null) {
+          _sparringRounds[index] = result;
+        } else {
+          _sparringRounds.add(result);
+        }
+      });
+    }
   }
 
   void _removeSparringRound(int index) {
@@ -520,7 +685,6 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
                             labelText: 'Tópico Principal da Aula'),
                       ),
                       const SizedBox(height: 16),
-                      // +++ CAMPO DE TÉCNICAS ATUALIZADO +++
                       _TechniquesInputField(
                         logService: _logService,
                         initialTechniques: _selectedTechniques,
@@ -532,18 +696,27 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
                       ),
                       const SizedBox(height: 24),
                       _buildSectionHeader('Sparring (Rolas)'),
+                      if (_sparringRounds.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16.0),
+                          child: Text("Nenhum round de sparring adicionado.",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(color: textHint)),
+                        ),
                       ..._sparringRounds.asMap().entries.map((entry) {
                         int index = entry.key;
-                        return _SparringRoundCard(
-                          key: ValueKey('sparring_$index'),
-                          round: entry.value,
+                        SparringRound round = entry.value;
+                        return _SparringRoundSummaryCard(
+                          round: round,
                           roundNumber: index + 1,
+                          onEdit: () =>
+                              _manageSparringRound(round: round, index: index),
                           onRemove: () => _removeSparringRound(index),
                         );
                       }),
                       const SizedBox(height: 8),
                       OutlinedButton.icon(
-                        onPressed: _addSparringRound,
+                        onPressed: () => _manageSparringRound(),
                         icon: const Icon(Icons.add_circle_outline),
                         label: const Text('Adicionar Rola'),
                       ),
@@ -581,7 +754,7 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
         padding: const EdgeInsets.all(12.0),
         child: Column(
           children: [
-            const Text('Como você avalia sua performance hoje?'),
+            const Text('Como você avalia sua performance geral hoje?'),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -607,139 +780,6 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
     );
   }
 }
-
-// --- CARD PARA CADA ROLA DENTRO DA TELA DE EDIÇÃO ---
-class _SparringRoundCard extends StatefulWidget {
-  final SparringRound round;
-  final int roundNumber;
-  final VoidCallback onRemove;
-
-  const _SparringRoundCard({
-    super.key,
-    required this.round,
-    required this.roundNumber,
-    required this.onRemove,
-  });
-
-  @override
-  State<_SparringRoundCard> createState() => _SparringRoundCardState();
-}
-
-class _SparringRoundCardState extends State<_SparringRoundCard> {
-  late final TextEditingController _partnerController;
-
-  @override
-  void initState() {
-    super.initState();
-    _partnerController = TextEditingController(text: widget.round.partnerName);
-    _partnerController.addListener(() {
-      widget.round.partnerName = _partnerController.text;
-    });
-  }
-
-  @override
-  void dispose() {
-    _partnerController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Rola ${widget.roundNumber}',
-                    style: Theme.of(context).textTheme.titleMedium),
-                IconButton(
-                  icon: const Icon(Icons.delete_outline, color: errorColor),
-                  onPressed: widget.onRemove,
-                ),
-              ],
-            ),
-            TextFormField(
-              controller: _partnerController,
-              decoration:
-                  const InputDecoration(labelText: 'Parceiro(a) de Treino'),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _Counter(
-                  label: 'Finalizei',
-                  value: widget.round.submissionsFor,
-                  onChanged: (newValue) =>
-                      setState(() => widget.round.submissionsFor = newValue),
-                ),
-                _Counter(
-                  label: 'Fui Finalizado',
-                  value: widget.round.submissionsAgainst,
-                  onChanged: (newValue) => setState(
-                      () => widget.round.submissionsAgainst = newValue),
-                ),
-                _Counter(
-                  label: 'Raspei',
-                  value: widget.round.sweepsFor,
-                  onChanged: (newValue) =>
-                      setState(() => widget.round.sweepsFor = newValue),
-                ),
-                _Counter(
-                  label: 'Passei',
-                  value: widget.round.passesFor,
-                  onChanged: (newValue) =>
-                      setState(() => widget.round.passesFor = newValue),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// --- WIDGET DE CONTADOR (+/-) ---
-class _Counter extends StatelessWidget {
-  final String label;
-  final int value;
-  final ValueChanged<int> onChanged;
-
-  const _Counter({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Text(label, style: const TextStyle(fontSize: 12, color: textHint)),
-        Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.remove_circle_outline),
-              onPressed: value > 0 ? () => onChanged(value - 1) : null,
-            ),
-            Text('$value', style: Theme.of(context).textTheme.titleLarge),
-            IconButton(
-              icon: const Icon(Icons.add_circle_outline),
-              onPressed: () => onChanged(value + 1),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-// +++ INÍCIO DOS NOVOS WIDGETS PARA SELEÇÃO DE TÉCNICAS +++
 
 class _TechniquesInputField extends StatefulWidget {
   final TrainingLogService logService;
@@ -994,6 +1034,631 @@ class _TechniqueSelectionDialogState extends State<_TechniqueSelectionDialog> {
             Navigator.of(context).pop(_selectedInDialog.toList());
           },
           child: const Text('Confirmar'),
+        ),
+      ],
+    );
+  }
+}
+
+class EditSparringRoundPage extends StatefulWidget {
+  final TrainingLogService logService;
+  final SparringRound? round;
+  final UserModel user;
+
+  const EditSparringRoundPage({
+    super.key,
+    required this.logService,
+    this.round,
+    required this.user,
+  });
+
+  @override
+  State<EditSparringRoundPage> createState() => _EditSparringRoundPageState();
+}
+
+class _EditSparringRoundPageState extends State<EditSparringRoundPage> {
+  late SparringRound _currentRound;
+  final _partnerController = TextEditingController();
+  final _notesController = TextEditingController();
+  late Future<List<Aluno>> _participantsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentRound = widget.round != null
+        ? SparringRound.fromMap(widget.round!.toMap())
+        : SparringRound();
+    _partnerController.text = _currentRound.partnerName;
+    _notesController.text = _currentRound.notes;
+    _participantsFuture = _fetchParticipants();
+  }
+
+  Future<List<Aluno>> _fetchParticipants() async {
+    final firestore = FirebaseFirestore.instance;
+    final academyId = widget.user.academyId;
+
+    final studentsSnapshot = await firestore
+        .collection('academies')
+        .doc(academyId)
+        .collection('students')
+        .get();
+    final students = studentsSnapshot.docs
+        .map((doc) => Aluno.fromJson(doc.id, doc.data()))
+        .toList();
+
+    final teachersSnapshot = await firestore
+        .collection('users')
+        .where('academyId', isEqualTo: academyId)
+        .where('role', whereIn: ['teacher', 'manager']).get();
+    final teachers = teachersSnapshot.docs
+        .map((doc) => Aluno.fromUserModel(UserModel.fromFirestore(doc)))
+        .toList();
+
+    final allParticipants = [...students, ...teachers];
+    allParticipants
+        .sort((a, b) => a.nome.toLowerCase().compareTo(b.nome.toLowerCase()));
+    return allParticipants;
+  }
+
+  @override
+  void dispose() {
+    _partnerController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _showPartnerSelectionDialog() async {
+    final participants = await _participantsFuture;
+    final String? selectedName = await showDialog<String>(
+      context: context,
+      builder: (_) => _PartnerSelectionDialog(
+        participants: participants,
+      ),
+    );
+
+    if (selectedName != null) {
+      setState(() {
+        _partnerController.text = selectedName;
+      });
+    }
+  }
+
+  // +++ NOVA FUNÇÃO +++
+  Future<void> _showLastSparringPartners() async {
+    final partnerIds = await widget.logService
+        .getLatestSparringSessionPartners(widget.user.academyId);
+    if (partnerIds.isEmpty) {
+      showBjjSnackBar(
+          context, 'Nenhum treino em grupo encontrado no histórico.',
+          type: 'info');
+      return;
+    }
+
+    final allParticipants = await _participantsFuture;
+    final Map<String, String> idToNameMap = {
+      for (var p in allParticipants) p.id: p.nome
+    };
+
+    // Filtra para remover o usuário atual da lista e mapeia para nomes
+    final partnerNames = partnerIds
+        .where(
+            (id) => id != widget.user.uid && id != widget.user.studentRecordId)
+        .map((id) => idToNameMap[id])
+        .where((name) => name != null)
+        .cast<String>()
+        .toList();
+
+    if (partnerNames.isEmpty) {
+      showBjjSnackBar(
+          context, 'Não foram encontrados parceiros no último treino.',
+          type: 'info');
+      return;
+    }
+
+    final String? selectedName = await showDialog<String>(
+      context: context,
+      builder: (_) => _LastSparringPartnersDialog(
+        partnerNames: partnerNames,
+      ),
+    );
+
+    if (selectedName != null) {
+      setState(() {
+        _partnerController.text = selectedName;
+      });
+    }
+  }
+
+  Future<void> _addOrEditEvent({SparringEvent? event, int? index}) async {
+    final SparringEvent? result = await showDialog<SparringEvent>(
+      context: context,
+      builder: (_) => _AddEditSparringEventDialog(
+        logService: widget.logService,
+        event: event,
+      ),
+    );
+
+    if (result != null) {
+      setState(() {
+        if (index != null) {
+          _currentRound.events[index] = result;
+        } else {
+          _currentRound.events.add(result);
+        }
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(widget.round == null ? 'Novo Round' : 'Editar Round'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.check),
+            tooltip: 'Salvar Round',
+            onPressed: () {
+              _currentRound.partnerName = _partnerController.text.trim();
+              _currentRound.notes = _notesController.text.trim();
+              Navigator.of(context).pop(_currentRound);
+            },
+          )
+        ],
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              TextFormField(
+                controller: _partnerController,
+                decoration: InputDecoration(
+                  labelText: 'Parceiro de Treino',
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.history),
+                        onPressed: _showLastSparringPartners,
+                        tooltip: 'Ver Parceiros do Último Treino',
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.person_search),
+                        onPressed: _showPartnerSelectionDialog,
+                        tooltip: 'Buscar em Alunos',
+                      ),
+                    ],
+                  ),
+                ),
+                onChanged: (value) => setState(() {}),
+              ),
+              const SizedBox(height: 16),
+              _buildRatingSelector(),
+              const SizedBox(height: 24),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Eventos do Round',
+                      style: Theme.of(context).textTheme.titleLarge),
+                  IconButton(
+                    icon: const Icon(Icons.add_circle_outline,
+                        color: primaryAccent),
+                    onPressed: () => _addOrEditEvent(),
+                  ),
+                ],
+              ),
+              const Divider(),
+              if (_currentRound.events.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24.0),
+                  child: Center(
+                    child: Text('Nenhum evento adicionado.',
+                        style: TextStyle(color: textHint)),
+                  ),
+                ),
+              ..._currentRound.events.asMap().entries.map((entry) {
+                int index = entry.key;
+                SparringEvent event = entry.value;
+                return _SparringEventCard(
+                  event: event,
+                  onEdit: () => _addOrEditEvent(event: event, index: index),
+                  onDelete: () =>
+                      setState(() => _currentRound.events.removeAt(index)),
+                );
+              }),
+              const SizedBox(height: 24),
+              TextFormField(
+                controller: _notesController,
+                decoration: const InputDecoration(
+                    labelText: 'Anotações sobre o round (opcional)',
+                    alignLabelWithHint: true),
+                maxLines: 4,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRatingSelector() {
+    return Column(
+      children: [
+        const Text('Intensidade / Performance do Round'),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(5, (index) {
+            return IconButton(
+              icon: Icon(
+                index < _currentRound.rating
+                    ? Icons.star_rounded
+                    : Icons.star_border_rounded,
+                color: warningColor,
+                size: 32,
+              ),
+              onPressed: () {
+                setState(() {
+                  _currentRound.rating = index + 1;
+                });
+              },
+            );
+          }),
+        ),
+      ],
+    );
+  }
+}
+
+class _SparringEventCard extends StatelessWidget {
+  final SparringEvent event;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const _SparringEventCard({
+    required this.event,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: darkSurface.withOpacity(0.7),
+      child: ListTile(
+        leading: Icon(
+          event.wasSuccessful ? Icons.arrow_upward : Icons.arrow_downward,
+          color: event.wasSuccessful ? successColor : errorColor,
+        ),
+        title: Text(event.technique.capitalizeWords()),
+        subtitle: Text(getSparringEventTypeName(event.type)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            IconButton(
+                icon: const Icon(Icons.edit, color: textHint),
+                onPressed: onEdit),
+            IconButton(
+                icon: const Icon(Icons.close, color: errorColor),
+                onPressed: onDelete),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AddEditSparringEventDialog extends StatefulWidget {
+  final TrainingLogService logService;
+  final SparringEvent? event;
+
+  const _AddEditSparringEventDialog({
+    required this.logService,
+    this.event,
+  });
+
+  @override
+  State<_AddEditSparringEventDialog> createState() =>
+      _AddEditSparringEventDialogState();
+}
+
+class _AddEditSparringEventDialogState
+    extends State<_AddEditSparringEventDialog> {
+  final _formKey = GlobalKey<FormState>();
+  SparringEventType? _selectedType;
+  String? _selectedTechnique;
+  bool _wasSuccessful = true; // Padrão 'Eu fiz'
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.event != null) {
+      _selectedType = widget.event!.type;
+      _selectedTechnique = widget.event!.technique;
+      _wasSuccessful = widget.event!.wasSuccessful;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.event == null ? 'Adicionar Evento' : 'Editar Evento'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<SparringEventType>(
+                value: _selectedType,
+                hint: const Text('Tipo de Evento'),
+                items: SparringEventType.values
+                    .map((type) => DropdownMenuItem(
+                          value: type,
+                          child: Text(getSparringEventTypeName(type)),
+                        ))
+                    .toList(),
+                onChanged: (value) => setState(() => _selectedType = value),
+                validator: (v) => v == null ? 'Selecione um tipo' : null,
+              ),
+              const SizedBox(height: 16),
+              StreamBuilder<List<String>>(
+                stream: widget.logService.getTechniquesStream(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return const LinearProgressIndicator();
+                  return DropdownButtonFormField<String>(
+                    value: _selectedTechnique,
+                    hint: const Text('Técnica Utilizada'),
+                    isExpanded: true,
+                    items: snapshot.data!
+                        .map((tech) => DropdownMenuItem(
+                              value: tech,
+                              child:
+                                  Text(tech, overflow: TextOverflow.ellipsis),
+                            ))
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => _selectedTechnique = value),
+                    validator: (v) =>
+                        v == null ? 'Selecione uma técnica' : null,
+                  );
+                },
+              ),
+              const SizedBox(height: 16),
+              SegmentedButton<bool>(
+                segments: const [
+                  ButtonSegment(
+                      value: true,
+                      label: Text('A Favor'),
+                      icon: Icon(Icons.arrow_upward, color: successColor)),
+                  ButtonSegment(
+                      value: false,
+                      label: Text('Contra'),
+                      icon: Icon(Icons.arrow_downward, color: errorColor)),
+                ],
+                selected: {_wasSuccessful},
+                onSelectionChanged: (newSelection) {
+                  setState(() => _wasSuccessful = newSelection.first);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (_formKey.currentState!.validate()) {
+              final newEvent = SparringEvent(
+                type: _selectedType!,
+                technique: _selectedTechnique!,
+                wasSuccessful: _wasSuccessful,
+              );
+              Navigator.of(context).pop(newEvent);
+            }
+          },
+          child: const Text('Salvar'),
+        ),
+      ],
+    );
+  }
+}
+
+class _PartnerSelectionDialog extends StatefulWidget {
+  final List<Aluno> participants;
+  const _PartnerSelectionDialog({required this.participants});
+
+  @override
+  State<_PartnerSelectionDialog> createState() =>
+      _PartnerSelectionDialogState();
+}
+
+class _PartnerSelectionDialogState extends State<_PartnerSelectionDialog> {
+  final _searchController = TextEditingController();
+  List<Aluno> _filteredParticipants = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredParticipants = widget.participants;
+    _searchController.addListener(_filter);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _filter() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filteredParticipants = widget.participants
+          .where((p) => p.nome.toLowerCase().contains(query))
+          .toList();
+    });
+  }
+
+  void _addCustomPartner() {
+    final customName = _searchController.text.trim();
+    if (customName.isNotEmpty) {
+      Navigator.of(context).pop(customName.capitalizeWords());
+    } else {
+      showBjjSnackBar(context, 'Digite o nome do parceiro.', type: 'info');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Selecionar Parceiro'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: InputDecoration(
+                labelText: 'Buscar ou digitar nome...',
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.add_circle_outline),
+                  onPressed: _addCustomPartner,
+                  tooltip: 'Adicionar como parceiro não cadastrado',
+                ),
+              ),
+            ),
+            Expanded(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _filteredParticipants.length,
+                itemBuilder: (context, index) {
+                  final participant = _filteredParticipants[index];
+                  return ListTile(
+                    title: Text(participant.nome),
+                    onTap: () {
+                      Navigator.of(context).pop(participant.nome);
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+      ],
+    );
+  }
+}
+
+// --- NOVO WIDGET PARA EXIBIR PARCEIROS DO ÚLTIMO TREINO ---
+class _LastSparringPartnersDialog extends StatelessWidget {
+  final List<String> partnerNames;
+
+  const _LastSparringPartnersDialog({required this.partnerNames});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Parceiros do Último Treino'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: partnerNames.length,
+          itemBuilder: (context, index) {
+            final name = partnerNames[index];
+            return ListTile(
+              title: Text(name),
+              onTap: () {
+                Navigator.of(context).pop(name);
+              },
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Fechar'),
+        ),
+      ],
+    );
+  }
+}
+
+// --- DIÁLOGO DE HISTÓRICO COM PARCEIRO (SEM MUDANÇAS) ---
+class _SparringHistoryDialog extends StatelessWidget {
+  final String partnerName;
+  final List<Map<String, dynamic>> history;
+
+  const _SparringHistoryDialog({
+    required this.partnerName,
+    required this.history,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Histórico com ${partnerName.capitalizeWords()}'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: history.isEmpty
+            ? const Center(
+                child: Text('Nenhum treino anterior encontrado.'),
+              )
+            : ListView.builder(
+                shrinkWrap: true,
+                itemCount: history.length,
+                itemBuilder: (context, index) {
+                  final item = history[index];
+                  final date = item['date'] as DateTime;
+                  final round = item['round'] as SparringRound;
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 4),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            DateFormat.yMMMEd('pt_BR').format(date),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: primaryAccent),
+                          ),
+                          const Divider(),
+                          ...round.events.map((event) => Text(
+                              '• ${event.technique} (${getSparringEventTypeName(event.type)}) - ${event.wasSuccessful ? "A favor" : "Contra"}')),
+                          if (round.notes.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text('Anotações: ${round.notes}',
+                                style: const TextStyle(
+                                    fontStyle: FontStyle.italic,
+                                    color: textHint)),
+                          ]
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Fechar'),
         ),
       ],
     );
