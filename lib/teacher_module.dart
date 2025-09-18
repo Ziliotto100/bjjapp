@@ -108,6 +108,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   StreamSubscription? _sparringStateSubscription;
   StreamSubscription? _settingsSubscription;
 
+  // Chave Global para acessar o estado da Dashboard
+  final GlobalKey<_TeacherDashboardPageState> _dashboardKey =
+      GlobalKey<_TeacherDashboardPageState>();
+
   @override
   void initState() {
     super.initState();
@@ -293,6 +297,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     switch (module.id) {
       case 'teacher_dashboard':
         return TeacherDashboardPage(
+          key: _dashboardKey, // Atribui a chave global
           user: widget.user,
           isSparringMode: _isSparringMode,
           onNavigateToSparring: () {
@@ -342,20 +347,16 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
             .map((module) => _buildPageForModule(module))
             .toList();
 
-        // +++ INÍCIO DA CORREÇÃO +++
-        // Lógica mais robusta para filtrar e ordenar os módulos visíveis.
         _visibleModules =
             _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
 
         _visibleModules.sort((a, b) {
           final indexA = savedOrder.indexOf(a.id);
           final indexB = savedOrder.indexOf(b.id);
-          // Se um item não estiver na lista de ordem, coloque-o no final.
           if (indexA == -1) return 1;
           if (indexB == -1) return -1;
           return indexA.compareTo(indexB);
         });
-        // +++ FIM DA CORREÇÃO +++
 
         int dashboardIndex =
             _allPageModules.indexWhere((m) => m.id == 'teacher_dashboard');
@@ -369,6 +370,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   void _navigateToModuleId(String moduleId) {
     final newIndex = _allPageModules.indexWhere((m) => m.id == moduleId);
     if (newIndex != -1) {
+      // Se a aba de início for selecionada, chama o método de atualização
+      if (moduleId == 'teacher_dashboard') {
+        _dashboardKey.currentState?.refreshData();
+      }
       setState(() {
         _paginaAtual = newIndex;
       });
@@ -429,7 +434,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           ),
         ],
       ),
-      // Adicionado um check para garantir que a barra só seja construída com 2 ou mais itens.
       bottomNavigationBar: _visibleModules.length >= 2
           ? BottomNavigationBar(
               currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
@@ -863,15 +867,20 @@ class TeacherDashboardPage extends StatefulWidget {
 class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
   List<DocumentSnapshot> _units = [];
   bool _isLoadingUnits = true;
-  TrainingClass? _nextClass;
-  int _checkinCount = 0;
-  bool _isLoadingNextClass = true;
+  List<TrainingClass> _todayClasses = [];
+  bool _isLoadingTodayClasses = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchUnits();
-    _fetchNextClass();
+    refreshData();
+  }
+
+  void refreshData() {
+    if (mounted) {
+      _fetchUnits();
+      _fetchTodayClasses();
+    }
   }
 
   Future<void> _fetchUnits() async {
@@ -895,12 +904,15 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     }
   }
 
-  Future<void> _fetchNextClass() async {
-    setState(() => _isLoadingNextClass = true);
+  Future<void> _fetchTodayClasses() async {
+    if (!mounted) return;
+    setState(() => _isLoadingTodayClasses = true);
     try {
       final now = DateTime.now();
-      final dayOfWeek = DateFormat('EEEE', 'pt_BR').format(now);
-      final currentTime = TimeOfDay.fromDateTime(now);
+      String dayOfWeek = DateFormat('EEEE', 'pt_BR').format(now);
+      if (dayOfWeek.isNotEmpty) {
+        dayOfWeek = dayOfWeek[0].toUpperCase() + dayOfWeek.substring(1);
+      }
 
       final scheduleSnapshot = await FirebaseFirestore.instance
           .collection('academies')
@@ -910,51 +922,22 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
           .orderBy('startTime')
           .get();
 
-      final classesToday = scheduleSnapshot.docs
+      final classes = scheduleSnapshot.docs
           .map((doc) => TrainingClass.fromFirestore(doc))
+          .where((c) => c.teacherId == widget.user.uid)
           .toList();
-
-      TrainingClass? nextClass;
-      for (final trainingClass in classesToday) {
-        final endTime = TimeOfDay(
-          hour: int.parse(trainingClass.endTime.split(':')[0]),
-          minute: int.parse(trainingClass.endTime.split(':')[1]),
-        );
-        final endTimeDouble = endTime.hour + endTime.minute / 60.0;
-        final currentTimeDouble = currentTime.hour + currentTime.minute / 60.0;
-
-        if (endTimeDouble > currentTimeDouble) {
-          nextClass = trainingClass;
-          break;
-        }
-      }
-
-      int checkinCount = 0;
-      if (nextClass != null) {
-        final dateOnly = DateTime(now.year, now.month, now.day);
-        final checkinsSnapshot = await FirebaseFirestore.instance
-            .collection('academies')
-            .doc(widget.user.academyId)
-            .collection('checkins')
-            .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
-            .where('classId', isEqualTo: nextClass.id)
-            .where('status', isEqualTo: 'approved')
-            .get();
-        checkinCount = checkinsSnapshot.docs.length;
-      }
 
       if (mounted) {
         setState(() {
-          _nextClass = nextClass;
-          _checkinCount = checkinCount;
-          _isLoadingNextClass = false;
+          _todayClasses = classes;
+          _isLoadingTodayClasses = false;
         });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _isLoadingNextClass = false);
+        setState(() => _isLoadingTodayClasses = false);
       }
-      debugPrint("Erro ao buscar próxima aula: $e");
+      debugPrint("Erro ao buscar as aulas de hoje: $e");
     }
   }
 
@@ -1001,48 +984,39 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
             child: Column(
               children: [
                 const SizedBox(height: 16),
-                _NextClassCard(
-                  isLoading: _isLoadingNextClass,
-                  nextClass: _nextClass,
-                  checkinCount: _checkinCount,
+                _TodayClassesCard(
+                  isLoading: _isLoadingTodayClasses,
+                  todayClasses: _todayClasses,
                 ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    _MinimalActionCard(
-                      icon: Icons.checklist_rtl_rounded,
-                      label: 'Fazer Chamada',
-                      onTap: _isLoadingUnits
-                          ? null
-                          : () {
-                              Navigator.of(context).push(MaterialPageRoute(
-                                builder: (_) => BulkCheckinPage(
-                                  academyId: widget.user.academyId,
-                                  todosParticipantesDaAcademia:
-                                      widget.todosParticipantesDaAcademia,
-                                  user: widget.user,
-                                  units: _units,
-                                ),
-                              ));
-                            },
-                    ),
-                    _MinimalActionCard(
-                      icon: Icons.fact_check_outlined,
-                      label: 'Aprovar\nCheck-ins',
-                      onTap: () {
-                        Navigator.of(context).push(MaterialPageRoute(
-                          builder: (_) => ApproveCheckinsPage(
-                              academyId: widget.user.academyId),
-                        ));
-                      },
-                    ),
-                    _MinimalActionCard(
-                      icon: Icons.shuffle_rounded,
-                      label: 'Sorteio de Treinos',
-                      onTap: widget.onNavigateToSparring,
-                    ),
-                  ],
+                const SizedBox(height: 12),
+                _DashboardActionCard(
+                  icon: Icons.checklist_rtl_rounded,
+                  label: 'Fazer Chamada',
+                  color: successColor,
+                  onTap: _isLoadingUnits
+                      ? null
+                      : () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => BulkCheckinPage(
+                              academyId: widget.user.academyId,
+                              todosParticipantesDaAcademia:
+                                  widget.todosParticipantesDaAcademia,
+                              user: widget.user,
+                              units: _units,
+                            ),
+                          ));
+                        },
+                ),
+                _DashboardActionCard(
+                  icon: Icons.fact_check_outlined,
+                  label: 'Aprovar Check-ins',
+                  color: primaryAccent,
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) =>
+                          ApproveCheckinsPage(academyId: widget.user.academyId),
+                    ));
+                  },
                 ),
                 const SizedBox(height: 24),
               ],
@@ -1053,57 +1027,43 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
   }
 }
 
-class _MinimalActionCard extends StatelessWidget {
+class _DashboardActionCard extends StatelessWidget {
   final IconData icon;
   final String label;
+  final Color color;
   final VoidCallback? onTap;
 
-  const _MinimalActionCard({
+  const _DashboardActionCard({
     required this.icon,
     required this.label,
+    required this.color,
     this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 110,
-      child: Card(
-        elevation: 1,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12.0),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, size: 28, color: textHint),
-                const SizedBox(height: 8),
-                Text(
-                  label,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      fontSize: 12, color: textHint, height: 1.2),
-                ),
-              ],
-            ),
-          ),
-        ),
+    return Card(
+      elevation: 2,
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      child: ListTile(
+        onTap: onTap,
+        leading: Icon(icon, size: 28, color: color),
+        title: Text(label, style: Theme.of(context).textTheme.titleSmall),
+        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+            size: 14, color: textHint),
+        dense: true,
       ),
     );
   }
 }
 
-class _NextClassCard extends StatelessWidget {
+class _TodayClassesCard extends StatelessWidget {
   final bool isLoading;
-  final TrainingClass? nextClass;
-  final int checkinCount;
+  final List<TrainingClass> todayClasses;
 
-  const _NextClassCard({
+  const _TodayClassesCard({
     required this.isLoading,
-    this.nextClass,
-    required this.checkinCount,
+    required this.todayClasses,
   });
 
   @override
@@ -1117,64 +1077,94 @@ class _NextClassCard extends StatelessWidget {
       );
     }
 
-    if (nextClass == null) {
-      return const Card(
-        child: ListTile(
+    if (todayClasses.isEmpty) {
+      return Card(
+        margin: const EdgeInsets.symmetric(vertical: 4.0),
+        child: const ListTile(
           leading: Icon(Icons.check_circle_outline, color: successColor),
-          title: Text("Treinos do dia finalizados!"),
+          title: Text("Você não tem aulas hoje!"),
           subtitle: Text("Bom descanso."),
+          dense: true,
         ),
       );
     }
 
     return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        side: const BorderSide(color: primaryAccent, width: 1.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              "PRÓXIMA AULA",
+              "PRÓXIMAS AULAS",
               style: TextStyle(
-                color: primaryAccent,
+                color: textHint,
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
-                letterSpacing: 1.5,
               ),
             ),
             const SizedBox(height: 8),
-            Text(
-              nextClass!.level,
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              "${nextClass!.startTime} - ${nextClass!.endTime}",
-              style: Theme.of(context)
-                  .textTheme
-                  .titleMedium
-                  ?.copyWith(color: textHint),
-            ),
-            const Divider(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("Check-ins Confirmados:"),
-                Text(
-                  checkinCount.toString(),
-                  style: Theme.of(context)
-                      .textTheme
-                      .titleLarge
-                      ?.copyWith(color: primaryAccent),
-                ),
-              ],
-            ),
+            ...todayClasses.map((aula) => _ClassInfoRow(trainingClass: aula)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ClassInfoRow extends StatelessWidget {
+  final TrainingClass trainingClass;
+  const _ClassInfoRow({required this.trainingClass});
+
+  @override
+  Widget build(BuildContext context) {
+    final isGiClass = trainingClass.modality == TrainingModality.gi;
+    final modalityLabel =
+        modalityToString(trainingClass.modality).replaceAll('-', ' ');
+    final modalityColor = isGiClass ? Colors.blue.shade300 : errorColor;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 60, // Largura fixa para o container da modalidade
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: modalityColor,
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                modalityLabel,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '${trainingClass.startTime} - ${trainingClass.endTime}',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              '${trainingClass.unitName ?? ''} - ${trainingClass.audience ?? ''}',
+              style: const TextStyle(color: textSecondary, fontSize: 14),
+              textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
       ),
     );
   }

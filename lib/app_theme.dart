@@ -1,9 +1,9 @@
 // lib/app_theme.dart
 // ignore_for_file: deprecated_member_use
 
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; // <<< CORREÇÃO APLICADA AQUI
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'auth_gate.dart'; // Import corrigido
+import 'auth_gate.dart';
 
 // Constantes de Cor Globais para o App
 const Color darkScaffoldBackground = Color(0xFF0A0F14);
@@ -40,19 +40,16 @@ class BjjApp extends StatelessWidget {
           brightness: Brightness.dark,
           primaryColor: darkSurface,
           scaffoldBackgroundColor: Colors.transparent,
-          // dialogBackgroundColor: darkSurface, // Deprecated
           cardColor: darkSurface.withOpacity(0.85),
           canvasColor: darkScaffoldBackground,
           colorScheme: const ColorScheme.dark(
             primary: primaryAccent,
             secondary: primaryAccent,
             surface: darkSurface,
-            // background: darkScaffoldBackground, // Deprecated
             error: errorColor,
             onPrimary: primaryAccentForeground,
             onSecondary: primaryAccentForeground,
             onSurface: textPrimary,
-            // onBackground: textPrimary, // Deprecated
             onError: Colors.white,
           ),
           hintColor: textHint,
@@ -73,7 +70,7 @@ class BjjApp extends StatelessWidget {
                 fontSize: 16),
           ).apply(fontFamily: 'Roboto'),
           appBarTheme: const AppBarTheme(
-            backgroundColor: darkSurface,
+            backgroundColor: darkScaffoldBackground,
             elevation: 2.0,
             titleTextStyle: TextStyle(
                 color: textPrimary,
@@ -83,7 +80,7 @@ class BjjApp extends StatelessWidget {
             iconTheme: IconThemeData(color: textPrimary),
           ),
           bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-            backgroundColor: darkSurface,
+            backgroundColor: darkScaffoldBackground,
             selectedItemColor: primaryAccent,
             unselectedItemColor: textHint,
             elevation: 4.0,
