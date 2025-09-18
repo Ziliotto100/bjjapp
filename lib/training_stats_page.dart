@@ -12,7 +12,7 @@ import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'training_log_module.dart';
 
-// --- ENUMS PARA OS TIPOS DE GRÁFICO ---
+// --- (Enums e Modelos de Dados - Inalterados) ---
 enum SparringChartType { column, bar, pie }
 
 enum PerformanceChartType { line, spline, column, area }
@@ -23,11 +23,10 @@ enum TopTechniquesChartType { bar, pie }
 
 enum PartnersChartType { bar, pie }
 
-// --- MODELOS PARA OS DADOS DOS GRÁFICOS ---
 class _ChartData {
   final String x;
   final num y;
-  final num? y2; // Para séries secundárias (ex: A favor vs Contra)
+  final num? y2;
   _ChartData(this.x, this.y, {this.y2});
 }
 
@@ -47,7 +46,30 @@ class TrainingStatsPage extends StatefulWidget {
 }
 
 class _TrainingStatsPageState extends State<TrainingStatsPage> {
-  // Estado para armazenar as preferências do usuário
+  // --- INÍCIO DAS ALTERAÇÕES ---
+
+  // Mapa para controlar a visibilidade de cada gráfico
+  Map<String, bool> _chartVisibility = {
+    'sparring': true,
+    'performanceByCondition': true,
+    'topSubmissions': true,
+    'partners': true,
+    'performance': true,
+    'techniques': true,
+  };
+
+  // Mapa para os nomes dos gráficos no diálogo
+  final Map<String, String> _chartNames = {
+    'sparring': 'Ações de Sparring',
+    'performanceByCondition': 'Performance por Condição',
+    'topSubmissions': 'Top 5 Finalizações',
+    'partners': 'Principais Parceiros',
+    'performance': 'Evolução da Performance',
+    'techniques': 'Técnicas Focadas',
+  };
+
+  // --- FIM DAS ALTERAÇÕES ---
+
   SparringChartType _sparringChartType = SparringChartType.column;
   PerformanceChartType _performanceChartType = PerformanceChartType.line;
   TechniquesChartType _techniquesChartType = TechniquesChartType.pie;
@@ -56,7 +78,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
 
   bool _isLoadingPreferences = true;
 
-  // Paleta de cores personalizada
   final List<Color> _customPalette = [
     primaryAccent,
     infoColor,
@@ -73,7 +94,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
     _loadChartPreferences();
   }
 
-  // --- LÓGICA PARA CARREGAR E SALVAR PREFERÊNCIAS ---
   DocumentReference get _preferencesRef => FirebaseFirestore.instance
       .collection('users')
       .doc(widget.user.uid)
@@ -87,6 +107,7 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
         final data = doc.data() as Map<String, dynamic>;
         if (mounted) {
           setState(() {
+            // Carrega os tipos de gráfico (lógica existente)
             _sparringChartType = SparringChartType.values.firstWhere(
                 (e) => e.name == data['sparringChart'],
                 orElse: () => SparringChartType.column);
@@ -102,6 +123,18 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
             _partnersChartType = PartnersChartType.values.firstWhere(
                 (e) => e.name == data['partnersChart'],
                 orElse: () => PartnersChartType.bar);
+
+            // --- INÍCIO DA ALTERAÇÃO ---
+            // Carrega as preferências de visibilidade
+            if (data['chartVisibility'] != null) {
+              final visibilityData =
+                  Map<String, bool>.from(data['chartVisibility']);
+              _chartVisibility = {
+                ..._chartVisibility,
+                ...visibilityData
+              }; // Mescla com o padrão
+            }
+            // --- FIM DA ALTERAÇÃO ---
           });
         }
       }
@@ -116,9 +149,61 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
     }
   }
 
-  Future<void> _saveChartPreference(String key, String value) async {
+  Future<void> _saveChartPreference(String key, dynamic value) async {
     await _preferencesRef.set({key: value}, SetOptions(merge: true));
   }
+
+  // --- INÍCIO DA ALTERAÇÃO ---
+  // Nova função para exibir o diálogo de filtro de visibilidade
+  void _showVisibilityFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        // Usa StatefulBuilder para que o diálogo tenha seu próprio estado
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Exibir Gráficos'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: _chartVisibility.keys.map((key) {
+                    return SwitchListTile(
+                      title: Text(_chartNames[key] ?? key),
+                      value: _chartVisibility[key]!,
+                      onChanged: (bool value) {
+                        setDialogState(() {
+                          // Atualiza o estado local do diálogo
+                          _chartVisibility[key] = value;
+                        });
+                      },
+                    );
+                  }).toList(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    // Salva as novas preferências e atualiza a tela principal
+                    _saveChartPreference('chartVisibility', _chartVisibility);
+                    setState(
+                        () {}); // Força a reconstrução da tela de estatísticas
+                    Navigator.of(context).pop();
+                  },
+                  child: const Text('Salvar'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+  // --- FIM DA ALTERAÇÃO ---
 
   @override
   Widget build(BuildContext context) {
@@ -157,12 +242,12 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
   }
 
   Widget _buildStatsView(BuildContext context, List<TrainingLog> logs) {
+    // ... (toda a lógica de processamento de dados permanece a mesma)
     final totalTrainings = logs.length;
 
     final Map<SparringEventType, Map<String, int>> eventCounts = {};
     final Map<String, int> topSubmissions = {};
     final Map<String, int> partnerCounts = {};
-    // --- NOVO MAPA PARA PERFORMANCE POR CONDIÇÃO ---
     final Map<PhysicalCondition, List<int>> performanceByCondition = {};
 
     for (var log in logs) {
@@ -171,14 +256,11 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
           partnerCounts.update(round.partnerName, (value) => value + 1,
               ifAbsent: () => 1);
         }
-
-        // --- LÓGICA PARA AGRUPAR PERFORMANCE POR CONDIÇÃO ---
         if (round.physicalCondition != null) {
           performanceByCondition
               .putIfAbsent(round.physicalCondition!, () => [])
               .add(round.rating);
         }
-
         for (var event in round.events) {
           eventCounts.putIfAbsent(event.type, () => {'favor': 0, 'contra': 0});
           if (event.wasSuccessful) {
@@ -188,7 +270,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
             eventCounts[event.type]!['contra'] =
                 (eventCounts[event.type]!['contra'] ?? 0) + 1;
           }
-
           if (event.type == SparringEventType.finalizacao &&
               event.wasSuccessful) {
             topSubmissions.update(event.technique, (value) => value + 1,
@@ -215,7 +296,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
         .take(5)
         .toList();
 
-    // --- PROCESSANDO DADOS DE PERFORMANCE POR CONDIÇÃO ---
     final List<_ChartData> performanceByConditionData =
         performanceByCondition.entries.map((entry) {
       final ratings = entry.value;
@@ -241,39 +321,54 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
         .map((e) => _ChartData(e.key, e.value))
         .toList()
       ..sort((a, b) => b.y.compareTo(a.y));
+    // --- Fim da lógica de processamento de dados ---
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       children: [
-        _buildTotalTrainingsCard(context, totalTrainings),
+        // --- INÍCIO DA ALTERAÇÃO ---
+        _buildTotalTrainingsCard(
+            context, totalTrainings, _showVisibilityFilterDialog),
+        // --- FIM DA ALTERAÇÃO ---
         const SizedBox(height: 16),
-        _buildSparringChart(context, sparringData),
-        const SizedBox(height: 16),
-        if (performanceByConditionData.isNotEmpty) ...[
-          // NOVO GRÁFICO
+
+        // --- INÍCIO DA ALTERAÇÃO (Renderização Condicional) ---
+        if (_chartVisibility['sparring'] ?? true) ...[
+          _buildSparringChart(context, sparringData),
+          const SizedBox(height: 16),
+        ],
+        if ((_chartVisibility['performanceByCondition'] ?? true) &&
+            performanceByConditionData.isNotEmpty) ...[
           _buildPerformanceByConditionChart(
               context, performanceByConditionData),
           const SizedBox(height: 16),
         ],
-        if (topSubmissionsData.isNotEmpty) ...[
+        if ((_chartVisibility['topSubmissions'] ?? true) &&
+            topSubmissionsData.isNotEmpty) ...[
           _buildTopSubmissionsChart(context, topSubmissionsData),
           const SizedBox(height: 16),
         ],
-        if (partnerData.isNotEmpty) ...[
-          _buildPartnersChart(context, partnerData),
+        if ((_chartVisibility['partners'] ?? true) &&
+            partnerData.isNotEmpty) ...[
+          _buildPartnersChart(context, partnerData, logs),
           const SizedBox(height: 16),
         ],
-        if (performanceData.length > 1) ...[
+        if ((_chartVisibility['performance'] ?? true) &&
+            performanceData.length > 1) ...[
           _buildPerformanceChart(context, performanceData),
           const SizedBox(height: 16),
         ],
-        if (techniquesData.isNotEmpty)
+        if ((_chartVisibility['techniques'] ?? true) &&
+            techniquesData.isNotEmpty) ...[
           _buildTechniquesChart(context, techniquesData),
+        ],
+        // --- FIM DA ALTERAÇÃO ---
       ],
     );
   }
 
-  // --- FUNÇÃO AUXILIAR PARA TRADUZIR O ENUM ---
+  // --- (Funções de build dos gráficos - sem alteração na assinatura, exceto _buildPartnersChart) ---
+
   String _getPhysicalConditionName(PhysicalCondition condition) {
     switch (condition) {
       case PhysicalCondition.disposto:
@@ -285,7 +380,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
     }
   }
 
-  // --- WIDGETS DE GRÁFICO ---
   Widget _buildSparringChart(
       BuildContext context, List<_ChartData> sparringData) {
     return _ChartCard(
@@ -315,7 +409,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
     );
   }
 
-  // --- NOVO WIDGET DE GRÁFICO ---
   Widget _buildPerformanceByConditionChart(
       BuildContext context, List<_ChartData> data) {
     return _ChartCard(
@@ -403,10 +496,12 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
     );
   }
 
-  Widget _buildPartnersChart(BuildContext context, List<_ChartData> data) {
+  Widget _buildPartnersChart(
+      BuildContext context, List<_ChartData> data, List<TrainingLog> allLogs) {
     return _ChartCard(
       title: 'Principais Parceiros de Treino',
-      infoMessage: 'As pessoas com quem você mais treinou.',
+      infoMessage:
+          'As pessoas com quem você mais treinou. Toque em uma barra para ver o histórico detalhado.',
       chart: SfCartesianChart(
         primaryXAxis: const CategoryAxis(),
         series: <CartesianSeries>[
@@ -416,6 +511,16 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
             yValueMapper: (d, _) => d.y,
             dataLabelSettings: const DataLabelSettings(isVisible: true),
             color: infoColor,
+            onPointTap: (ChartPointDetails details) {
+              final int pointIndex = details.pointIndex!;
+              final String partnerName = data[pointIndex].x;
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => PartnerStatsDetailPage(
+                  partnerName: partnerName,
+                  allLogs: allLogs,
+                ),
+              ));
+            },
           )
         ],
       ),
@@ -563,13 +668,14 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
     );
   }
 
-  // --- WIDGETS DE UI ---
-  Widget _buildTotalTrainingsCard(BuildContext context, int total) {
+  // --- INÍCIO DA ALTERAÇÃO ---
+  // Widget de UI do Card de Treinos Totais modificado para aceitar o callback
+  Widget _buildTotalTrainingsCard(
+      BuildContext context, int total, VoidCallback onFilterTap) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.start,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const Icon(Icons.fitness_center_rounded,
@@ -583,16 +689,25 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
                   ?.copyWith(fontWeight: FontWeight.bold, fontSize: 22),
             ),
             const SizedBox(width: 8),
-            const Text('Treinos Registrados',
-                style: TextStyle(color: textHint, fontSize: 14)),
+            const Expanded(
+              child: Text('Treinos Registrados',
+                  style: TextStyle(color: textHint, fontSize: 14)),
+            ),
+            IconButton(
+              icon: const Icon(Icons.filter_list, color: textHint),
+              onPressed: onFilterTap,
+              tooltip: 'Filtrar Gráficos',
+            ),
           ],
         ),
       ),
     );
   }
 }
+// --- FIM DA ALTERAÇÃO ---
 
-// --- WIDGET REUTILIZÁVEL PARA O CARD COM SELETOR ---
+// --- (Widget _ChartCard e Página PartnerStatsDetailPage - Inalterados) ---
+
 class _ChartCard<T> extends StatelessWidget {
   final String title;
   final String infoMessage;
@@ -672,7 +787,6 @@ class _ChartCard<T> extends StatelessWidget {
   }
 }
 
-// --- NOVA PÁGINA DE DETALHES POR PARCEIRO ---
 class PartnerStatsDetailPage extends StatelessWidget {
   final String partnerName;
   final List<TrainingLog> allLogs;

@@ -1,5 +1,5 @@
 // lib/teacher_module.dart
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use, library_private_types_in_public_api, unused_import
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, library_private_types_in_public_api, unused_import, unnecessary_null_comparison
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -1581,8 +1581,8 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
       entries.sort((a, b) {
         final nameA = _participantsMap[a.studentId]?.nome ?? '';
         final nameB = _participantsMap[b.studentId]?.nome ?? '';
-        final dateA = a.createdAt?.toDate() ?? a.date;
-        final dateB = b.createdAt?.toDate() ?? b.date;
+        final dateA = a.createdAt.toDate();
+        final dateB = b.createdAt.toDate();
 
         int nameCompare = nameA.compareTo(nameB);
         if (nameCompare != 0) {
@@ -1715,7 +1715,7 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
 
                               // --- INÍCIO DA ALTERAÇÃO ---
                               String subtitleText = student.faixa;
-                              final checkinTime = entry.createdAt?.toDate();
+                              final checkinTime = entry.createdAt.toDate();
                               if (entry.className != null &&
                                   entry.className!.isNotEmpty) {
                                 subtitleText = entry.className!;
