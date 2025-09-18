@@ -941,6 +941,36 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     }
   }
 
+  // --- CORREÇÃO: Lógica de seleção movida para cá ---
+  Future<void> _selectClassAndStartCheckin() async {
+    final TrainingClass? selectedClass = await showDialog<TrainingClass>(
+      context: context,
+      builder: (_) => _SelectClassDialog(
+        academyId: widget.user.academyId,
+        selectedDate: DateTime.now(),
+      ),
+    );
+
+    if (selectedClass != null && mounted) {
+      final checkedInCount = await Navigator.of(context).push<int>(
+        MaterialPageRoute(
+          builder: (_) => BulkCheckinPage(
+            academyId: widget.user.academyId,
+            todosParticipantesDaAcademia: widget.todosParticipantesDaAcademia,
+            user: widget.user,
+            units: _units,
+            selectedClass: selectedClass,
+          ),
+        ),
+      );
+
+      if (checkedInCount != null && checkedInCount > 0 && mounted) {
+        showBjjSnackBar(context, '$checkedInCount presenças confirmadas!',
+            type: 'success');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -993,19 +1023,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
                   icon: Icons.checklist_rtl_rounded,
                   label: 'Fazer Chamada',
                   color: successColor,
-                  onTap: _isLoadingUnits
-                      ? null
-                      : () {
-                          Navigator.of(context).push(MaterialPageRoute(
-                            builder: (_) => BulkCheckinPage(
-                              academyId: widget.user.academyId,
-                              todosParticipantesDaAcademia:
-                                  widget.todosParticipantesDaAcademia,
-                              user: widget.user,
-                              units: _units,
-                            ),
-                          ));
-                        },
+                  onTap: _isLoadingUnits ? null : _selectClassAndStartCheckin,
                 ),
                 _DashboardActionCard(
                   icon: Icons.fact_check_outlined,
@@ -1218,6 +1236,82 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
     }
   }
 
+  // --- ALTERAÇÃO AQUI: LÓGICA DE SELEÇÃO DE AULA ---
+  Future<void> _selectClassAndStartCheckin() async {
+    final TrainingClass? selectedClass = await showDialog<TrainingClass>(
+      context: context,
+      builder: (_) => _SelectClassDialog(
+        academyId: widget.academyId,
+        selectedDate: DateTime.now(),
+      ),
+    );
+
+    if (selectedClass != null && mounted) {
+      final checkedInCount = await Navigator.of(context).push<int>(
+        MaterialPageRoute(
+          builder: (_) => BulkCheckinPage(
+            academyId: widget.academyId,
+            todosParticipantesDaAcademia: widget.todosParticipantesDaAcademia,
+            user: widget.user,
+            units: _units,
+            selectedClass: selectedClass,
+          ),
+        ),
+      );
+
+      if (checkedInCount != null && checkedInCount > 0 && mounted) {
+        showBjjSnackBar(context, '$checkedInCount presenças confirmadas!',
+            type: 'success');
+      }
+    }
+  }
+
+  // --- ALTERAÇÃO AQUI: LÓGICA DE SELEÇÃO DE DATA E AULA ---
+  Future<void> _selectDateAndClassForRetroactiveCheckin() async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      locale: const Locale('pt', 'BR'),
+    );
+
+    if (pickedDate == null) return;
+
+    final TrainingClass? selectedClass = await showDialog<TrainingClass>(
+      context: context,
+      builder: (_) => _SelectClassDialog(
+        academyId: widget.academyId,
+        selectedDate: pickedDate,
+      ),
+    );
+
+    if (selectedClass != null && mounted) {
+      final checkedInCount = await Navigator.of(context).push<int>(
+        MaterialPageRoute(
+          builder: (_) => RetroactiveCheckinPage(
+            academyId: widget.academyId,
+            todosParticipantesDaAcademia: widget.todosParticipantesDaAcademia,
+            user: widget.user,
+            selectedClass: selectedClass,
+            selectedDate: pickedDate,
+          ),
+        ),
+      );
+
+      if (checkedInCount != null && mounted) {
+        if (checkedInCount > 0) {
+          showBjjSnackBar(
+              context, '$checkedInCount presenças retroativas confirmadas!',
+              type: 'success');
+        } else {
+          showBjjSnackBar(context, 'Nenhuma presença nova foi registrada.',
+              type: 'info');
+        }
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return ListView(
@@ -1234,30 +1328,7 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
                     height: 24,
                     child: CircularProgressIndicator(strokeWidth: 2))
                 : const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-            onTap: _isLoadingUnits
-                ? null
-                : () async {
-                    final checkedInCount =
-                        await Navigator.of(context).push<int>(
-                      MaterialPageRoute(
-                        builder: (_) => BulkCheckinPage(
-                          academyId: widget.academyId,
-                          todosParticipantesDaAcademia:
-                              widget.todosParticipantesDaAcademia,
-                          user: widget.user,
-                          units: _units,
-                        ),
-                      ),
-                    );
-
-                    if (checkedInCount != null &&
-                        checkedInCount > 0 &&
-                        context.mounted) {
-                      showBjjSnackBar(
-                          context, '$checkedInCount presenças confirmadas!',
-                          type: 'success');
-                    }
-                  },
+            onTap: _isLoadingUnits ? null : _selectClassAndStartCheckin,
           ),
         ),
         Card(
@@ -1281,30 +1352,7 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
                 const Icon(Icons.edit_calendar_rounded, color: warningColor),
             title: const Text("Lançar Retroativo"),
             trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-            onTap: () async {
-              final checkedInCount = await Navigator.of(context).push<int>(
-                MaterialPageRoute(
-                  builder: (_) => RetroactiveCheckinPage(
-                    academyId: widget.academyId,
-                    todosParticipantesDaAcademia:
-                        widget.todosParticipantesDaAcademia,
-                    user: widget.user,
-                  ),
-                ),
-              );
-
-              if (checkedInCount != null && context.mounted) {
-                if (checkedInCount > 0) {
-                  showBjjSnackBar(context,
-                      '$checkedInCount presenças retroativas confirmadas!',
-                      type: 'success');
-                } else {
-                  showBjjSnackBar(
-                      context, 'Nenhuma presença nova foi registrada.',
-                      type: 'info');
-                }
-              }
-            },
+            onTap: _selectDateAndClassForRetroactiveCheckin,
           ),
         ),
         Card(
@@ -1687,6 +1735,7 @@ class BulkCheckinPage extends StatefulWidget {
   final List<Aluno> todosParticipantesDaAcademia;
   final UserModel user;
   final List<DocumentSnapshot> units;
+  final TrainingClass selectedClass;
 
   const BulkCheckinPage({
     super.key,
@@ -1694,6 +1743,7 @@ class BulkCheckinPage extends StatefulWidget {
     required this.todosParticipantesDaAcademia,
     required this.user,
     required this.units,
+    required this.selectedClass,
   });
 
   @override
@@ -1792,6 +1842,9 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
             batch.update(existingDoc.reference, {
               'status': checkinStatusToString(CheckinStatus.approved),
               'studentName': studentName,
+              'classId': widget.selectedClass.id,
+              'className':
+                  '${widget.selectedClass.level} (${widget.selectedClass.startTime})',
             });
             confirmedCount++;
           }
@@ -1803,6 +1856,9 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
             'date': Timestamp.fromDate(dateOnly),
             'createdAt': FieldValue.serverTimestamp(),
             'status': checkinStatusToString(CheckinStatus.approved),
+            'classId': widget.selectedClass.id,
+            'className':
+                '${widget.selectedClass.level} (${widget.selectedClass.startTime})',
           });
           confirmedCount++;
         }
@@ -1830,7 +1886,8 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text("Chamada da Turma"),
+        title: Text(
+            "Chamada - ${widget.selectedClass.level} (${widget.selectedClass.startTime})"),
       ),
       body: AppBackground(
         child: SafeArea(
@@ -1941,12 +1998,16 @@ class RetroactiveCheckinPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosParticipantesDaAcademia;
   final UserModel user;
+  final TrainingClass selectedClass;
+  final DateTime selectedDate;
 
   const RetroactiveCheckinPage({
     super.key,
     required this.academyId,
     required this.todosParticipantesDaAcademia,
     required this.user,
+    required this.selectedClass,
+    required this.selectedDate,
   });
 
   @override
@@ -1955,7 +2016,6 @@ class RetroactiveCheckinPage extends StatefulWidget {
 
 class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
   final Set<String> _selectedStudentIds = {};
-  DateTime _selectedDate = DateTime.now();
   bool _isLoading = false;
   final _searchController = TextEditingController();
   List<Aluno> _filteredParticipants = [];
@@ -2033,21 +2093,6 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
     });
   }
 
-  Future<void> _pickDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      locale: const Locale('pt', 'BR'),
-    );
-    if (picked != null && picked != _selectedDate) {
-      setState(() {
-        _selectedDate = picked;
-      });
-    }
-  }
-
   Future<void> _saveRetroactiveCheckin() async {
     if (_selectedStudentIds.isEmpty) {
       showBjjSnackBar(context, 'Nenhum participante selecionado.',
@@ -2057,8 +2102,8 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
 
     setState(() => _isLoading = true);
 
-    final dateOnly =
-        DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
+    final dateOnly = DateTime(widget.selectedDate.year,
+        widget.selectedDate.month, widget.selectedDate.day);
     final checkinRef = FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.academyId)
@@ -2083,15 +2128,7 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
             .firstWhere((p) => p.id == studentId)
             .nome;
 
-        if (existingDoc != null) {
-          final data = existingDoc.data() as Map<String, dynamic>?;
-          if (data != null &&
-              data['status'] == checkinStatusToString(CheckinStatus.pending)) {
-            batch.update(existingDoc.reference,
-                {'status': checkinStatusToString(CheckinStatus.approved)});
-            confirmedCount++;
-          }
-        } else {
+        if (existingDoc == null) {
           final newDocRef = checkinRef.doc();
           batch.set(newDocRef, {
             'studentId': studentId,
@@ -2099,6 +2136,9 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
             'date': Timestamp.fromDate(dateOnly),
             'createdAt': FieldValue.serverTimestamp(),
             'status': checkinStatusToString(CheckinStatus.approved),
+            'classId': widget.selectedClass.id,
+            'className':
+                '${widget.selectedClass.level} (${widget.selectedClass.startTime})',
           });
           confirmedCount++;
         }
@@ -2127,23 +2167,13 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: const Text("Check-in Retroativo"),
+        title: Text(
+            "Check-in: ${DateFormat('dd/MM/yy').format(widget.selectedDate)}"),
       ),
       body: AppBackground(
         child: SafeArea(
           child: Column(
             children: [
-              Card(
-                margin: const EdgeInsets.all(16),
-                child: ListTile(
-                  leading:
-                      const Icon(Icons.calendar_month, color: primaryAccent),
-                  title: const Text("Data do Check-in"),
-                  subtitle:
-                      Text(DateFormat.yMMMMd('pt_BR').format(_selectedDate)),
-                  onTap: _pickDate,
-                ),
-              ),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: Column(
@@ -3382,6 +3412,73 @@ class SparringHistoryDetailPage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SelectClassDialog extends StatelessWidget {
+  final String academyId;
+  final DateTime selectedDate;
+
+  const _SelectClassDialog({
+    required this.academyId,
+    required this.selectedDate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final dayOfWeek = DateFormat('EEEE', 'pt_BR').format(selectedDate);
+    final formattedDay = dayOfWeek[0].toUpperCase() + dayOfWeek.substring(1);
+
+    return AlertDialog(
+      title: const Text('Selecione a Turma'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: FutureBuilder<QuerySnapshot>(
+          future: FirebaseFirestore.instance
+              .collection('academies')
+              .doc(academyId)
+              .collection('schedule')
+              .where('dayOfWeek', isEqualTo: formattedDay)
+              .orderBy('startTime')
+              .get(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+              return const Center(
+                child: Text('Nenhuma aula encontrada para este dia.'),
+              );
+            }
+            final classes = snapshot.data!.docs
+                .map((doc) => TrainingClass.fromFirestore(doc))
+                .toList();
+
+            return ListView.builder(
+              shrinkWrap: true,
+              itemCount: classes.length,
+              itemBuilder: (context, index) {
+                final trainingClass = classes[index];
+                return ListTile(
+                  title: Text(
+                      '${trainingClass.level} (${trainingClass.startTime})'),
+                  subtitle: Text('Prof. ${trainingClass.teacherName}'),
+                  onTap: () {
+                    Navigator.of(context).pop(trainingClass);
+                  },
+                );
+              },
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+      ],
     );
   }
 }

@@ -336,6 +336,7 @@ class _ClassCardState extends State<_ClassCard> {
     }
   }
 
+  // --- ALTERAÇÃO AQUI: VERIFICAÇÃO DE CHECK-IN POR AULA ---
   void _listenToCheckinStatus() {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -348,12 +349,15 @@ class _ClassCardState extends State<_ClassCard> {
           .collection('checkins')
           .where('studentId', isEqualTo: studentId)
           .where('date', isEqualTo: Timestamp.fromDate(today))
+          .where('classId',
+              isEqualTo: widget.trainingClass.id) // <-- NOVO FILTRO
           .limit(1)
           .snapshots()
           .map((snapshot) =>
               snapshot.docs.isNotEmpty ? snapshot.docs.first : null);
     });
   }
+  // --- FIM DA ALTERAÇÃO ---
 
   void _showCheckinDialog(BuildContext context) {
     final now = TimeOfDay.now();
@@ -382,10 +386,12 @@ class _ClassCardState extends State<_ClassCard> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // --- ALTERAÇÃO AQUI: MOSTRA O NOME DA AULA NO DIÁLOGO ---
             Text(
-                '${widget.trainingClass.dayOfWeek} - ${widget.trainingClass.startTime}'),
+                'Aula: ${widget.trainingClass.level} (${widget.trainingClass.startTime})'),
             const SizedBox(height: 8),
             Text('Professor: ${widget.trainingClass.teacherName}'),
+            // --- FIM DA ALTERAÇÃO ---
           ],
         ),
         actions: [
@@ -405,6 +411,7 @@ class _ClassCardState extends State<_ClassCard> {
     );
   }
 
+  // --- ALTERAÇÃO AQUI: SALVA O CHECK-IN COM OS DADOS DA AULA ---
   Future<void> _performCheckin(BuildContext context) async {
     final studentId = widget.user.role == UserRole.student
         ? widget.user.studentRecordId
@@ -427,11 +434,14 @@ class _ClassCardState extends State<_ClassCard> {
       final querySnapshot = await checkinRef
           .where('studentId', isEqualTo: studentId)
           .where('date', isEqualTo: todayTimestamp)
+          .where('classId',
+              isEqualTo: widget.trainingClass.id) // <-- NOVO FILTRO
           .limit(1)
           .get();
 
       if (querySnapshot.docs.isNotEmpty) {
-        showBjjSnackBar(context, 'Você já fez check-in hoje!', type: 'info');
+        showBjjSnackBar(context, 'Você já fez check-in para esta aula!',
+            type: 'info');
         return;
       }
     } catch (e) {
@@ -439,13 +449,14 @@ class _ClassCardState extends State<_ClassCard> {
       return;
     }
 
+    // <-- NOVOS CAMPOS ADICIONADOS AO CHECK-IN -->
     await checkinRef.add({
       'studentId': studentId,
       'studentName': widget.user.name,
       'date': Timestamp.fromDate(dateOnly),
-      'classId': widget.trainingClass.id,
+      'classId': widget.trainingClass.id, // ID da aula
       'className':
-          '${widget.trainingClass.startTime} - Prof. ${widget.trainingClass.teacherName}',
+          '${widget.trainingClass.level} (${widget.trainingClass.startTime})', // Nome da aula
       'creatorId': widget.user.uid,
       'creatorName': widget.user.name,
       'status': checkinStatusToString(CheckinStatus.pending),
@@ -454,6 +465,7 @@ class _ClassCardState extends State<_ClassCard> {
     showBjjSnackBar(context, 'Solicitação de check-in enviada!',
         type: 'success');
   }
+  // --- FIM DA ALTERAÇÃO ---
 
   Widget _buildCheckinWidget() {
     final today = DateFormat('EEEE', 'pt_BR').format(DateTime.now());
