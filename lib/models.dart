@@ -1190,7 +1190,7 @@ class Tutorial {
 enum SparringEventType {
   finalizacao,
   joelhoNaBarriga,
-  montada, // <<< ADICIONADO AQUI
+  montada,
   passagem,
   queda,
   raspagem,
@@ -1212,7 +1212,7 @@ String getSparringEventTypeName(SparringEventType type) {
       return 'Finalização';
     case SparringEventType.joelhoNaBarriga:
       return 'Joelho na Barriga';
-    case SparringEventType.montada: // <<< ADICIONADO AQUI
+    case SparringEventType.montada:
       return 'Montada';
     case SparringEventType.passagem:
       return 'Passagem';
@@ -1253,17 +1253,36 @@ class SparringEvent {
   }
 }
 
+enum PhysicalCondition {
+  disposto,
+  normal,
+  cansado,
+}
+
+String physicalConditionToString(PhysicalCondition condition) {
+  return condition.name;
+}
+
+PhysicalCondition physicalConditionFromString(String? s) {
+  return PhysicalCondition.values
+      .firstWhere((e) => e.name == s, orElse: () => PhysicalCondition.normal);
+}
+
 class SparringRound {
   String partnerName;
   String notes;
   int rating;
   List<SparringEvent> events;
+  int? durationInMinutes;
+  PhysicalCondition? physicalCondition;
 
   SparringRound({
     this.partnerName = '',
     this.notes = '',
     this.rating = 3,
     List<SparringEvent>? events,
+    this.durationInMinutes,
+    this.physicalCondition,
   }) : events = events ?? [];
 
   Map<String, dynamic> toMap() {
@@ -1272,6 +1291,10 @@ class SparringRound {
       'notes': notes,
       'rating': rating,
       'events': events.map((e) => e.toMap()).toList(),
+      'durationInMinutes': durationInMinutes,
+      'physicalCondition': physicalCondition != null
+          ? physicalConditionToString(physicalCondition!)
+          : null,
     };
   }
 
@@ -1283,6 +1306,8 @@ class SparringRound {
       events: (map['events'] as List<dynamic>? ?? [])
           .map((eventData) => SparringEvent.fromMap(eventData))
           .toList(),
+      durationInMinutes: map['durationInMinutes'],
+      physicalCondition: physicalConditionFromString(map['physicalCondition']),
     );
   }
 }
@@ -1298,6 +1323,8 @@ class TrainingLog {
   final List<SparringRound> sparringRounds;
   final Timestamp createdAt;
   Timestamp updatedAt;
+  final String? injuriesOrPains;
+  final int? durationInMinutes;
 
   TrainingLog({
     required this.id,
@@ -1310,6 +1337,8 @@ class TrainingLog {
     this.sparringRounds = const [],
     required this.createdAt,
     required this.updatedAt,
+    this.injuriesOrPains,
+    this.durationInMinutes,
   });
 
   Map<String, dynamic> toMap() {
@@ -1323,6 +1352,8 @@ class TrainingLog {
       'sparringRounds': sparringRounds.map((round) => round.toMap()).toList(),
       'createdAt': createdAt,
       'updatedAt': updatedAt,
+      'injuriesOrPains': injuriesOrPains,
+      'durationInMinutes': durationInMinutes,
     };
   }
 
@@ -1342,6 +1373,8 @@ class TrainingLog {
           .toList(),
       createdAt: data['createdAt'] ?? Timestamp.now(),
       updatedAt: data['updatedAt'] ?? Timestamp.now(),
+      injuriesOrPains: data['injuriesOrPains'],
+      durationInMinutes: data['durationInMinutes'],
     );
   }
 }

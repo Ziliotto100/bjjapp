@@ -1,9 +1,11 @@
 // lib/training_stats_page.dart
+// ignore_for_file: unused_field, unreachable_switch_default, deprecated_member_use
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
-import 'package:collection/collection.dart'; // Import necessário
+import 'package:collection/collection.dart';
 
 import 'models.dart';
 import 'app_theme.dart';
@@ -17,7 +19,6 @@ enum PerformanceChartType { line, spline, column, area }
 
 enum TechniquesChartType { pie, doughnut, bar }
 
-// --- NOVOS ENUMS ---
 enum TopTechniquesChartType { bar, pie }
 
 enum PartnersChartType { bar, pie }
@@ -50,7 +51,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
   SparringChartType _sparringChartType = SparringChartType.column;
   PerformanceChartType _performanceChartType = PerformanceChartType.line;
   TechniquesChartType _techniquesChartType = TechniquesChartType.pie;
-  // --- NOVAS PREFERÊNCIAS ---
   TopTechniquesChartType _topSubmissionsChartType = TopTechniquesChartType.bar;
   PartnersChartType _partnersChartType = PartnersChartType.bar;
 
@@ -96,7 +96,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
             _techniquesChartType = TechniquesChartType.values.firstWhere(
                 (e) => e.name == data['techniquesChart'],
                 orElse: () => TechniquesChartType.pie);
-            // --- CARREGANDO NOVAS PREFERÊNCIAS ---
             _topSubmissionsChartType = TopTechniquesChartType.values.firstWhere(
                 (e) => e.name == data['topSubmissionsChart'],
                 orElse: () => TopTechniquesChartType.bar);
@@ -158,24 +157,29 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
   }
 
   Widget _buildStatsView(BuildContext context, List<TrainingLog> logs) {
-    // Processamento de dados
     final totalTrainings = logs.length;
 
-    // --- PROCESSAMENTO DE DADOS APRIMORADO ---
     final Map<SparringEventType, Map<String, int>> eventCounts = {};
     final Map<String, int> topSubmissions = {};
     final Map<String, int> partnerCounts = {};
+    // --- NOVO MAPA PARA PERFORMANCE POR CONDIÇÃO ---
+    final Map<PhysicalCondition, List<int>> performanceByCondition = {};
 
     for (var log in logs) {
       for (var round in log.sparringRounds) {
-        // Contagem de parceiros
         if (round.partnerName.isNotEmpty) {
           partnerCounts.update(round.partnerName, (value) => value + 1,
               ifAbsent: () => 1);
         }
 
+        // --- LÓGICA PARA AGRUPAR PERFORMANCE POR CONDIÇÃO ---
+        if (round.physicalCondition != null) {
+          performanceByCondition
+              .putIfAbsent(round.physicalCondition!, () => [])
+              .add(round.rating);
+        }
+
         for (var event in round.events) {
-          // Contagem geral de eventos (a favor vs contra)
           eventCounts.putIfAbsent(event.type, () => {'favor': 0, 'contra': 0});
           if (event.wasSuccessful) {
             eventCounts[event.type]!['favor'] =
@@ -185,7 +189,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
                 (eventCounts[event.type]!['contra'] ?? 0) + 1;
           }
 
-          // Contagem das finalizações mais aplicadas
           if (event.type == SparringEventType.finalizacao &&
               event.wasSuccessful) {
             topSubmissions.update(event.technique, (value) => value + 1,
@@ -212,6 +215,16 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
         .take(5)
         .toList();
 
+    // --- PROCESSANDO DADOS DE PERFORMANCE POR CONDIÇÃO ---
+    final List<_ChartData> performanceByConditionData =
+        performanceByCondition.entries.map((entry) {
+      final ratings = entry.value;
+      final average = ratings.isNotEmpty
+          ? ratings.reduce((a, b) => a + b) / ratings.length
+          : 0;
+      return _ChartData(_getPhysicalConditionName(entry.key), average);
+    }).toList();
+
     final List<_PerformanceData> performanceData = logs
         .map((log) => _PerformanceData(log.date, log.performanceRating))
         .toList()
@@ -229,7 +242,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
         .toList()
       ..sort((a, b) => b.y.compareTo(a.y));
 
-    // UI principal com os cards de gráficos
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
       children: [
@@ -237,6 +249,12 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
         const SizedBox(height: 16),
         _buildSparringChart(context, sparringData),
         const SizedBox(height: 16),
+        if (performanceByConditionData.isNotEmpty) ...[
+          // NOVO GRÁFICO
+          _buildPerformanceByConditionChart(
+              context, performanceByConditionData),
+          const SizedBox(height: 16),
+        ],
         if (topSubmissionsData.isNotEmpty) ...[
           _buildTopSubmissionsChart(context, topSubmissionsData),
           const SizedBox(height: 16),
@@ -253,6 +271,18 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
           _buildTechniquesChart(context, techniquesData),
       ],
     );
+  }
+
+  // --- FUNÇÃO AUXILIAR PARA TRADUZIR O ENUM ---
+  String _getPhysicalConditionName(PhysicalCondition condition) {
+    switch (condition) {
+      case PhysicalCondition.disposto:
+        return 'Disposto';
+      case PhysicalCondition.normal:
+        return 'Normal';
+      case PhysicalCondition.cansado:
+        return 'Cansado';
+    }
   }
 
   // --- WIDGETS DE GRÁFICO ---
@@ -282,7 +312,39 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
           )
         ],
       ),
-      // Opções de tipo de gráfico podem ser adicionadas aqui se desejado
+    );
+  }
+
+  // --- NOVO WIDGET DE GRÁFICO ---
+  Widget _buildPerformanceByConditionChart(
+      BuildContext context, List<_ChartData> data) {
+    return _ChartCard(
+      title: 'Performance Média por Condição',
+      infoMessage:
+          'Sua avaliação média de performance (1 a 5) em rounds quando se sentia disposto, normal ou cansado.',
+      chart: SfCartesianChart(
+        primaryXAxis: const CategoryAxis(),
+        primaryYAxis: const NumericAxis(minimum: 1, maximum: 5, interval: 1),
+        series: <CartesianSeries>[
+          ColumnSeries<_ChartData, String>(
+              dataSource: data,
+              xValueMapper: (d, _) => d.x,
+              yValueMapper: (d, _) => d.y,
+              dataLabelSettings: const DataLabelSettings(isVisible: true),
+              pointColorMapper: (_ChartData data, _) {
+                switch (data.x) {
+                  case 'Disposto':
+                    return successColor;
+                  case 'Normal':
+                    return infoColor;
+                  case 'Cansado':
+                    return warningColor;
+                  default:
+                    return Colors.grey;
+                }
+              })
+        ],
+      ),
     );
   }
 
@@ -502,7 +564,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
   }
 
   // --- WIDGETS DE UI ---
-  // +++ INÍCIO DA MODIFICAÇÃO +++
   Widget _buildTotalTrainingsCard(BuildContext context, int total) {
     return Card(
       child: Padding(
@@ -529,7 +590,6 @@ class _TrainingStatsPageState extends State<TrainingStatsPage> {
       ),
     );
   }
-  // +++ FIM DA MODIFICAÇÃO +++
 }
 
 // --- WIDGET REUTILIZÁVEL PARA O CARD COM SELETOR ---
@@ -606,6 +666,89 @@ class _ChartCard<T> extends StatelessWidget {
               child: chart,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- NOVA PÁGINA DE DETALHES POR PARCEIRO ---
+class PartnerStatsDetailPage extends StatelessWidget {
+  final String partnerName;
+  final List<TrainingLog> allLogs;
+
+  const PartnerStatsDetailPage({
+    super.key,
+    required this.partnerName,
+    required this.allLogs,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Filtra os rounds apenas com o parceiro selecionado
+    final partnerRounds = allLogs
+        .expand((log) => log.sparringRounds)
+        .where((round) => round.partnerName == partnerName)
+        .toList();
+
+    // Processa os dados para os gráficos
+    final Map<SparringEventType, Map<String, int>> eventCounts = {};
+    for (var round in partnerRounds) {
+      for (var event in round.events) {
+        eventCounts.putIfAbsent(event.type, () => {'favor': 0, 'contra': 0});
+        if (event.wasSuccessful) {
+          eventCounts[event.type]!['favor'] =
+              (eventCounts[event.type]!['favor'] ?? 0) + 1;
+        } else {
+          eventCounts[event.type]!['contra'] =
+              (eventCounts[event.type]!['contra'] ?? 0) + 1;
+        }
+      }
+    }
+    final List<_ChartData> sparringData = eventCounts.entries.map((e) {
+      return _ChartData(getSparringEventTypeName(e.key), e.value['favor'] ?? 0,
+          y2: e.value['contra'] ?? 0);
+    }).toList();
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text('Análise com $partnerName'),
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(16.0),
+            children: [
+              _ChartCard(
+                title: 'Head-to-Head',
+                infoMessage:
+                    'Comparativo de ações de sparring apenas com este parceiro.',
+                chart: SfCartesianChart(
+                  primaryXAxis: const CategoryAxis(),
+                  legend: const Legend(
+                      isVisible: true, position: LegendPosition.bottom),
+                  series: <CartesianSeries>[
+                    ColumnSeries<_ChartData, String>(
+                      name: 'A Favor',
+                      dataSource: sparringData,
+                      xValueMapper: (_ChartData data, _) => data.x,
+                      yValueMapper: (_ChartData data, _) => data.y,
+                      color: successColor,
+                    ),
+                    ColumnSeries<_ChartData, String>(
+                      name: 'Contra',
+                      dataSource: sparringData,
+                      xValueMapper: (_ChartData data, _) => data.x,
+                      yValueMapper: (_ChartData data, _) => data.y2,
+                      color: errorColor,
+                    )
+                  ],
+                ),
+              ),
+              // Adicionar mais cards e análises específicas aqui no futuro
+            ],
+          ),
         ),
       ),
     );

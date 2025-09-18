@@ -1,5 +1,5 @@
 // lib/training_log_module.dart
-// ignore_for_file: use_build_context_synchronously, prefer_final_fields
+// ignore_for_file: use_build_context_synchronously, prefer_final_fields, unused_element, unused_import, unnecessary_brace_in_string_interps, deprecated_member_use
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -92,7 +92,6 @@ class TrainingLogService {
     return history;
   }
 
-  // --- NOVA FUNÇÃO PARA BUSCAR PARCEIROS DO ÚLTIMO TREINO ---
   Future<List<String>> getLatestSparringSessionPartners(
       String academyId) async {
     final snapshot = await FirebaseFirestore.instance
@@ -528,6 +527,9 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
 
   final _topicController = TextEditingController();
   final _notesController = TextEditingController();
+  final _durationController = TextEditingController();
+  final _injuriesController = TextEditingController();
+
   List<String> _selectedTechniques = [];
 
   DateTime _selectedDate = DateTime.now();
@@ -552,6 +554,8 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
       _sparringRounds = log.sparringRounds
           .map((r) => SparringRound.fromMap(r.toMap()))
           .toList();
+      _durationController.text = log.durationInMinutes?.toString() ?? '';
+      _injuriesController.text = log.injuriesOrPains ?? '';
     }
   }
 
@@ -559,6 +563,8 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
   void dispose() {
     _topicController.dispose();
     _notesController.dispose();
+    _durationController.dispose();
+    _injuriesController.dispose();
     super.dispose();
   }
 
@@ -622,6 +628,8 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
       sparringRounds: _sparringRounds,
       createdAt: _isEditing ? widget.logToEdit!.createdAt : Timestamp.now(),
       updatedAt: Timestamp.now(),
+      durationInMinutes: int.tryParse(_durationController.text),
+      injuriesOrPains: _injuriesController.text.trim(),
     );
 
     try {
@@ -665,18 +673,38 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
                     padding: const EdgeInsets.all(16.0),
                     children: [
                       _buildSectionHeader('Detalhes da Aula'),
-                      InkWell(
-                        onTap: _pickDate,
-                        child: InputDecorator(
-                          decoration: const InputDecoration(
-                            labelText: 'Data do Treino',
-                            prefixIcon: Icon(Icons.calendar_today),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: InkWell(
+                              onTap: _pickDate,
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Data do Treino',
+                                ),
+                                child: Text(
+                                  DateFormat.yMMMEd('pt_BR')
+                                      .format(_selectedDate),
+                                ),
+                              ),
+                            ),
                           ),
-                          child: Text(
-                            DateFormat.yMMMEd('pt_BR').format(_selectedDate),
-                            style: Theme.of(context).textTheme.titleMedium,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            flex: 2,
+                            child: TextFormField(
+                              controller: _durationController,
+                              decoration: const InputDecoration(
+                                labelText: 'Duração (min)',
+                              ),
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly
+                              ],
+                            ),
                           ),
-                        ),
+                        ],
                       ),
                       const SizedBox(height: 16),
                       TextFormField(
@@ -730,6 +758,12 @@ class _EditTrainingLogPageState extends State<EditTrainingLogPage> {
                           alignLabelWithHint: true,
                         ),
                         maxLines: 5,
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _injuriesController,
+                        decoration: const InputDecoration(
+                            labelText: 'Lesões ou Dores (Opcional)'),
                       ),
                       const SizedBox(height: 16),
                       _buildPerformanceRating(),
@@ -1060,6 +1094,8 @@ class _EditSparringRoundPageState extends State<EditSparringRoundPage> {
   late SparringRound _currentRound;
   final _partnerController = TextEditingController();
   final _notesController = TextEditingController();
+  final _durationController = TextEditingController();
+  PhysicalCondition _physicalCondition = PhysicalCondition.normal;
   late Future<List<Aluno>> _participantsFuture;
 
   @override
@@ -1070,6 +1106,10 @@ class _EditSparringRoundPageState extends State<EditSparringRoundPage> {
         : SparringRound();
     _partnerController.text = _currentRound.partnerName;
     _notesController.text = _currentRound.notes;
+    _durationController.text =
+        _currentRound.durationInMinutes?.toString() ?? '';
+    _physicalCondition =
+        _currentRound.physicalCondition ?? PhysicalCondition.normal;
     _participantsFuture = _fetchParticipants();
   }
 
@@ -1104,6 +1144,7 @@ class _EditSparringRoundPageState extends State<EditSparringRoundPage> {
   void dispose() {
     _partnerController.dispose();
     _notesController.dispose();
+    _durationController.dispose();
     super.dispose();
   }
 
@@ -1123,7 +1164,6 @@ class _EditSparringRoundPageState extends State<EditSparringRoundPage> {
     }
   }
 
-  // +++ NOVA FUNÇÃO +++
   Future<void> _showLastSparringPartners() async {
     final partnerIds = await widget.logService
         .getLatestSparringSessionPartners(widget.user.academyId);
@@ -1139,7 +1179,6 @@ class _EditSparringRoundPageState extends State<EditSparringRoundPage> {
       for (var p in allParticipants) p.id: p.nome
     };
 
-    // Filtra para remover o usuário atual da lista e mapeia para nomes
     final partnerNames = partnerIds
         .where(
             (id) => id != widget.user.uid && id != widget.user.studentRecordId)
@@ -1202,6 +1241,9 @@ class _EditSparringRoundPageState extends State<EditSparringRoundPage> {
             onPressed: () {
               _currentRound.partnerName = _partnerController.text.trim();
               _currentRound.notes = _notesController.text.trim();
+              _currentRound.durationInMinutes =
+                  int.tryParse(_durationController.text);
+              _currentRound.physicalCondition = _physicalCondition;
               Navigator.of(context).pop(_currentRound);
             },
           )
@@ -1212,28 +1254,50 @@ class _EditSparringRoundPageState extends State<EditSparringRoundPage> {
           child: ListView(
             padding: const EdgeInsets.all(16.0),
             children: [
-              TextFormField(
-                controller: _partnerController,
-                decoration: InputDecoration(
-                  labelText: 'Parceiro de Treino',
-                  suffixIcon: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.history),
-                        onPressed: _showLastSparringPartners,
-                        tooltip: 'Ver Parceiros do Último Treino',
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      controller: _partnerController,
+                      decoration: InputDecoration(
+                        labelText: 'Parceiro de Treino',
+                        suffixIcon: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.history),
+                              onPressed: _showLastSparringPartners,
+                              tooltip: 'Ver Parceiros do Último Treino',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.person_search),
+                              onPressed: _showPartnerSelectionDialog,
+                              tooltip: 'Buscar em Alunos',
+                            ),
+                          ],
+                        ),
                       ),
-                      IconButton(
-                        icon: const Icon(Icons.person_search),
-                        onPressed: _showPartnerSelectionDialog,
-                        tooltip: 'Buscar em Alunos',
-                      ),
-                    ],
+                      onChanged: (value) => setState(() {}),
+                    ),
                   ),
-                ),
-                onChanged: (value) => setState(() {}),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _durationController,
+                      decoration: const InputDecoration(
+                        labelText: 'Duração (min)',
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    ),
+                  ),
+                ],
               ),
+              const SizedBox(height: 16),
+              _buildPhysicalConditionSelector(),
               const SizedBox(height: 16),
               _buildRatingSelector(),
               const SizedBox(height: 24),
@@ -1280,6 +1344,40 @@ class _EditSparringRoundPageState extends State<EditSparringRoundPage> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPhysicalConditionSelector() {
+    return Column(
+      children: [
+        const Text('Sua Condição Física neste Round'),
+        const SizedBox(height: 8),
+        SegmentedButton<PhysicalCondition>(
+          segments: const [
+            ButtonSegment(
+              value: PhysicalCondition.disposto,
+              label: Text('Disposto'),
+              icon: Text('😃'),
+            ),
+            ButtonSegment(
+              value: PhysicalCondition.normal,
+              label: Text('Normal'),
+              icon: Text('😐'),
+            ),
+            ButtonSegment(
+              value: PhysicalCondition.cansado,
+              label: Text('Cansado'),
+              icon: Text('😴'),
+            ),
+          ],
+          selected: {_physicalCondition},
+          onSelectionChanged: (newSelection) {
+            setState(() {
+              _physicalCondition = newSelection.first;
+            });
+          },
+        ),
+      ],
     );
   }
 
@@ -1375,7 +1473,8 @@ class _AddEditSparringEventDialogState
     super.initState();
     if (widget.event != null) {
       _selectedType = widget.event!.type;
-      _selectedTechnique = widget.event!.technique;
+      _selectedTechnique =
+          widget.event!.technique.isNotEmpty ? widget.event!.technique : null;
       _wasSuccessful = widget.event!.wasSuccessful;
     }
   }
@@ -1409,19 +1508,24 @@ class _AddEditSparringEventDialogState
                   if (!snapshot.hasData) return const LinearProgressIndicator();
                   return DropdownButtonFormField<String>(
                     value: _selectedTechnique,
-                    hint: const Text('Técnica Utilizada'),
+                    // +++ ALTERAÇÃO AQUI +++
+                    decoration:
+                        const InputDecoration(labelText: 'Técnica (Opcional)'),
                     isExpanded: true,
-                    items: snapshot.data!
-                        .map((tech) => DropdownMenuItem(
-                              value: tech,
-                              child:
-                                  Text(tech, overflow: TextOverflow.ellipsis),
-                            ))
-                        .toList(),
+                    items: [
+                      const DropdownMenuItem<String>(
+                        value: null,
+                        child: Text("Nenhuma / Apenas Posição",
+                            style: TextStyle(fontStyle: FontStyle.italic)),
+                      ),
+                      ...snapshot.data!.map((tech) => DropdownMenuItem(
+                            value: tech,
+                            child: Text(tech, overflow: TextOverflow.ellipsis),
+                          ))
+                    ],
                     onChanged: (value) =>
                         setState(() => _selectedTechnique = value),
-                    validator: (v) =>
-                        v == null ? 'Selecione uma técnica' : null,
+                    // validator removido para tornar opcional
                   );
                 },
               ),
@@ -1456,7 +1560,9 @@ class _AddEditSparringEventDialogState
             if (_formKey.currentState!.validate()) {
               final newEvent = SparringEvent(
                 type: _selectedType!,
-                technique: _selectedTechnique!,
+                // +++ ALTERAÇÃO AQUI +++
+                technique:
+                    _selectedTechnique ?? '', // Salva string vazia se for nulo
                 wasSuccessful: _wasSuccessful,
               );
               Navigator.of(context).pop(newEvent);
@@ -1562,7 +1668,6 @@ class _PartnerSelectionDialogState extends State<_PartnerSelectionDialog> {
   }
 }
 
-// --- NOVO WIDGET PARA EXIBIR PARCEIROS DO ÚLTIMO TREINO ---
 class _LastSparringPartnersDialog extends StatelessWidget {
   final List<String> partnerNames;
 
@@ -1598,7 +1703,6 @@ class _LastSparringPartnersDialog extends StatelessWidget {
   }
 }
 
-// --- DIÁLOGO DE HISTÓRICO COM PARCEIRO (SEM MUDANÇAS) ---
 class _SparringHistoryDialog extends StatelessWidget {
   final String partnerName;
   final List<Map<String, dynamic>> history;
