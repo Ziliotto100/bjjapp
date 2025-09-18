@@ -364,6 +364,9 @@ class CheckinEntry {
   final String? classId;
   final String? className;
   final String? studentName;
+  // --- INÍCIO DA ALTERAÇÃO ---
+  final Timestamp createdAt;
+  // --- FIM DA ALTERAÇÃO ---
 
   CheckinEntry({
     required this.id,
@@ -375,6 +378,9 @@ class CheckinEntry {
     this.classId,
     this.className,
     this.studentName,
+    // --- INÍCIO DA ALTERAÇÃO ---
+    required this.createdAt,
+    // --- FIM DA ALTERAÇÃO ---
   });
 
   factory CheckinEntry.fromJson(String id, Map<String, dynamic> json) {
@@ -388,6 +394,10 @@ class CheckinEntry {
       classId: json['classId'],
       className: json['className'],
       studentName: json['studentName'],
+      // --- INÍCIO DA ALTERAÇÃO ---
+      // Garante que o campo nunca será nulo
+      createdAt: json['createdAt'] ?? Timestamp.now(),
+      // --- FIM DA ALTERAÇÃO ---
     );
   }
 
@@ -401,6 +411,9 @@ class CheckinEntry {
       'classId': classId,
       'className': className,
       'studentName': studentName,
+      // --- INÍCIO DA ALTERAÇÃO ---
+      'createdAt': createdAt,
+      // --- FIM DA ALTERAÇÃO ---
     };
   }
 }

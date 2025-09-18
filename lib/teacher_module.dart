@@ -1531,6 +1531,7 @@ class _ApproveCheckinsPageState extends State<ApproveCheckinsPage> {
   }
 }
 
+// --- PÁGINA DE HISTÓRICO DE CHECK-IN (COM ALTERAÇÕES) ---
 class CheckinHistoryPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> allParticipants;
@@ -1576,10 +1577,18 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
           .map((doc) => CheckinEntry.fromJson(doc.id, doc.data()))
           .toList();
 
+      // Ordena primeiro pelo nome do aluno, depois pelo horário do check-in
       entries.sort((a, b) {
         final nameA = _participantsMap[a.studentId]?.nome ?? '';
         final nameB = _participantsMap[b.studentId]?.nome ?? '';
-        return nameA.compareTo(nameB);
+        final dateA = a.createdAt?.toDate() ?? a.date;
+        final dateB = b.createdAt?.toDate() ?? b.date;
+
+        int nameCompare = nameA.compareTo(nameB);
+        if (nameCompare != 0) {
+          return nameCompare;
+        }
+        return dateA.compareTo(dateB);
       });
 
       if (mounted) {
@@ -1704,12 +1713,24 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
                                 return const SizedBox.shrink();
                               }
 
+                              // --- INÍCIO DA ALTERAÇÃO ---
+                              String subtitleText = student.faixa;
+                              final checkinTime = entry.createdAt?.toDate();
+                              if (entry.className != null &&
+                                  entry.className!.isNotEmpty) {
+                                subtitleText = entry.className!;
+                              } else if (checkinTime != null) {
+                                subtitleText =
+                                    'Check-in às ${DateFormat.Hm().format(checkinTime)}';
+                              }
+                              // --- FIM DA ALTERAÇÃO ---
+
                               return Card(
                                 child: ListTile(
                                   leading: const Icon(Icons.check_circle,
                                       color: successColor),
                                   title: Text(student.nome),
-                                  subtitle: Text(student.faixa),
+                                  subtitle: Text(subtitleText), // <-- ALTERADO
                                   trailing: IconButton(
                                     icon: const Icon(Icons.delete_outline,
                                         color: errorColor),
@@ -3374,7 +3395,7 @@ class SparringHistoryDetailPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text('Detalhes do Treino'),
+        title: const Text('Detalhes do Treino'),
       ),
       body: AppBackground(
         child: SafeArea(
