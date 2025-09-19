@@ -132,20 +132,16 @@ class _StudentHomePageState extends State<StudentHomePage> {
                 module.pageBuilder!(widget.user, _teachers, _students))
             .toList();
 
-        // +++ INÍCIO DA CORREÇÃO +++
-        // Lógica mais robusta para filtrar e ordenar os módulos visíveis.
         _visibleModules =
             _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
 
         _visibleModules.sort((a, b) {
           final indexA = savedOrder.indexOf(a.id);
           final indexB = savedOrder.indexOf(b.id);
-          // Se um item não estiver na lista de ordem, coloque-o no final.
           if (indexA == -1) return 1;
           if (indexB == -1) return -1;
           return indexA.compareTo(indexB);
         });
-        // +++ FIM DA CORREÇÃO +++
 
         int profileIndex =
             _allPageModules.indexWhere((m) => m.id == 'student_profile');
@@ -217,7 +213,6 @@ class _StudentHomePageState extends State<StudentHomePage> {
           ),
         ],
       ),
-      // Adicionado um check para garantir que a barra só seja construída com 2 ou mais itens.
       bottomNavigationBar: _visibleModules.length >= 2
           ? BottomNavigationBar(
               currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
@@ -536,8 +531,9 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                           const SizedBox(height: 24),
                           if (_currentAlunoData?.faixa != null)
                             Card(
-                              margin: const EdgeInsets.symmetric(vertical: 8.0),
+                              margin: const EdgeInsets.symmetric(vertical: 4.0),
                               child: ListTile(
+                                dense: true,
                                 leading: const Icon(Icons.shield_outlined,
                                     color: textHint),
                                 title: const Text("Sua Faixa Atual"),
@@ -545,7 +541,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                   '${_currentAlunoData!.faixa}${_currentAlunoData!.graus != null && _currentAlunoData!.graus! > 0 ? " - ${_currentAlunoData!.graus}º Grau" : ""}',
                                   style: Theme.of(context)
                                       .textTheme
-                                      .titleMedium
+                                      .titleSmall
                                       ?.copyWith(color: textPrimary),
                                 ),
                               ),
@@ -1144,6 +1140,122 @@ class _UserProfilePageState extends State<UserProfilePage> {
         .then((_) => _loadProfileData());
   }
 
+  Future<void> _notifyManager() async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('manual_payment_notifications')
+          .add({
+        'academyId': widget.user.academyId,
+        'studentName': widget.user.name,
+        'studentId': widget.user.studentRecordId,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+      Navigator.of(context).pop();
+      showBjjSnackBar(context, 'Setor financeiro notificado com sucesso!',
+          type: 'success');
+    } catch (e) {
+      showBjjSnackBar(
+          context, 'Erro ao notificar o setor financeiro. Tente novamente.',
+          type: 'error');
+    }
+  }
+
+  Future<void> _showPaymentDialog() async {
+    final academyDoc = await FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.user.academyId)
+        .get();
+
+    if (!academyDoc.exists) {
+      showBjjSnackBar(context, 'Informações da academia não encontradas.',
+          type: 'error');
+      return;
+    }
+
+    final academyData = academyDoc.data()!;
+    final pixKey = academyData['pixKey'] as String?;
+    final monthlyFee = academyData['monthlyFee'] as num?;
+
+    final priceFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+
+    if (pixKey == null ||
+        pixKey.isEmpty ||
+        monthlyFee == null ||
+        monthlyFee <= 0) {
+      showBjjSnackBar(context,
+          'As informações de pagamento não foram configuradas pelo gerente.',
+          type: 'info');
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Realizar Pagamento da Mensalidade'),
+        content: SingleChildScrollView(
+          child: ListBody(
+            children: <Widget>[
+              const Text(
+                  'Use os dados abaixo para fazer o pagamento via PIX no aplicativo do seu banco.'),
+              const SizedBox(height: 24),
+              Text('VALOR:',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: textHint)),
+              Text(priceFormat.format(monthlyFee),
+                  style: Theme.of(context)
+                      .textTheme
+                      .headlineSmall
+                      ?.copyWith(color: primaryAccent)),
+              const SizedBox(height: 16),
+              Text('CHAVE PIX:',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodySmall
+                      ?.copyWith(color: textHint)),
+              Text(pixKey, style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 8),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.copy_all_rounded, size: 16),
+                label: const Text('Copiar Chave PIX'),
+                onPressed: () {
+                  Clipboard.setData(ClipboardData(text: pixKey));
+                  showBjjSnackBar(context, 'Chave PIX copiada!',
+                      type: 'success');
+                },
+              ),
+              const Divider(height: 32),
+              const Text('IMPORTANTE:',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold, color: warningColor)),
+              const SizedBox(height: 8),
+              const Text(
+                  'Após realizar o pagamento, clique no botão abaixo para notificar o setor financeiro.',
+                  style: TextStyle(color: textHint)),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            child: const Text('Cancelar'),
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.send_rounded),
+            label: const Text('Já Paguei, Avisar Financeiro'),
+            onPressed: _notifyManager,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: successColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showSetGoalDialog() {
     final now = DateTime.now();
     final goalKey = DateFormat('yyyy-MM').format(now);
@@ -1193,6 +1305,10 @@ class _UserProfilePageState extends State<UserProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isPaymentPending = _currentMonthFee == null ||
+        _currentMonthFee?.status == PaymentStatus.pendente ||
+        _currentMonthFee?.status == PaymentStatus.atrasado;
+
     final pageBody = AppBackground(
       child: SafeArea(
         child: _isLoading || _currentUser == null
@@ -1200,16 +1316,15 @@ class _UserProfilePageState extends State<UserProfilePage> {
             : RefreshIndicator(
                 onRefresh: _loadProfileData,
                 child: ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
                   children: [
                     UserProfileHeader(user: _currentUser!, studentData: _aluno),
-                    // --- INÍCIO DA ALTERAÇÃO ---
                     TodaysBirthdaysCard(academyId: widget.user.academyId),
-                    // --- FIM DA ALTERAÇÃO ---
                     const SizedBox(height: 8),
                     Card(
-                      margin: const EdgeInsets.symmetric(vertical: 4.0),
+                      margin: const EdgeInsets.symmetric(vertical: 2.0),
                       child: ListTile(
+                        dense: true,
                         leading: const Icon(Icons.shield_outlined,
                             color: primaryAccent, size: 30),
                         title: const Text("Graduação",
@@ -1218,67 +1333,70 @@ class _UserProfilePageState extends State<UserProfilePage> {
                           _formatGraduation(_currentUser!, _aluno),
                           style: Theme.of(context)
                               .textTheme
-                              .titleMedium
+                              .titleSmall
                               ?.copyWith(color: textPrimary),
                         ),
                       ),
                     ),
                     if (_currentUser!.role == UserRole.student)
-                      _TrainingGoalCard(
+                      _GoalsAndProgressCard(
                         currentUser: _currentUser!,
                         monthlyCheckins: _monthlyCheckins,
-                        onTap: _showSetGoalDialog,
+                        onEditMonthlyGoal: _showSetGoalDialog,
+                        onNavigateToGoals: () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) =>
+                                TrainingGoalsPage(userId: _currentUser!.uid),
+                          ));
+                        },
                       ),
                     if (_currentUser!.role == UserRole.student)
                       Card(
-                        margin: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: ListTile(
-                          leading: const Icon(Icons.flag_outlined,
-                              color: warningColor, size: 30),
-                          title: const Text("Minhas Metas",
-                              style: TextStyle(color: textHint)),
-                          subtitle: Text(
-                            "Defina e acompanhe seus objetivos",
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(color: textPrimary),
-                          ),
-                          trailing: const Icon(Icons.arrow_forward_ios_rounded,
-                              size: 16),
-                          onTap: () {
-                            Navigator.of(context).push(MaterialPageRoute(
-                              builder: (_) =>
-                                  TrainingGoalsPage(userId: _currentUser!.uid),
-                            ));
-                          },
-                        ),
-                      ),
-                    if (_currentUser!.role == UserRole.student)
-                      Card(
-                        margin: const EdgeInsets.symmetric(vertical: 4.0),
-                        child: ListTile(
-                          leading: Icon(
-                            _currentMonthFee?.status == PaymentStatus.pago
-                                ? Icons.check_circle_outline_rounded
-                                : Icons.error_outline_rounded,
-                            color:
-                                _currentMonthFee?.status == PaymentStatus.pago
-                                    ? successColor
-                                    : warningColor,
-                            size: 30,
-                          ),
-                          title: const Text("Status da Mensalidade",
-                              style: TextStyle(color: textHint)),
-                          subtitle: Text(
-                            _currentMonthFee?.status == PaymentStatus.pago &&
-                                    _currentMonthFee!.paymentDate != null
-                                ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate!)}'
-                                : 'Pendente para este mês',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(color: textPrimary),
+                        margin: const EdgeInsets.symmetric(vertical: 2.0),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(0, 4, 0, 4),
+                          child: Column(
+                            children: [
+                              ListTile(
+                                dense: true,
+                                leading: Icon(
+                                  isPaymentPending
+                                      ? Icons.error_outline_rounded
+                                      : Icons.check_circle_outline_rounded,
+                                  color: isPaymentPending
+                                      ? warningColor
+                                      : successColor,
+                                  size: 30,
+                                ),
+                                title: const Text("Status da Mensalidade",
+                                    style: TextStyle(color: textHint)),
+                                subtitle: Text(
+                                  _currentMonthFee?.status ==
+                                              PaymentStatus.pago &&
+                                          _currentMonthFee!.paymentDate != null
+                                      ? 'Paga em ${DateFormat.yMd('pt_BR').format(_currentMonthFee!.paymentDate!)}'
+                                      : 'Pendente para este mês',
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleSmall
+                                      ?.copyWith(color: textPrimary),
+                                ),
+                              ),
+                              if (isPaymentPending)
+                                Padding(
+                                  padding:
+                                      const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(Icons.pix_rounded),
+                                    label: const Text('Realizar Pagamento'),
+                                    onPressed: _showPaymentDialog,
+                                    style: ElevatedButton.styleFrom(
+                                        minimumSize:
+                                            const Size(double.infinity, 40),
+                                        backgroundColor: infoColor),
+                                  ),
+                                )
+                            ],
                           ),
                         ),
                       ),
@@ -1322,15 +1440,19 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 }
 
-class _TrainingGoalCard extends StatelessWidget {
+// --- INÍCIO DA ALTERAÇÃO ---
+// Novo widget que combina a meta mensal com o link para a página de metas
+class _GoalsAndProgressCard extends StatelessWidget {
   final UserModel currentUser;
   final int monthlyCheckins;
-  final VoidCallback onTap;
+  final VoidCallback onEditMonthlyGoal;
+  final VoidCallback onNavigateToGoals;
 
-  const _TrainingGoalCard({
+  const _GoalsAndProgressCard({
     required this.currentUser,
     required this.monthlyCheckins,
-    required this.onTap,
+    required this.onEditMonthlyGoal,
+    required this.onNavigateToGoals,
   });
 
   @override
@@ -1341,59 +1463,58 @@ class _TrainingGoalCard extends StatelessWidget {
     final progress =
         (goal > 0) ? (monthlyCheckins / goal).clamp(0.0, 1.0) : 0.0;
 
-    String title;
-    if (goal == 0) {
-      title = 'Definir meta de treinos';
-    } else if (monthlyCheckins >= goal) {
-      title = 'Meta alcançada!';
-    } else {
-      title = 'Meta de Treinos do Mês';
-    }
-
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      margin: const EdgeInsets.symmetric(vertical: 2.0),
       child: InkWell(
-        onTap: onTap,
+        onTap: onNavigateToGoals,
         borderRadius: BorderRadius.circular(12.0),
         child: Padding(
-          padding: const EdgeInsets.all(16.0),
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  Icon(
-                    monthlyCheckins >= goal && goal > 0
-                        ? Icons.star_rounded
-                        : Icons.flag_rounded,
-                    color: primaryAccent,
-                    size: 30,
-                  ),
+                  const Icon(Icons.flag_outlined,
+                      color: warningColor, size: 30),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(title,
-                            style: Theme.of(context).textTheme.titleMedium),
-                        if (goal > 0)
-                          Text(
-                            '$monthlyCheckins de $goal treinos',
-                            style:
-                                const TextStyle(color: textHint, fontSize: 14),
-                          ),
-                      ],
-                    ),
+                    child: Text("Minhas Metas",
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleSmall
+                            ?.copyWith(color: textPrimary)),
                   ),
-                  const Icon(Icons.edit_note_rounded, color: textHint),
+                  const Icon(Icons.arrow_forward_ios_rounded,
+                      size: 16, color: textHint),
+                ],
+              ),
+              const Divider(height: 20, color: borderNormal),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Meta Mensal: $monthlyCheckins de $goal treinos',
+                        style: const TextStyle(color: textHint, fontSize: 14),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit_note_rounded, color: textHint),
+                    onPressed: onEditMonthlyGoal,
+                    tooltip: 'Editar Meta Mensal',
+                  )
                 ],
               ),
               if (goal > 0) ...[
-                const SizedBox(height: 16),
+                const SizedBox(height: 8),
                 LinearProgressIndicator(
                   value: progress,
-                  minHeight: 8,
-                  borderRadius: BorderRadius.circular(4),
+                  minHeight: 6,
+                  borderRadius: BorderRadius.circular(3),
                   backgroundColor: darkSurface,
                   valueColor:
                       const AlwaysStoppedAnimation<Color>(primaryAccent),
@@ -1406,6 +1527,7 @@ class _TrainingGoalCard extends StatelessWidget {
     );
   }
 }
+// --- FIM DA ALTERAÇÃO ---
 
 class EditUserProfilePage extends StatefulWidget {
   final UserModel user;

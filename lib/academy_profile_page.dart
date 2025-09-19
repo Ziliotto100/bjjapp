@@ -33,6 +33,11 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
   final _responsibleNameController = TextEditingController();
   final _responsiblePhoneController = TextEditingController();
 
+  // --- INÍCIO DA ALTERAÇÃO ---
+  final _pixKeyController = TextEditingController();
+  final _monthlyFeeController = TextEditingController();
+  // --- FIM DA ALTERAÇÃO ---
+
   // NOVOS controladores para endereço
   final _logradouroController = TextEditingController();
   final _numeroController = TextEditingController();
@@ -50,6 +55,14 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
   void initState() {
     super.initState();
     _loadAcademyData();
+  }
+
+  @override
+  void dispose() {
+    // Certifique-se de descartar os novos controladores
+    _pixKeyController.dispose();
+    _monthlyFeeController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAcademyData() async {
@@ -71,6 +84,15 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
         _responsibleNameController.text = data['responsibleName'] ?? '';
         _responsiblePhoneController.text = data['responsiblePhone'] ?? '';
         _hasCnpj = data['cnpj'] != null;
+
+        // --- INÍCIO DA ALTERAÇÃO ---
+        _pixKeyController.text = data['pixKey'] ?? '';
+        if (data['monthlyFee'] != null) {
+          _monthlyFeeController.text = (data['monthlyFee'] as num)
+              .toStringAsFixed(2)
+              .replaceAll('.', ',');
+        }
+        // --- FIM DA ALTERAÇÃO ---
 
         // Carrega os dados do mapa de endereço, se existir
         if (data['address'] is Map) {
@@ -130,6 +152,12 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
         'cep': _cepController.text.trim(),
       };
 
+      // --- INÍCIO DA ALTERAÇÃO ---
+      // Converte o valor da mensalidade para double
+      final monthlyFeeValue = double.tryParse(
+          _monthlyFeeController.text.trim().replaceAll(',', '.'));
+      // --- FIM DA ALTERAÇÃO ---
+
       await FirebaseFirestore.instance
           .collection('academies')
           .doc(widget.academyId)
@@ -144,6 +172,10 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
         'address': addressMap,
         'responsibleName': _responsibleNameController.text.trim(),
         'responsiblePhone': _responsiblePhoneController.text.trim(),
+        // --- INÍCIO DA ALTERAÇÃO ---
+        'pixKey': _pixKeyController.text.trim(),
+        'monthlyFee': monthlyFeeValue,
+        // --- FIM DA ALTERAÇÃO ---
       });
 
       showBjjSnackBar(context, 'Perfil da academia atualizado com sucesso!',
@@ -268,19 +300,39 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
                             ],
                           ),
                           const SizedBox(height: 24),
-                          Text("Contato e Responsável",
+                          Text(
+                              "Contato e Pagamentos", // Título da seção atualizado
                               style: Theme.of(context).textTheme.titleLarge),
                           const SizedBox(height: 16),
                           TextFormField(
                             controller: _phoneController,
                             decoration: const InputDecoration(
-                                labelText: 'Telefone da Academia'),
+                                labelText: 'Telefone da Academia (WhatsApp)'),
                             keyboardType: TextInputType.phone,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
                               PhoneInputFormatter(),
                             ],
                           ),
+                          // --- INÍCIO DA ALTERAÇÃO ---
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _pixKeyController,
+                            decoration: const InputDecoration(
+                                labelText: 'Chave PIX para Mensalidades'),
+                          ),
+                          const SizedBox(height: 16),
+                          TextFormField(
+                            controller: _monthlyFeeController,
+                            decoration: const InputDecoration(
+                                labelText: 'Valor Padrão da Mensalidade (R\$)'),
+                            keyboardType: const TextInputType.numberWithOptions(
+                                decimal: true),
+                          ),
+                          // --- FIM DA ALTERAÇÃO ---
+                          const SizedBox(height: 24),
+                          Text("Responsável Legal",
+                              style: Theme.of(context).textTheme.titleLarge),
                           const SizedBox(height: 16),
                           CheckboxListTile(
                             title: const Text("Possui CNPJ?"),

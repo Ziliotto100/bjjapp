@@ -583,7 +583,6 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
           ),
         ],
       ),
-      // --- INÍCIO DA CORREÇÃO ---
       bottomNavigationBar: _visibleModules.isNotEmpty
           ? BottomNavigationBar(
               currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
@@ -595,8 +594,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
                 );
               }).toList(),
             )
-          : null, // Se não houver abas visíveis, a barra não é construída
-      // --- FIM DA CORREÇÃO ---
+          : null,
       floatingActionButton: _buildFloatingActionButton(),
     );
   }
@@ -761,10 +759,6 @@ void showCreateAccessDialog(BuildContext context, Aluno aluno, String academyId,
   }
 }
 
-// =========================================================================
-// ==           INÍCIO DA DASHBOARD COM LAYOUT ADAPTÁVEL                  ==
-// =========================================================================
-
 class ManagerDashboardPage extends StatefulWidget {
   final UserModel user;
   const ManagerDashboardPage({super.key, required this.user});
@@ -887,9 +881,7 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       child: ListView(
         children: [
           UserProfileHeader(user: widget.user),
-          // --- INÍCIO DA ALTERAÇÃO ---
           TodaysBirthdaysCard(academyId: widget.user.academyId),
-          // --- FIM DA ALTERAÇÃO ---
           FutureBuilder<ManagerDashboardMetrics>(
             future: _metricsFuture,
             builder: (context, snapshot) {
@@ -918,9 +910,11 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               return GridView.builder(
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 150.0,
-                  mainAxisSpacing: 8.0,
-                  crossAxisSpacing: 8.0,
-                  childAspectRatio: 0.85,
+                  // --- INÍCIO DA ALTERAÇÃO ---
+                  mainAxisSpacing: 4.0,
+                  crossAxisSpacing: 4.0,
+                  childAspectRatio: 0.95, // Ajuste para cards mais compactos
+                  // --- FIM DA ALTERAÇÃO ---
                 ),
                 itemCount: 6,
                 shrinkWrap: true,
@@ -1011,20 +1005,24 @@ class _MinimalMetricCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            // --- INÍCIO DA ALTERAÇÃO ---
+            mainAxisAlignment: MainAxisAlignment.center, // Centraliza
             children: [
-              Icon(icon, color: color, size: 32),
+              Icon(icon, color: color, size: 28), // Tamanho reduzido
+              const SizedBox(height: 8), // Espaço reduzido
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
                   value,
                   style: Theme.of(context)
                       .textTheme
-                      .titleLarge
+                      .titleSmall // <-- FONTE PADRONIZADA
                       ?.copyWith(color: color, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
               ),
+              const SizedBox(height: 4), // Espaço reduzido
+              // --- FIM DA ALTERAÇÃO ---
               Text(
                 label,
                 style: const TextStyle(color: textHint, fontSize: 12),
@@ -1037,10 +1035,6 @@ class _MinimalMetricCard extends StatelessWidget {
     );
   }
 }
-
-// =========================================================================
-// ==                   FIM DA DASHBOARD ADAPTÁVEL                      ==
-// =========================================================================
 
 class AlunosManagerPage extends StatefulWidget {
   final String academyId;

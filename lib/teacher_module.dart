@@ -1716,7 +1716,6 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
                                 return const SizedBox.shrink();
                               }
 
-                              // --- INÍCIO DA ALTERAÇÃO ---
                               String subtitleText = student.faixa;
                               final checkinTime = entry.createdAt.toDate();
                               if (entry.className != null &&
@@ -1726,14 +1725,13 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
                                 subtitleText =
                                     'Check-in às ${DateFormat.Hm().format(checkinTime)}';
                               }
-                              // --- FIM DA ALTERAÇÃO ---
 
                               return Card(
                                 child: ListTile(
                                   leading: const Icon(Icons.check_circle,
                                       color: successColor),
                                   title: Text(student.nome),
-                                  subtitle: Text(subtitleText), // <-- ALTERADO
+                                  subtitle: Text(subtitleText),
                                   trailing: IconButton(
                                     icon: const Icon(Icons.delete_outline,
                                         color: errorColor),
