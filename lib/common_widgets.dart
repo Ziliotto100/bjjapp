@@ -1,11 +1,12 @@
 // lib/common_widgets.dart
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, unused_import
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart'; // Import para formatação de data
 import 'app_theme.dart';
 import 'models.dart';
 import 'user_card_widget.dart';
@@ -437,6 +438,126 @@ class ImpersonationBanner extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// --- INÍCIO DA ALTERAÇÃO ---
+// Novo Widget centralizado para exibir os aniversariantes do dia.
+
+class TodaysBirthdaysCard extends StatefulWidget {
+  final String academyId;
+  const TodaysBirthdaysCard({super.key, required this.academyId});
+
+  @override
+  State<TodaysBirthdaysCard> createState() => _TodaysBirthdaysCardState();
+}
+
+class _TodaysBirthdaysCardState extends State<TodaysBirthdaysCard> {
+  late Future<List<String>> _todaysBirthdaysFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _todaysBirthdaysFuture = _fetchTodaysBirthdays();
+  }
+
+  Future<List<String>> _fetchTodaysBirthdays() async {
+    final firestore = FirebaseFirestore.instance;
+    final now = DateTime.now();
+    final List<String> birthdayNames = [];
+
+    // Busca alunos
+    final studentsSnapshot = await firestore
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('students')
+        .get();
+
+    for (var doc in studentsSnapshot.docs) {
+      final student = Aluno.fromJson(doc.id, doc.data());
+      if (student.dataNascimento != null &&
+          student.dataNascimento!.day == now.day &&
+          student.dataNascimento!.month == now.month) {
+        birthdayNames.add(student.nome);
+      }
+    }
+
+    // Busca professores e gerentes
+    final usersSnapshot = await firestore
+        .collection('users')
+        .where('academyId', isEqualTo: widget.academyId)
+        .where('role', whereIn: ['teacher', 'manager']).get();
+
+    for (var doc in usersSnapshot.docs) {
+      final user = UserModel.fromFirestore(doc);
+      if (user.dataNascimento != null &&
+          user.dataNascimento!.day == now.day &&
+          user.dataNascimento!.month == now.month) {
+        birthdayNames.add(user.name);
+      }
+    }
+
+    return birthdayNames;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<String>>(
+      future: _todaysBirthdaysFuture,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData || snapshot.hasError || snapshot.data!.isEmpty) {
+          // Se não há aniversariantes ou ocorreu um erro, retorna um widget vazio.
+          return const SizedBox.shrink();
+        }
+
+        final names = snapshot.data!;
+        String birthdayMessage;
+
+        if (names.length == 1) {
+          birthdayMessage = 'Parabéns, ${names.first}!';
+        } else if (names.length == 2) {
+          birthdayMessage = 'Parabéns, ${names.join(' e ')}!';
+        } else {
+          birthdayMessage =
+              'Parabéns, ${names.sublist(0, names.length - 1).join(', ')} e ${names.last}!';
+        }
+
+        return Card(
+          color: primaryAccent.withOpacity(0.15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: primaryAccent, width: 1.5),
+          ),
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text('🎉', style: TextStyle(fontSize: 24)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Aniversariantes de Hoje!',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold, color: primaryAccent),
+                      ),
+                      Text(
+                        birthdayMessage,
+                        style: const TextStyle(color: textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }

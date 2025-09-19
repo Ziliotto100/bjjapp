@@ -1203,6 +1203,9 @@ class _UserProfilePageState extends State<UserProfilePage> {
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
                   children: [
                     UserProfileHeader(user: _currentUser!, studentData: _aluno),
+                    // --- INÍCIO DA ALTERAÇÃO ---
+                    TodaysBirthdaysCard(academyId: widget.user.academyId),
+                    // --- FIM DA ALTERAÇÃO ---
                     const SizedBox(height: 8),
                     Card(
                       margin: const EdgeInsets.symmetric(vertical: 4.0),

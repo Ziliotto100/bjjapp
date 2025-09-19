@@ -1,5 +1,5 @@
 // lib/teacher_module.dart
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use, library_private_types_in_public_api, unused_import, unnecessary_null_comparison
+// ignore_for_file: use_build_context_synchronously, deprecated_member_use, library_private_types_in_public_api, unused_import
 
 import 'dart:async';
 import 'package:flutter/material.dart';
@@ -976,6 +976,9 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     return ListView(
       children: [
         UserProfileHeader(user: widget.user),
+        // --- INÍCIO DA ALTERAÇÃO ---
+        TodaysBirthdaysCard(academyId: widget.user.academyId),
+        // --- FIM DA ALTERAÇÃO ---
         if (widget.isSparringMode)
           Padding(
             padding:
@@ -1719,7 +1722,7 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
                               if (entry.className != null &&
                                   entry.className!.isNotEmpty) {
                                 subtitleText = entry.className!;
-                              } else if (checkinTime != null) {
+                              } else {
                                 subtitleText =
                                     'Check-in às ${DateFormat.Hm().format(checkinTime)}';
                               }

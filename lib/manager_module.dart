@@ -887,6 +887,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
       child: ListView(
         children: [
           UserProfileHeader(user: widget.user),
+          // --- INÍCIO DA ALTERAÇÃO ---
+          TodaysBirthdaysCard(academyId: widget.user.academyId),
+          // --- FIM DA ALTERAÇÃO ---
           FutureBuilder<ManagerDashboardMetrics>(
             future: _metricsFuture,
             builder: (context, snapshot) {
@@ -4035,8 +4038,9 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     final checkinsSnapshot = await FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.academyId)
+        .collection('students')
+        .doc(widget.student.id)
         .collection('checkins')
-        .where('studentId', isEqualTo: widget.student.id)
         .orderBy('date', descending: true)
         .get();
 
