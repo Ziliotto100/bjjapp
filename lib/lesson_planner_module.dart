@@ -8,8 +8,10 @@ import 'package:intl/intl.dart';
 import 'models.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
+// --- INÍCIO DA ALTERAÇÃO ---
+import 'video_picker_dialog.dart';
+// --- FIM DA ALTERAÇÃO ---
 
-// --- TELA DE EDIÇÃO / CRIAÇÃO DO PLANO DE AULA ---
 class EditLessonPlanPage extends StatefulWidget {
   final UserModel currentUser;
   final TrainingClass trainingClass;
@@ -34,25 +36,54 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
   final _observationsController = TextEditingController();
   List<TaughtTechnique> _techniques = [];
   bool _isLoading = false;
+  // --- INÍCIO DA ALTERAÇÃO ---
+  bool _hasVideoAccess = false;
+  // --- FIM DA ALTERAÇÃO ---
 
   bool get _isEditing => widget.existingPlan != null;
 
   @override
   void initState() {
     super.initState();
+    // --- INÍCIO DA ALTERAÇÃO ---
+    _checkVideoAccess();
+    // --- FIM DA ALTERAÇÃO ---
     if (_isEditing) {
       final plan = widget.existingPlan!;
       _warmupController.text = plan.warmup;
       _observationsController.text = plan.observations;
-      _techniques = List<TaughtTechnique>.from(plan.techniques.map(
-          (t) => TaughtTechnique(name: t.name, description: t.description)));
+      _techniques =
+          List<TaughtTechnique>.from(plan.techniques.map((t) => TaughtTechnique(
+                name: t.name,
+                description: t.description,
+                videoId: t.videoId,
+                videoTitle: t.videoTitle,
+                videoThumbnailUrl: t.videoThumbnailUrl,
+              )));
     } else {
-      // --- INÍCIO DA ALTERAÇÃO ---
-      // Define "Padrão" como o valor inicial para novos planos de aula.
       _warmupController.text = 'Padrão';
-      // --- FIM DA ALTERAÇÃO ---
     }
   }
+
+  // --- INÍCIO DA ALTERAÇÃO ---
+  Future<void> _checkVideoAccess() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.currentUser.academyId)
+          .get();
+      if (doc.exists && doc.data() != null) {
+        if (mounted) {
+          setState(() {
+            _hasVideoAccess = doc.data()!['hasVideoLibraryAccess'] ?? false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Erro ao verificar acesso à videoteca: $e");
+    }
+  }
+  // --- FIM DA ALTERAÇÃO ---
 
   void _addTechnique() {
     setState(() {
@@ -119,12 +150,13 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_isEditing ? 'Editar Plano de Aula' : 'Novo Plano de Aula'),
+        title:
+            Text(_isEditing ? 'Editar Diário de Aula' : 'Novo Diário de Aula'),
         actions: [
           IconButton(
             icon: const Icon(Icons.save_outlined),
             onPressed: _isLoading ? null : _savePlan,
-            tooltip: 'Salvar Plano',
+            tooltip: 'Salvar',
           )
         ],
       ),
@@ -153,7 +185,7 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
                       TextFormField(
                         controller: _observationsController,
                         decoration: const InputDecoration(
-                          labelText: 'Observações para o Professor',
+                          labelText: 'Observações do Professor',
                           alignLabelWithHint: true,
                         ),
                         maxLines: 4,
@@ -224,13 +256,31 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
           int index = entry.key;
           TaughtTechnique technique = entry.value;
           return _TechniqueEditCard(
-            key: ValueKey(index),
-            technique: technique,
-            onRemove: () => _removeTechnique(index),
-            onSaved: (updatedTechnique) {
-              _techniques[index] = updatedTechnique;
-            },
-          );
+              key: ValueKey('${technique.name}-${index}'),
+              technique: technique,
+              onRemove: () => _removeTechnique(index),
+              onSaved: (updatedTechnique) {
+                _techniques[index] = updatedTechnique;
+              },
+              // --- INÍCIO DA ALTERAÇÃO ---
+              hasVideoAccess: _hasVideoAccess,
+              academyId: widget.currentUser.academyId,
+              onVideoChanged: (video) {
+                setState(() {
+                  _techniques[index].videoId = video.id;
+                  _techniques[index].videoTitle = video.title;
+                  _techniques[index].videoThumbnailUrl = video.thumbnailUrl;
+                });
+              },
+              onVideoRemoved: () {
+                setState(() {
+                  _techniques[index].videoId = null;
+                  _techniques[index].videoTitle = null;
+                  _techniques[index].videoThumbnailUrl = null;
+                });
+              }
+              // --- FIM DA ALTERAÇÃO ---
+              );
         }),
       ],
     );
@@ -241,13 +291,36 @@ class _TechniqueEditCard extends StatelessWidget {
   final TaughtTechnique technique;
   final VoidCallback onRemove;
   final ValueSetter<TaughtTechnique> onSaved;
+  // --- INÍCIO DA ALTERAÇÃO ---
+  final bool hasVideoAccess;
+  final String academyId;
+  final ValueSetter<VideoItem> onVideoChanged;
+  final VoidCallback onVideoRemoved;
+  // --- FIM DA ALTERAÇÃO ---
 
   const _TechniqueEditCard({
     super.key,
     required this.technique,
     required this.onRemove,
     required this.onSaved,
+    required this.hasVideoAccess,
+    required this.academyId,
+    required this.onVideoChanged,
+    required this.onVideoRemoved,
   });
+
+  // --- INÍCIO DA ALTERAÇÃO ---
+  Future<void> _selectVideo(BuildContext context) async {
+    final VideoItem? selectedVideo = await showDialog<VideoItem>(
+      context: context,
+      builder: (_) => VideoPickerDialog(academyId: academyId),
+    );
+
+    if (selectedVideo != null) {
+      onVideoChanged(selectedVideo);
+    }
+  }
+  // --- FIM DA ALTERAÇÃO ---
 
   @override
   Widget build(BuildContext context) {
@@ -283,6 +356,29 @@ class _TechniqueEditCard extends StatelessWidget {
               maxLines: 2,
               onSaved: (value) => technique.description = value ?? '',
             ),
+            // --- INÍCIO DA ALTERAÇÃO ---
+            if (hasVideoAccess) ...[
+              const SizedBox(height: 12),
+              if (technique.videoId != null)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Image.network(technique.videoThumbnailUrl!,
+                      width: 56, fit: BoxFit.cover),
+                  title: const Text("Vídeo Anexado"),
+                  subtitle: Text(technique.videoTitle ?? ''),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.close, color: errorColor),
+                    onPressed: onVideoRemoved,
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: () => _selectVideo(context),
+                  icon: const Icon(Icons.video_library_outlined),
+                  label: const Text('Anexar Vídeo'),
+                ),
+            ]
+            // --- FIM DA ALTERAÇÃO ---
           ],
         ),
       ),

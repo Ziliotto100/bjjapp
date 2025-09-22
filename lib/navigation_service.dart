@@ -22,6 +22,7 @@ import 'admin_dashboard_module.dart';
 import 'admin_financial_page.dart';
 import 'admin_notifications_page.dart';
 import 'class_plan_module.dart';
+// O import do curriculum_manager_page foi removido pois o arquivo não é mais necessário
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -126,9 +127,7 @@ class NavigationService {
 
   List<AppModule> _getAllPossibleModules() {
     return [
-      // ===================================
-      // MÓDULOS DO SUPER ADMIN
-      // ===================================
+      // Módulos do Super Admin...
       AppModule(
         id: 'superadmin_dashboard',
         title: 'Dashboard',
@@ -173,9 +172,7 @@ class NavigationService {
         pageBuilder: (user, teachers, students) => const TutorialsAdminPage(),
       ),
 
-      // ===================================
-      // MÓDULOS DO GERENTE
-      // ===================================
+      // Módulos do Gerente
       AppModule(
         id: 'manager_dashboard',
         title: 'Início',
@@ -214,16 +211,14 @@ class NavigationService {
         title: 'Academia',
         icon: Icons.business_rounded,
         subModules: [
-          // --- INÍCIO DA ALTERAÇÃO ---
           AppModule(
             id: 'academy_class_plan',
-            title: 'Planejamento Pedagógico', // Nome atualizado
+            title: 'Plano de Aulas',
             icon: Icons.edit_calendar_rounded,
             requiredRoles: [UserRole.manager, UserRole.teacher],
             pageBuilder: (user, teachers, students) =>
                 ClassPlanPage(user: user),
           ),
-          // --- FIM DA ALTERAÇÃO ---
           AppModule(
             id: 'academy_notifications',
             title: 'Comunicados',
@@ -254,14 +249,6 @@ class NavigationService {
             requiredRoles: [UserRole.manager],
             pageBuilder: (user, teachers, students) => ProfessoresManagerPage(
                 academyId: user.academyId, manager: user),
-          ),
-          AppModule(
-            id: 'manager_units',
-            title: 'Gerenciar Unidades',
-            icon: Icons.store_mall_directory_outlined,
-            requiredRoles: [UserRole.manager],
-            pageBuilder: (user, teachers, students) =>
-                ManageUnitsPage(academyId: user.academyId, manager: user),
           ),
           AppModule(
             id: 'teacher_students',
@@ -346,7 +333,7 @@ class NavigationService {
             ),
           ]),
 
-      // Módulos do Professor
+      // Módulos do Professor e Aluno...
       AppModule(
         id: 'teacher_dashboard',
         title: 'Início',
@@ -366,8 +353,6 @@ class NavigationService {
         requiredRoles: [UserRole.teacher],
         pageBuilder: (user, teachers, students) => MyCheckinsPage(user: user),
       ),
-
-      // Módulos do Aluno
       AppModule(
           id: 'student_progress',
           title: 'Meu Perfil',
@@ -393,8 +378,6 @@ class NavigationService {
                   MyCheckinsPage(user: user),
             ),
           ]),
-
-      // Módulos Comuns restantes
       AppModule(
         id: 'common_video_aulas',
         title: 'Videoaulas',
@@ -410,7 +393,6 @@ class NavigationService {
     ];
   }
 
-  /// Retorna as configurações de abas padrão para um novo usuário.
   Map<String, dynamic> getDefaultTabSettings() {
     List<String> defaultVisibleIds;
     switch (userRole) {

@@ -11,7 +11,6 @@ import 'common_widgets.dart';
 import 'models.dart';
 import 'lesson_planner_module.dart';
 
-// --- TELA PRINCIPAL DA GRADE (VISUALIZAÇÃO COM ABAS) ---
 class SchedulePage extends StatefulWidget {
   final UserModel user;
   final List<UserModel> teachers;
@@ -150,30 +149,33 @@ class _SchedulePageState extends State<SchedulePage>
 
   Widget _buildUnitFilter() {
     if (_units.isEmpty || _selectedUnitId == null) {
-      return const SizedBox.shrink();
+      return const Expanded(child: SizedBox.shrink());
     }
-    return DropdownButtonHideUnderline(
-      child: DropdownButton<String>(
-        value: _selectedUnitId,
-        isExpanded: true,
-        items: [
-          const DropdownMenuItem(
-            value: 'all',
-            child: Text("Todas as Unidades"),
-          ),
-          ..._units.map((unit) {
-            return DropdownMenuItem(
-              value: unit.id,
-              child: Text(unit['name']),
-            );
-          }),
-        ],
-        onChanged: (value) {
-          setState(() {
-            _selectedUnitId = value;
-          });
-          _saveLastSelectedUnit(value);
-        },
+    return Expanded(
+      flex: 3,
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: _selectedUnitId,
+          isExpanded: true,
+          items: [
+            const DropdownMenuItem(
+              value: 'all',
+              child: Text("Todas as Unidades"),
+            ),
+            ..._units.map((unit) {
+              return DropdownMenuItem(
+                value: unit.id,
+                child: Text(unit['name']),
+              );
+            }),
+          ],
+          onChanged: (value) {
+            setState(() {
+              _selectedUnitId = value;
+            });
+            _saveLastSelectedUnit(value);
+          },
+        ),
       ),
     );
   }
@@ -200,12 +202,8 @@ class _SchedulePageState extends State<SchedulePage>
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Expanded(
-                      child: _buildUnitFilter(),
-                    ),
+                    _buildUnitFilter(),
                     const SizedBox(width: 16),
-                    // --- INÍCIO DA ALTERAÇÃO ---
-                    // Layout simplificado para mostrar apenas data numérica e ícone
                     InkWell(
                       onTap: _pickDate,
                       child: Row(
@@ -221,7 +219,6 @@ class _SchedulePageState extends State<SchedulePage>
                         ],
                       ),
                     ),
-                    // --- FIM DA ALTERAÇÃO ---
                   ],
                 ),
               ),
@@ -324,6 +321,7 @@ class _SchedulePageState extends State<SchedulePage>
     );
   }
 }
+// ... O resto do arquivo permanece o mesmo ...
 
 // ... O restante do arquivo (diálogos, cards, etc.) permanece exatamente o mesmo ...
 class _ScheduleDayView extends StatefulWidget {

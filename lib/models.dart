@@ -2,6 +2,37 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
+// --- INÍCIO DA ALTERAÇÃO ---
+// Novo modelo para os Currículos
+class Curriculum {
+  final String id;
+  String name;
+  String description;
+
+  Curriculum({
+    required this.id,
+    required this.name,
+    this.description = '',
+  });
+
+  factory Curriculum.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return Curriculum(
+      id: doc.id,
+      name: data['name'] ?? '',
+      description: data['description'] ?? '',
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'description': description,
+    };
+  }
+}
+// --- FIM DA ALTERAÇÃO ---
+
 // Enum para os diferentes tipos de papéis de usuário no sistema.
 enum UserRole {
   superAdmin,
@@ -364,9 +395,7 @@ class CheckinEntry {
   final String? classId;
   final String? className;
   final String? studentName;
-  // --- INÍCIO DA ALTERAÇÃO ---
   final Timestamp createdAt;
-  // --- FIM DA ALTERAÇÃO ---
 
   CheckinEntry({
     required this.id,
@@ -378,9 +407,7 @@ class CheckinEntry {
     this.classId,
     this.className,
     this.studentName,
-    // --- INÍCIO DA ALTERAÇÃO ---
     required this.createdAt,
-    // --- FIM DA ALTERAÇÃO ---
   });
 
   factory CheckinEntry.fromJson(String id, Map<String, dynamic> json) {
@@ -394,10 +421,7 @@ class CheckinEntry {
       classId: json['classId'],
       className: json['className'],
       studentName: json['studentName'],
-      // --- INÍCIO DA ALTERAÇÃO ---
-      // Garante que o campo nunca será nulo
       createdAt: json['createdAt'] ?? Timestamp.now(),
-      // --- FIM DA ALTERAÇÃO ---
     );
   }
 
@@ -411,9 +435,7 @@ class CheckinEntry {
       'classId': classId,
       'className': className,
       'studentName': studentName,
-      // --- INÍCIO DA ALTERAÇÃO ---
       'createdAt': createdAt,
-      // --- FIM DA ALTERAÇÃO ---
     };
   }
 }
@@ -794,6 +816,10 @@ class TrainingClass {
   final List<String> allowedStudentIds;
   final String? unitId;
   final String? unitName;
+  // --- INÍCIO DA ALTERAÇÃO ---
+  final String? curriculumId;
+  final String? curriculumName;
+  // --- FIM DA ALTERAÇÃO ---
 
   TrainingClass({
     required this.id,
@@ -812,6 +838,8 @@ class TrainingClass {
     this.allowedStudentIds = const [],
     this.unitId,
     this.unitName,
+    this.curriculumId,
+    this.curriculumName,
   });
 
   factory TrainingClass.fromFirestore(DocumentSnapshot doc) {
@@ -833,6 +861,10 @@ class TrainingClass {
       allowedStudentIds: List<String>.from(data['allowedStudentIds'] ?? []),
       unitId: data['unitId'],
       unitName: data['unitName'],
+      // --- INÍCIO DA ALTERAÇÃO ---
+      curriculumId: data['curriculumId'],
+      curriculumName: data['curriculumName'],
+      // --- FIM DA ALTERAÇÃO ---
     );
   }
 
@@ -853,6 +885,10 @@ class TrainingClass {
       'allowedStudentIds': allowedStudentIds,
       'unitId': unitId,
       'unitName': unitName,
+      // --- INÍCIO DA ALTERAÇÃO ---
+      'curriculumId': curriculumId,
+      'curriculumName': curriculumName,
+      // --- FIM DA ALTERAÇÃO ---
     };
   }
 }
@@ -1448,16 +1484,29 @@ class TrainingGoal {
 class TaughtTechnique {
   String name;
   String description;
+  // --- INÍCIO DA ALTERAÇÃO ---
+  String? videoId;
+  String? videoTitle;
+  String? videoThumbnailUrl;
+  // --- FIM DA ALTERAÇÃO ---
 
   TaughtTechnique({
     required this.name,
     this.description = '',
+    this.videoId,
+    this.videoTitle,
+    this.videoThumbnailUrl,
   });
 
   Map<String, dynamic> toMap() {
     return {
       'name': name,
       'description': description,
+      // --- INÍCIO DA ALTERAÇÃO ---
+      'videoId': videoId,
+      'videoTitle': videoTitle,
+      'videoThumbnailUrl': videoThumbnailUrl,
+      // --- FIM DA ALTERAÇÃO ---
     };
   }
 
@@ -1465,6 +1514,10 @@ class TaughtTechnique {
     return TaughtTechnique(
       name: map['name'] ?? '',
       description: map['description'] ?? '',
+      // --- INÍCIO DA ALTERAÇÃO ---
+      videoId: map['videoId'],
+      videoTitle: map['videoTitle'],
+      videoThumbnailUrl: map['videoThumbnailUrl'],
     );
   }
 }
