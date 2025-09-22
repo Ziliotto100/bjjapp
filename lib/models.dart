@@ -1443,3 +1443,150 @@ class TrainingGoal {
     );
   }
 }
+// Adicione estas classes ao final do arquivo lib/models.dart
+
+class TaughtTechnique {
+  String name;
+  String description;
+
+  TaughtTechnique({
+    required this.name,
+    this.description = '',
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'description': description,
+    };
+  }
+
+  factory TaughtTechnique.fromMap(Map<String, dynamic> map) {
+    return TaughtTechnique(
+      name: map['name'] ?? '',
+      description: map['description'] ?? '',
+    );
+  }
+}
+
+class LessonPlan {
+  final String id;
+  final String academyId;
+  final String classId; // ID da aula do schedule
+  final DateTime classDate;
+  String warmup;
+  List<TaughtTechnique> techniques;
+  String observations;
+  final String createdByUid;
+  final String createdByName;
+  final Timestamp createdAt;
+  String lastUpdatedByUid;
+  String lastUpdatedByName;
+  Timestamp lastUpdatedAt;
+
+  LessonPlan({
+    required this.id,
+    required this.academyId,
+    required this.classId,
+    required this.classDate,
+    this.warmup = '',
+    this.techniques = const [],
+    this.observations = '',
+    required this.createdByUid,
+    required this.createdByName,
+    required this.createdAt,
+    required this.lastUpdatedByUid,
+    required this.lastUpdatedByName,
+    required this.lastUpdatedAt,
+  });
+
+  factory LessonPlan.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return LessonPlan(
+      id: doc.id,
+      academyId: data['academyId'] ?? '',
+      classId: data['classId'] ?? '',
+      classDate: (data['classDate'] as Timestamp).toDate(),
+      warmup: data['warmup'] ?? '',
+      techniques: (data['techniques'] as List<dynamic>? ?? [])
+          .map((techData) => TaughtTechnique.fromMap(techData))
+          .toList(),
+      observations: data['observations'] ?? '',
+      createdByUid: data['createdByUid'] ?? '',
+      createdByName: data['createdByName'] ?? '',
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+      lastUpdatedByUid: data['lastUpdatedByUid'] ?? '',
+      lastUpdatedByName: data['lastUpdatedByName'] ?? '',
+      lastUpdatedAt: data['lastUpdatedAt'] ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'academyId': academyId,
+      'classId': classId,
+      'classDate': Timestamp.fromDate(classDate),
+      'warmup': warmup,
+      'techniques': techniques.map((t) => t.toMap()).toList(),
+      'observations': observations,
+      'createdByUid': createdByUid,
+      'createdByName': createdByName,
+      'createdAt': createdAt,
+      'lastUpdatedByUid': lastUpdatedByUid,
+      'lastUpdatedByName': lastUpdatedByName,
+      'lastUpdatedAt': lastUpdatedAt,
+    };
+  }
+}
+
+class WeeklyPlan {
+  final String id;
+  final String academyId;
+  final DateTime weekStartDate; // Sempre a data da última segunda-feira
+  final List<TaughtTechnique> techniques; // Campo alterado de String para Lista
+  final String observations;
+  final String lastUpdatedByUid;
+  final String lastUpdatedByName;
+  final Timestamp lastUpdatedAt;
+
+  WeeklyPlan({
+    required this.id,
+    required this.academyId,
+    required this.weekStartDate,
+    required this.techniques,
+    required this.observations,
+    required this.lastUpdatedByUid,
+    required this.lastUpdatedByName,
+    required this.lastUpdatedAt,
+  });
+
+  factory WeeklyPlan.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return WeeklyPlan(
+      id: doc.id,
+      academyId: data['academyId'] ?? '',
+      weekStartDate: (data['weekStartDate'] as Timestamp).toDate(),
+      // Mapeia a lista de mapas do Firestore para a lista de objetos TaughtTechnique
+      techniques: (data['techniques'] as List<dynamic>? ?? [])
+          .map((techData) => TaughtTechnique.fromMap(techData))
+          .toList(),
+      observations: data['observations'] ?? '',
+      lastUpdatedByUid: data['lastUpdatedByUid'] ?? '',
+      lastUpdatedByName: data['lastUpdatedByName'] ?? '',
+      lastUpdatedAt: data['lastUpdatedAt'] ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'academyId': academyId,
+      'weekStartDate': Timestamp.fromDate(weekStartDate),
+      // Mapeia a lista de objetos para uma lista de mapas para salvar no Firestore
+      'techniques': techniques.map((t) => t.toMap()).toList(),
+      'observations': observations,
+      'lastUpdatedByUid': lastUpdatedByUid,
+      'lastUpdatedByName': lastUpdatedByName,
+      'lastUpdatedAt': lastUpdatedAt,
+    };
+  }
+}

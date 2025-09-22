@@ -21,6 +21,7 @@ import 'super_admin_module.dart';
 import 'admin_dashboard_module.dart';
 import 'admin_financial_page.dart';
 import 'admin_notifications_page.dart';
+import 'class_plan_module.dart';
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -213,6 +214,16 @@ class NavigationService {
         title: 'Academia',
         icon: Icons.business_rounded,
         subModules: [
+          // --- INÍCIO DA ALTERAÇÃO ---
+          AppModule(
+            id: 'academy_class_plan',
+            title: 'Planejamento Pedagógico', // Nome atualizado
+            icon: Icons.edit_calendar_rounded,
+            requiredRoles: [UserRole.manager, UserRole.teacher],
+            pageBuilder: (user, teachers, students) =>
+                ClassPlanPage(user: user),
+          ),
+          // --- FIM DA ALTERAÇÃO ---
           AppModule(
             id: 'academy_notifications',
             title: 'Comunicados',
@@ -279,7 +290,6 @@ class NavigationService {
           ),
         ],
       ),
-      // +++ INÍCIO DA MODIFICAÇÃO +++
       AppModule(
           id: 'personal_development',
           title: 'Evolução Pessoal',
@@ -300,7 +310,6 @@ class NavigationService {
                   StudyNotebookPage(userId: user.uid),
             ),
           ]),
-      // +++ FIM DA MODIFICAÇÃO +++
       AppModule(
           id: 'common_tools',
           title: 'Ferramentas',
@@ -418,7 +427,7 @@ class NavigationService {
         defaultVisibleIds = [
           'manager_dashboard',
           'common_academy',
-          'personal_development', // <<< ALTERADO AQUI
+          'personal_development',
           'manager_financial',
           'common_tools',
         ];
@@ -427,7 +436,7 @@ class NavigationService {
         defaultVisibleIds = [
           'teacher_dashboard',
           'common_academy',
-          'personal_development', // <<< ALTERADO AQUI
+          'personal_development',
           'common_tools',
           'teacher_history',
         ];
@@ -437,7 +446,7 @@ class NavigationService {
         defaultVisibleIds = [
           'student_profile',
           'common_academy',
-          'personal_development', // <<< ALTERADO AQUI
+          'personal_development',
           'common_tools',
           'student_history',
         ];

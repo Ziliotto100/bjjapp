@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
+import 'lesson_planner_module.dart';
 
 // --- TELA PRINCIPAL DA GRADE (VISUALIZAÇÃO COM ABAS) ---
 class SchedulePage extends StatefulWidget {
@@ -30,7 +31,8 @@ class _SchedulePageState extends State<SchedulePage>
   late TabController _tabController;
   late Future<List<Aluno>> _allStudentsFuture;
   List<DocumentSnapshot> _units = [];
-  String? _selectedUnitId; // Inicia como nulo
+  String? _selectedUnitId;
+  DateTime _selectedDate = DateTime.now();
 
   final List<String> _daysOfWeek = [
     'Seg',
@@ -39,7 +41,7 @@ class _SchedulePageState extends State<SchedulePage>
     'Qui',
     'Sex',
     'Sáb',
-    'Dom',
+    'Dom'
   ];
   final List<String> _daysOfWeekFull = [
     'Segunda-feira',
@@ -55,23 +57,51 @@ class _SchedulePageState extends State<SchedulePage>
   void initState() {
     super.initState();
     _allStudentsFuture = _fetchAllStudents();
-    // Inicia o fetch das unidades e então define a unidade padrão
     _fetchUnits().then((_) {
       final lastUnitId = widget.user.lastSelectedUnitId;
-      // Verifica se a unidade salva existe na lista de unidades da academia
       if (lastUnitId != null && _units.any((u) => u.id == lastUnitId)) {
         _selectedUnitId = lastUnitId;
       } else {
-        // Caso contrário, usa a unidade do próprio usuário ou 'todas'
         _selectedUnitId = widget.user.unitId ?? 'all';
       }
-      setState(() {}); // Atualiza a UI com a unidade correta
+      setState(() {});
     });
 
     _tabController = TabController(length: _daysOfWeek.length, vsync: this);
-    final todayIndex = DateTime.now().weekday - 1;
-    if (todayIndex >= 0 && todayIndex < _daysOfWeek.length) {
-      _tabController.animateTo(todayIndex);
+    _updateTabToSelectedDate();
+
+    _tabController.addListener(() {
+      if (_tabController.indexIsChanging) return;
+
+      final todayWeekday = _selectedDate.weekday;
+      final difference = _tabController.index - (todayWeekday - 1);
+
+      setState(() {
+        _selectedDate = _selectedDate.add(Duration(days: difference));
+      });
+    });
+  }
+
+  void _updateTabToSelectedDate() {
+    final weekdayIndex = _selectedDate.weekday - 1;
+    if (weekdayIndex >= 0 && weekdayIndex < _daysOfWeek.length) {
+      _tabController.animateTo(weekdayIndex);
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime.now().subtract(const Duration(days: 365)),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      locale: const Locale('pt', 'BR'),
+    );
+    if (picked != null && picked != _selectedDate) {
+      setState(() {
+        _selectedDate = picked;
+        _updateTabToSelectedDate();
+      });
     }
   }
 
@@ -89,7 +119,6 @@ class _SchedulePageState extends State<SchedulePage>
     }
   }
 
-  // <<< NOVA FUNÇÃO PARA SALVAR A PREFERÊNCIA DO USUÁRIO >>>
   Future<void> _saveLastSelectedUnit(String? unitId) async {
     if (unitId == null) return;
     try {
@@ -98,7 +127,6 @@ class _SchedulePageState extends State<SchedulePage>
           .doc(widget.user.uid)
           .update({'lastSelectedUnitId': unitId});
     } catch (e) {
-      // Erro silencioso para não impactar a experiência do usuário
       debugPrint("Erro ao salvar a preferência de unidade: $e");
     }
   }
@@ -121,36 +149,31 @@ class _SchedulePageState extends State<SchedulePage>
   }
 
   Widget _buildUnitFilter() {
-    // Se não houver unidades ou estiver carregando, não mostra o filtro
     if (_units.isEmpty || _selectedUnitId == null) {
-      return const SizedBox(height: 8);
+      return const SizedBox.shrink();
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      color: darkSurface,
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _selectedUnitId,
-          isExpanded: true,
-          items: [
-            const DropdownMenuItem(
-              value: 'all',
-              child: Text("Todas as Unidades"),
-            ),
-            ..._units.map((unit) {
-              return DropdownMenuItem(
-                value: unit.id,
-                child: Text(unit['name']),
-              );
-            }),
-          ],
-          onChanged: (value) {
-            setState(() {
-              _selectedUnitId = value;
-            });
-            _saveLastSelectedUnit(value); // Salva a escolha do usuário
-          },
-        ),
+    return DropdownButtonHideUnderline(
+      child: DropdownButton<String>(
+        value: _selectedUnitId,
+        isExpanded: true,
+        items: [
+          const DropdownMenuItem(
+            value: 'all',
+            child: Text("Todas as Unidades"),
+          ),
+          ..._units.map((unit) {
+            return DropdownMenuItem(
+              value: unit.id,
+              child: Text(unit['name']),
+            );
+          }),
+        ],
+        onChanged: (value) {
+          setState(() {
+            _selectedUnitId = value;
+          });
+          _saveLastSelectedUnit(value);
+        },
       ),
     );
   }
@@ -171,7 +194,37 @@ class _SchedulePageState extends State<SchedulePage>
         child: SafeArea(
           child: Column(
             children: [
-              _buildUnitFilter(),
+              Container(
+                color: darkSurface,
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: _buildUnitFilter(),
+                    ),
+                    const SizedBox(width: 16),
+                    // --- INÍCIO DA ALTERAÇÃO ---
+                    // Layout simplificado para mostrar apenas data numérica e ícone
+                    InkWell(
+                      onTap: _pickDate,
+                      child: Row(
+                        children: [
+                          const Icon(Icons.calendar_today,
+                              color: textHint, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            DateFormat('dd/MM/yyyy').format(_selectedDate),
+                            style: const TextStyle(
+                                color: textPrimary, fontSize: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // --- FIM DA ALTERAÇÃO ---
+                  ],
+                ),
+              ),
               Expanded(
                 child: StreamBuilder<QuerySnapshot>(
                   stream: FirebaseFirestore.instance
@@ -238,6 +291,7 @@ class _SchedulePageState extends State<SchedulePage>
                               teachers: widget.teachers,
                               allStudents: studentSnapshot.data ?? [],
                               selectedUnitId: _selectedUnitId,
+                              classDate: _selectedDate,
                             );
                           },
                         );
@@ -250,7 +304,7 @@ class _SchedulePageState extends State<SchedulePage>
           ),
         ),
       ),
-      floatingActionButton: isManager || isTeacher
+      floatingActionButton: isManager
           ? FloatingActionButton(
               heroTag: 'schedule_fab',
               onPressed: () async {
@@ -263,20 +317,22 @@ class _SchedulePageState extends State<SchedulePage>
                   ),
                 ));
               },
-              tooltip: 'Adicionar Aula',
-              child: const Icon(Icons.add),
+              tooltip: 'Gerenciar Aulas',
+              child: const Icon(Icons.edit_calendar),
             )
           : null,
     );
   }
 }
 
-class _ScheduleDayView extends StatelessWidget {
+// ... O restante do arquivo (diálogos, cards, etc.) permanece exatamente o mesmo ...
+class _ScheduleDayView extends StatefulWidget {
   final List<TrainingClass> classes;
   final UserModel user;
   final List<UserModel> teachers;
   final List<Aluno> allStudents;
   final String? selectedUnitId;
+  final DateTime classDate;
 
   const _ScheduleDayView({
     required this.classes,
@@ -284,21 +340,28 @@ class _ScheduleDayView extends StatelessWidget {
     required this.teachers,
     required this.allStudents,
     required this.selectedUnitId,
+    required this.classDate,
   });
 
+  @override
+  State<_ScheduleDayView> createState() => _ScheduleDayViewState();
+}
+
+class _ScheduleDayViewState extends State<_ScheduleDayView> {
   @override
   Widget build(BuildContext context) {
     return ListView.builder(
       padding: const EdgeInsets.all(8.0),
-      itemCount: classes.length,
+      itemCount: widget.classes.length,
       itemBuilder: (context, index) {
-        final trainingClass = classes[index];
+        final trainingClass = widget.classes[index];
         return _ClassCard(
           trainingClass: trainingClass,
-          user: user,
-          teachers: teachers,
-          allStudents: allStudents,
-          selectedUnitId: selectedUnitId,
+          user: widget.user,
+          teachers: widget.teachers,
+          allStudents: widget.allStudents,
+          selectedUnitId: widget.selectedUnitId,
+          classDate: widget.classDate,
         );
       },
     );
@@ -311,6 +374,7 @@ class _ClassCard extends StatefulWidget {
   final List<UserModel> teachers;
   final List<Aluno> allStudents;
   final String? selectedUnitId;
+  final DateTime classDate;
 
   const _ClassCard({
     required this.trainingClass,
@@ -318,6 +382,7 @@ class _ClassCard extends StatefulWidget {
     required this.teachers,
     required this.allStudents,
     required this.selectedUnitId,
+    required this.classDate,
   });
 
   @override
@@ -326,6 +391,7 @@ class _ClassCard extends StatefulWidget {
 
 class _ClassCardState extends State<_ClassCard> {
   Stream<DocumentSnapshot?>? _checkinStatusStream;
+  Stream<DocumentSnapshot?>? _lessonPlanStream;
 
   @override
   void initState() {
@@ -334,12 +400,24 @@ class _ClassCardState extends State<_ClassCard> {
         widget.user.studentRecordId != null) {
       _listenToCheckinStatus();
     }
+    _listenToLessonPlan();
   }
 
-  // --- ALTERAÇÃO AQUI: VERIFICAÇÃO DE CHECK-IN POR AULA ---
+  @override
+  void didUpdateWidget(covariant _ClassCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.classDate != widget.classDate) {
+      if (widget.user.role == UserRole.student &&
+          widget.user.studentRecordId != null) {
+        _listenToCheckinStatus();
+      }
+      _listenToLessonPlan();
+    }
+  }
+
   void _listenToCheckinStatus() {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
+    final dateOnly = DateTime(
+        widget.classDate.year, widget.classDate.month, widget.classDate.day);
     final studentId = widget.user.studentRecordId;
 
     setState(() {
@@ -348,26 +426,55 @@ class _ClassCardState extends State<_ClassCard> {
           .doc(widget.user.academyId)
           .collection('checkins')
           .where('studentId', isEqualTo: studentId)
-          .where('date', isEqualTo: Timestamp.fromDate(today))
-          .where('classId',
-              isEqualTo: widget.trainingClass.id) // <-- NOVO FILTRO
+          .where('date', isEqualTo: Timestamp.fromDate(dateOnly))
+          .where('classId', isEqualTo: widget.trainingClass.id)
           .limit(1)
           .snapshots()
           .map((snapshot) =>
               snapshot.docs.isNotEmpty ? snapshot.docs.first : null);
     });
   }
-  // --- FIM DA ALTERAÇÃO ---
+
+  void _listenToLessonPlan() {
+    final dateOnly = DateTime(
+        widget.classDate.year, widget.classDate.month, widget.classDate.day);
+
+    setState(() {
+      _lessonPlanStream = FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .collection('lesson_plans')
+          .where('classId', isEqualTo: widget.trainingClass.id)
+          .where('classDate', isEqualTo: Timestamp.fromDate(dateOnly))
+          .limit(1)
+          .snapshots()
+          .map((snapshot) =>
+              snapshot.docs.isNotEmpty ? snapshot.docs.first : null);
+    });
+  }
 
   void _showCheckinDialog(BuildContext context) {
-    final now = TimeOfDay.now();
+    final now = DateTime.now();
+    final isToday = widget.classDate.year == now.year &&
+        widget.classDate.month == now.month &&
+        widget.classDate.day == now.day;
+
+    if (!isToday) {
+      showBjjSnackBar(
+        context,
+        'O check-in só pode ser feito para aulas do dia de hoje.',
+        type: 'info',
+      );
+      return;
+    }
+
+    final timeNow = TimeOfDay.now();
     final startTime = TimeOfDay(
       hour: int.parse(widget.trainingClass.startTime.split(':')[0]),
       minute: int.parse(widget.trainingClass.startTime.split(':')[1]),
     );
-
     final checkinWindowStart = startTime.hour * 60 + startTime.minute - 15;
-    final nowInMinutes = now.hour * 60 + now.minute;
+    final nowInMinutes = timeNow.hour * 60 + timeNow.minute;
 
     if (nowInMinutes < checkinWindowStart) {
       showBjjSnackBar(
@@ -386,12 +493,10 @@ class _ClassCardState extends State<_ClassCard> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- ALTERAÇÃO AQUI: MOSTRA O NOME DA AULA NO DIÁLOGO ---
             Text(
                 'Aula: ${widget.trainingClass.level} (${widget.trainingClass.startTime})'),
             const SizedBox(height: 8),
             Text('Professor: ${widget.trainingClass.teacherName}'),
-            // --- FIM DA ALTERAÇÃO ---
           ],
         ),
         actions: [
@@ -411,7 +516,6 @@ class _ClassCardState extends State<_ClassCard> {
     );
   }
 
-  // --- ALTERAÇÃO AQUI: SALVA O CHECK-IN COM OS DADOS DA AULA ---
   Future<void> _performCheckin(BuildContext context) async {
     final studentId = widget.user.role == UserRole.student
         ? widget.user.studentRecordId
@@ -421,9 +525,8 @@ class _ClassCardState extends State<_ClassCard> {
       return;
     }
 
-    final now = DateTime.now();
-    final dateOnly = DateTime(now.year, now.month, now.day);
-
+    final dateOnly = DateTime(
+        widget.classDate.year, widget.classDate.month, widget.classDate.day);
     final checkinRef = FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.user.academyId)
@@ -434,8 +537,7 @@ class _ClassCardState extends State<_ClassCard> {
       final querySnapshot = await checkinRef
           .where('studentId', isEqualTo: studentId)
           .where('date', isEqualTo: todayTimestamp)
-          .where('classId',
-              isEqualTo: widget.trainingClass.id) // <-- NOVO FILTRO
+          .where('classId', isEqualTo: widget.trainingClass.id)
           .limit(1)
           .get();
 
@@ -449,28 +551,28 @@ class _ClassCardState extends State<_ClassCard> {
       return;
     }
 
-    // <-- NOVOS CAMPOS ADICIONADOS AO CHECK-IN -->
     await checkinRef.add({
       'studentId': studentId,
       'studentName': widget.user.name,
       'date': Timestamp.fromDate(dateOnly),
-      'classId': widget.trainingClass.id, // ID da aula
+      'classId': widget.trainingClass.id,
       'className':
-          '${widget.trainingClass.level} (${widget.trainingClass.startTime})', // Nome da aula
+          '${widget.trainingClass.level} (${widget.trainingClass.startTime})',
       'creatorId': widget.user.uid,
       'creatorName': widget.user.name,
       'status': checkinStatusToString(CheckinStatus.pending),
+      'createdAt': FieldValue.serverTimestamp(),
     });
 
     showBjjSnackBar(context, 'Solicitação de check-in enviada!',
         type: 'success');
   }
-  // --- FIM DA ALTERAÇÃO ---
 
   Widget _buildCheckinWidget() {
-    final today = DateFormat('EEEE', 'pt_BR').format(DateTime.now());
-    final isToday =
-        widget.trainingClass.dayOfWeek.toLowerCase() == today.toLowerCase();
+    final now = DateTime.now();
+    final isToday = widget.classDate.year == now.year &&
+        widget.classDate.month == now.month &&
+        widget.classDate.day == now.day;
 
     if (!isToday || widget.user.role != UserRole.student) {
       return const SizedBox.shrink();
@@ -531,7 +633,7 @@ class _ClassCardState extends State<_ClassCard> {
 
   @override
   Widget build(BuildContext context) {
-    final bool canEdit = widget.user.role == UserRole.manager ||
+    final bool canManage = widget.user.role == UserRole.manager ||
         widget.user.role == UserRole.teacher;
     final isGiClass = widget.trainingClass.modality == TrainingModality.gi;
     final isPrivate = widget.trainingClass.isPrivate;
@@ -569,14 +671,48 @@ class _ClassCardState extends State<_ClassCard> {
                         ),
                   ),
                   const Spacer(),
-                  if (canEdit)
+                  if (canManage)
+                    StreamBuilder<DocumentSnapshot?>(
+                      stream: _lessonPlanStream,
+                      builder: (context, snapshot) {
+                        final bool hasPlan =
+                            snapshot.hasData && snapshot.data != null;
+                        final existingPlan = hasPlan
+                            ? LessonPlan.fromFirestore(snapshot.data!)
+                            : null;
+
+                        return IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: Icon(
+                            hasPlan
+                                ? Icons.assignment_turned_in_rounded
+                                : Icons.assignment_late_outlined,
+                            color: hasPlan ? successColor : textHint,
+                          ),
+                          tooltip: hasPlan
+                              ? 'Ver/Editar Plano de Aula'
+                              : 'Adicionar Plano de Aula',
+                          onPressed: () {
+                            Navigator.of(context).push(MaterialPageRoute(
+                              builder: (_) => EditLessonPlanPage(
+                                currentUser: widget.user,
+                                trainingClass: widget.trainingClass,
+                                classDate: widget.classDate,
+                                existingPlan: existingPlan,
+                              ),
+                            ));
+                          },
+                        );
+                      },
+                    ),
+                  if (canManage)
                     SizedBox(
                       height: 36,
                       width: 36,
                       child: IconButton(
                         padding: EdgeInsets.zero,
                         icon: Icon(Icons.edit_note_rounded, color: textHint),
-                        tooltip: 'Editar Aula',
+                        tooltip: 'Editar Horário',
                         onPressed: () {
                           Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => EditSchedulePage(
@@ -632,7 +768,6 @@ class _ClassCardState extends State<_ClassCard> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // *** LÓGICA DE VISIBILIDADE CORRIGIDA AQUI ***
                   if (widget.selectedUnitId == 'all' &&
                       widget.trainingClass.unitName != null &&
                       widget.trainingClass.unitName!.isNotEmpty)
@@ -746,7 +881,6 @@ class _ClassDetailDialog extends StatelessWidget {
       content: SingleChildScrollView(
         child: ListBody(
           children: <Widget>[
-            // --- INFORMAÇÃO DA UNIDADE ADICIONADA ---
             if (trainingClass.unitName != null &&
                 trainingClass.unitName!.isNotEmpty)
               _buildInfoRow(context, Icons.store_mall_directory_outlined,
@@ -811,7 +945,6 @@ class _ClassDetailDialog extends StatelessWidget {
   }
 }
 
-// --- TELA DE EDIÇÃO/CRIAÇÃO DA GRADE (GERENTE) ---
 class EditSchedulePage extends StatefulWidget {
   final String academyId;
   final List<UserModel> teachers;
@@ -852,7 +985,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
   bool _isPrivate = false;
   List<String> _selectedStudentIds = [];
 
-  // CAMPOS PARA UNIDADE
   List<DocumentSnapshot> _units = [];
   bool _isLoadingUnits = true;
   String? _selectedUnitId;
@@ -914,7 +1046,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
           .collection('units')
           .orderBy('name')
           .get();
-      // >>>>> CORREÇÃO APLICADA AQUI <<<<<
       final List<DocumentSnapshot> fetchedUnits = snapshot.docs;
 
       if (_isEditing &&
