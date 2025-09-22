@@ -910,11 +910,9 @@ class _ManagerDashboardPageState extends State<ManagerDashboardPage> {
               return GridView.builder(
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                   maxCrossAxisExtent: 150.0,
-                  // --- INÍCIO DA ALTERAÇÃO ---
                   mainAxisSpacing: 4.0,
                   crossAxisSpacing: 4.0,
-                  childAspectRatio: 0.95, // Ajuste para cards mais compactos
-                  // --- FIM DA ALTERAÇÃO ---
+                  childAspectRatio: 0.95,
                 ),
                 itemCount: 6,
                 shrinkWrap: true,
@@ -1005,24 +1003,22 @@ class _MinimalMetricCard extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(8.0),
           child: Column(
-            // --- INÍCIO DA ALTERAÇÃO ---
-            mainAxisAlignment: MainAxisAlignment.center, // Centraliza
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: color, size: 28), // Tamanho reduzido
-              const SizedBox(height: 8), // Espaço reduzido
+              Icon(icon, color: color, size: 28),
+              const SizedBox(height: 8),
               FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
                   value,
                   style: Theme.of(context)
                       .textTheme
-                      .titleSmall // <-- FONTE PADRONIZADA
+                      .titleSmall
                       ?.copyWith(color: color, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
               ),
-              const SizedBox(height: 4), // Espaço reduzido
-              // --- FIM DA ALTERAÇÃO ---
+              const SizedBox(height: 4),
               Text(
                 label,
                 style: const TextStyle(color: textHint, fontSize: 12),
@@ -2333,8 +2329,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                                 label: const Text("Promover"),
                                 style: TextButton.styleFrom(
                                     foregroundColor: primaryAccent,
-                                    textStyle: const TextStyle(
-                                        fontSize: 14)), // Reduzindo a fonte
+                                    textStyle: const TextStyle(fontSize: 14)),
                                 onPressed: () {
                                   Navigator.of(context).pop();
                                   showDialog(
@@ -2378,11 +2373,9 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                               label: const Text("Graduar"),
                               style: TextButton.styleFrom(
                                   foregroundColor: successColor,
-                                  textStyle: const TextStyle(
-                                      fontSize: 14)), // Reduzindo a fonte
+                                  textStyle: const TextStyle(fontSize: 14)),
                               onPressed: () {
-                                Navigator.of(context)
-                                    .pop(); // Close current dialog
+                                Navigator.of(context).pop();
                                 showDialog(
                                   context: context,
                                   builder: (_) => GraduationDialog(
@@ -2440,10 +2433,15 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
     Navigator.of(context).pop();
   }
 
+  // --- INÍCIO DA ALTERAÇÃO ---
   Future<void> _saveEditedAluno() async {
     final alunoAtualizado = _buildAlunoFromForm();
+    // A chamada do callback que faz a atualização no banco de dados
     widget.onAlunoAdicionado?.call(alunoAtualizado, _newProfileImageFile);
+    // A linha que faltava: fechar o diálogo após a ação de salvar
+    Navigator.of(context).pop();
   }
+  // --- FIM DA ALTERAÇÃO ---
 
   Aluno _buildAlunoFromForm() {
     DateTime? dataNascimento;
@@ -3936,7 +3934,9 @@ class _AddPaymentDialogState extends State<AddPaymentDialog> {
         Navigator.of(context).pop(false);
       }
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 

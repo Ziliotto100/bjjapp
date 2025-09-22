@@ -1,5 +1,5 @@
 // lib/user_card_widget.dart
-// ignore_for_file: unused_import
+// ignore_for_file: use_build_context_synchronously
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,8 +13,6 @@ import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'manager_module.dart';
 
-// **INÍCIO DA NOVA FUNÇÃO DE LOG**
-/// Função auxiliar para criar uma entrada no log de auditoria.
 Future<void> _createAuditLog({
   required String academyId,
   required UserModel actor,
@@ -41,9 +39,7 @@ Future<void> _createAuditLog({
     debugPrint("Erro ao criar log de auditoria: $e");
   }
 }
-// **FIM DA NOVA FUNÇÃO DE LOG**
 
-/// Página para visualizar uma imagem em tela cheia com zoom.
 class PhotoViewPage extends StatelessWidget {
   final String imageUrl;
   final String heroTag;
@@ -84,9 +80,8 @@ class PhotoViewPage extends StatelessWidget {
   }
 }
 
-/// Card de usuário reutilizável para Alunos e Professores.
 class UserCard extends StatelessWidget {
-  final dynamic user; // Pode ser Aluno ou UserModel
+  final dynamic user;
   final String academyId;
   final UserModel currentUser;
   final String? profileImageUrl;
@@ -109,16 +104,10 @@ class UserCard extends StatelessWidget {
     final bool hasImage =
         profileImageUrl != null && profileImageUrl!.isNotEmpty;
 
-    final backgroundImage =
-        hasImage ? CachedNetworkImageProvider(profileImageUrl!) : null;
-
-    final childText = hasImage
-        ? null
-        : Text(
-            name.isNotEmpty ? name[0].toUpperCase() : 'U',
-            style:
-                const TextStyle(fontSize: 24, color: primaryAccentForeground),
-          );
+    final childText = Text(
+      name.isNotEmpty ? name[0].toUpperCase() : 'U',
+      style: const TextStyle(fontSize: 24, color: primaryAccentForeground),
+    );
 
     return Card(
       child: Padding(
@@ -138,12 +127,30 @@ class UserCard extends StatelessWidget {
               },
               child: Hero(
                 tag: heroTag,
+                // --- INÍCIO DA ALTERAÇÃO ---
+                // Alterado para usar CachedNetworkImage como filho, o que permite
+                // tratar erros de carregamento sem quebrar a tela.
                 child: CircleAvatar(
                   radius: 28,
                   backgroundColor: primaryAccent,
-                  backgroundImage: backgroundImage,
-                  child: childText,
+                  child: hasImage
+                      ? ClipOval(
+                          child: CachedNetworkImage(
+                            imageUrl: profileImageUrl!,
+                            fit: BoxFit.cover,
+                            width: 56, // 2x o raio
+                            height: 56, // 2x o raio
+                            placeholder: (context, url) =>
+                                Container(color: darkSurface),
+                            errorWidget: (context, url, error) {
+                              // Se a imagem falhar, mostra as iniciais do nome
+                              return Center(child: childText);
+                            },
+                          ),
+                        )
+                      : Center(child: childText),
                 ),
+                // --- FIM DA ALTERAÇÃO ---
               ),
             ),
             const SizedBox(width: 16),
@@ -295,7 +302,7 @@ void _showEditAlunoDialog(BuildContext context, Aluno aluno, String academyId,
           if (context.mounted) {
             showBjjSnackBar(context, 'Aluno atualizado com sucesso!',
                 type: 'success');
-            Navigator.of(context).pop();
+            // A pop é feita pelo próprio AdicionarAlunoDialog agora
           }
         } catch (e) {
           if (context.mounted) {

@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 import 'models.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
-// INÍCIO DA ALTERAÇÃO: Importa o diálogo de pagamento do módulo do gerente
 import 'manager_module.dart' show AddPaymentDialog;
-// FIM DA ALTERAÇÃO
+// --- INÍCIO DA CORREÇÃO ---
+// Corrigido o caminho do import para o pacote url_launcher
+import 'package:url_launcher/url_launcher.dart';
+// --- FIM DA CORREÇÃO ---
 
-// --- INÍCIO DA ALTERAÇÃO: A classe agora é um StatefulWidget ---
 class FinancialStudentListPage extends StatefulWidget {
   final String title;
   final List<Aluno> students;
@@ -35,11 +36,9 @@ class _FinancialStudentListPageState extends State<FinancialStudentListPage> {
   @override
   void initState() {
     super.initState();
-    // Cria uma cópia mutável da lista de alunos
     _studentsList = List.from(widget.students);
   }
 
-  // Nova função para exibir o diálogo e registrar o pagamento
   Future<void> _registerPayment(Aluno student) async {
     final bool? success = await showDialog<bool>(
       context: context,
@@ -49,13 +48,44 @@ class _FinancialStudentListPageState extends State<FinancialStudentListPage> {
       ),
     );
 
-    // Se o pagamento foi registrado com sucesso, remove o aluno da lista
     if (success == true) {
       showBjjSnackBar(context, "Pagamento registrado com sucesso!",
           type: 'success');
       setState(() {
         _studentsList.removeWhere((s) => s.id == student.id);
       });
+    }
+  }
+
+  Future<void> _sendWhatsAppReminder(Aluno student) async {
+    final phoneNumber = student.phoneNumber;
+    if (phoneNumber == null || phoneNumber.trim().isEmpty) {
+      showBjjSnackBar(context, 'Este aluno não possui telefone cadastrado.',
+          type: 'error');
+      return;
+    }
+
+    String formattedPhoneNumber =
+        phoneNumber.trim().replaceAll(RegExp(r'\D'), '');
+    if (!formattedPhoneNumber.startsWith('55')) {
+      formattedPhoneNumber = '55$formattedPhoneNumber';
+    }
+
+    final message = Uri.encodeComponent(
+        'Olá, ${student.nome}! Tudo bem? Passando para lembrar sobre a mensalidade deste mês. Se já efetuou o pagamento, por favor, desconsidere esta mensagem. Oss!');
+    final whatsappUrl =
+        Uri.parse("https://wa.me/$formattedPhoneNumber?text=$message");
+
+    try {
+      if (await canLaunchUrl(whatsappUrl)) {
+        await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
+      } else {
+        showBjjSnackBar(context, 'Não foi possível abrir o WhatsApp.',
+            type: 'error');
+      }
+    } catch (e) {
+      showBjjSnackBar(context, 'Ocorreu um erro ao tentar abrir o WhatsApp.',
+          type: 'error');
     }
   }
 
@@ -79,15 +109,31 @@ class _FinancialStudentListPageState extends State<FinancialStudentListPage> {
                   itemCount: _studentsList.length,
                   itemBuilder: (context, index) {
                     final student = _studentsList[index];
-                    // Card customizado com o novo botão
+                    final bool hasPhone = student.phoneNumber != null &&
+                        student.phoneNumber!.trim().isNotEmpty;
+
                     return Card(
                       child: Padding(
                         padding: const EdgeInsets.all(12.0),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(student.nome,
-                                style: Theme.of(context).textTheme.titleMedium),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(student.nome,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleMedium),
+                                ),
+                                if (!hasPhone)
+                                  Tooltip(
+                                    message: 'Telefone não cadastrado',
+                                    child: Icon(Icons.warning_amber_rounded,
+                                        color: warningColor, size: 20),
+                                  ),
+                              ],
+                            ),
                             const SizedBox(height: 4),
                             Text(student.faixa,
                                 style: const TextStyle(color: textHint)),
@@ -95,10 +141,23 @@ class _FinancialStudentListPageState extends State<FinancialStudentListPage> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
+                                OutlinedButton.icon(
+                                  icon: const Icon(Icons.message_outlined,
+                                      size: 18),
+                                  label: const Text('Lembrar'),
+                                  onPressed: hasPhone
+                                      ? () => _sendWhatsAppReminder(student)
+                                      : null,
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: textHint,
+                                    side: const BorderSide(color: borderNormal),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
                                 ElevatedButton.icon(
                                   icon: const Icon(Icons.payment_rounded,
                                       size: 18),
-                                  label: const Text('Registrar Pagamento'),
+                                  label: const Text('Registrar'),
                                   onPressed: () => _registerPayment(student),
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: successColor,
