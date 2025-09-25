@@ -215,15 +215,27 @@ class UserProfileHeader extends StatelessWidget {
                     child: CircleAvatar(
                       radius: 70,
                       backgroundColor: primaryAccent.withOpacity(0.2),
-                      backgroundImage: (profileImagePath != null &&
+                      // --- INÍCIO DA CORREÇÃO ---
+                      // Lógica de exibição de imagem/ícone movida para dentro do child
+                      // para garantir que a estrutura do Hero não mude.
+                      child: (profileImagePath != null &&
                               profileImagePath.isNotEmpty)
-                          ? CachedNetworkImageProvider(profileImagePath)
-                          : null,
-                      child:
-                          (profileImagePath == null || profileImagePath.isEmpty)
-                              ? const Icon(Icons.person,
-                                  size: 80, color: primaryAccent)
-                              : null,
+                          ? ClipOval(
+                              child: CachedNetworkImage(
+                                imageUrl: profileImagePath,
+                                fit: BoxFit.cover,
+                                width: 140,
+                                height: 140,
+                                placeholder: (context, url) =>
+                                    Container(color: darkSurface),
+                                errorWidget: (context, url, error) =>
+                                    const Icon(Icons.person,
+                                        size: 80, color: primaryAccent),
+                              ),
+                            )
+                          : const Icon(Icons.person,
+                              size: 80, color: primaryAccent),
+                      // --- FIM DA CORREÇÃO ---
                     ),
                   ),
                 ),

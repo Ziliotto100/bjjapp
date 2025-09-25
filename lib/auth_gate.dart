@@ -773,11 +773,11 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
             Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
       });
 
-      // >>>>> INÍCIO DA CORREÇÃO <<<<<
+      // --- INÍCIO DA ALTERAÇÃO ---
       // Cria a unidade "Matriz" padrão para a nova academia.
       final defaultUnitRef = academyRef.collection('units').doc();
       batch.set(defaultUnitRef, {'name': 'Matriz'});
-      // >>>>> FIM DA CORREÇÃO <<<<<
+      // --- FIM DA ALTERAÇÃO ---
 
       batch.set(userRef, {
         'name': managerName,

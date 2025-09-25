@@ -5,7 +5,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:uuid/uuid.dart';
-
 import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
@@ -57,13 +56,18 @@ class _SchedulePageState extends State<SchedulePage>
     super.initState();
     _allStudentsFuture = _fetchAllStudents();
     _fetchUnits().then((_) {
-      final lastUnitId = widget.user.lastSelectedUnitId;
-      if (lastUnitId != null && _units.any((u) => u.id == lastUnitId)) {
-        _selectedUnitId = lastUnitId;
-      } else {
-        _selectedUnitId = widget.user.unitId ?? 'all';
+      // --- INÍCIO DA CORREÇÃO 1 ---
+      // Garante que o widget ainda está montado antes de chamar setState
+      if (mounted) {
+        final lastUnitId = widget.user.lastSelectedUnitId;
+        if (lastUnitId != null && _units.any((u) => u.id == lastUnitId)) {
+          _selectedUnitId = lastUnitId;
+        } else {
+          _selectedUnitId = widget.user.unitId ?? 'all';
+        }
+        setState(() {});
       }
-      setState(() {});
+      // --- FIM DA CORREÇÃO 1 ---
     });
 
     _tabController = TabController(length: _daysOfWeek.length, vsync: this);
@@ -72,12 +76,14 @@ class _SchedulePageState extends State<SchedulePage>
     _tabController.addListener(() {
       if (_tabController.indexIsChanging) return;
 
-      final todayWeekday = _selectedDate.weekday;
-      final difference = _tabController.index - (todayWeekday - 1);
+      if (mounted) {
+        final todayWeekday = _selectedDate.weekday;
+        final difference = _tabController.index - (todayWeekday - 1);
 
-      setState(() {
-        _selectedDate = _selectedDate.add(Duration(days: difference));
-      });
+        setState(() {
+          _selectedDate = _selectedDate.add(Duration(days: difference));
+        });
+      }
     });
   }
 
@@ -96,12 +102,15 @@ class _SchedulePageState extends State<SchedulePage>
       lastDate: DateTime.now().add(const Duration(days: 365)),
       locale: const Locale('pt', 'BR'),
     );
-    if (picked != null && picked != _selectedDate) {
+    // --- INÍCIO DA CORREÇÃO 2 ---
+    // Garante que o widget ainda está montado após o showDatePicker
+    if (picked != null && picked != _selectedDate && mounted) {
       setState(() {
         _selectedDate = picked;
         _updateTabToSelectedDate();
       });
     }
+    // --- FIM DA CORREÇÃO 2 ---
   }
 
   Future<void> _fetchUnits() async {
@@ -303,7 +312,7 @@ class _SchedulePageState extends State<SchedulePage>
       ),
       floatingActionButton: isManager
           ? FloatingActionButton(
-              heroTag: 'schedule_fab',
+              heroTag: 'schedule_fab_${widget.user.uid}',
               onPressed: () async {
                 final students = await _allStudentsFuture;
                 Navigator.of(context).push(MaterialPageRoute(
@@ -321,9 +330,7 @@ class _SchedulePageState extends State<SchedulePage>
     );
   }
 }
-// ... O resto do arquivo permanece o mesmo ...
 
-// ... O restante do arquivo (diálogos, cards, etc.) permanece exatamente o mesmo ...
 class _ScheduleDayView extends StatefulWidget {
   final List<TrainingClass> classes;
   final UserModel user;
@@ -691,14 +698,20 @@ class _ClassCardState extends State<_ClassCard> {
                               ? 'Ver/Editar Plano de Aula'
                               : 'Adicionar Plano de Aula',
                           onPressed: () {
+                            // --- INÍCIO DA CORREÇÃO ---
+                            // Garante que a data passada para a tela de edição não tenha informações de hora/minuto.
+                            final dateOnly = DateTime(widget.classDate.year,
+                                widget.classDate.month, widget.classDate.day);
                             Navigator.of(context).push(MaterialPageRoute(
                               builder: (_) => EditLessonPlanPage(
                                 currentUser: widget.user,
                                 trainingClass: widget.trainingClass,
-                                classDate: widget.classDate,
+                                classDate:
+                                    dateOnly, // <-- CORREÇÃO APLICADA AQUI
                                 existingPlan: existingPlan,
                               ),
                             ));
+                            // --- FIM DA CORREÇÃO ---
                           },
                         );
                       },
@@ -1144,8 +1157,6 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
       final audiences =
           snapshot.docs.map((doc) => doc.data()['name'] as String).toList();
       if (!mounted) return;
-      if (!audiences.contains('Adulto')) audiences.insert(0, 'Adulto');
-      if (!audiences.contains('Kids')) audiences.add('Kids');
       if (_isEditing &&
           _selectedAudience != null &&
           !audiences.contains(_selectedAudience)) {
@@ -1343,6 +1354,8 @@ class _EditSchedulePageState extends State<EditSchedulePage> {
       'level': _selectedLevel,
       'location': _selectedLocation,
       'audience': _selectedAudience,
+      'curriculumId': _selectedAudience,
+      'curriculumName': _selectedAudience,
       'isPrivate': _isPrivate,
       'allowedStudentIds': _isPrivate ? _selectedStudentIds : [],
       'unitId': _selectedUnitId,

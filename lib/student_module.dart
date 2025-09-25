@@ -1414,6 +1414,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
         ),
         body: pageBody,
         floatingActionButton: FloatingActionButton(
+          heroTag: 'student_profile_fab_${widget.user.uid}', // Tag única
           onPressed: _navigateToEditPage,
           tooltip: 'Editar Perfil',
           child: const Icon(Icons.edit),

@@ -816,10 +816,8 @@ class TrainingClass {
   final List<String> allowedStudentIds;
   final String? unitId;
   final String? unitName;
-  // --- INÍCIO DA ALTERAÇÃO ---
   final String? curriculumId;
   final String? curriculumName;
-  // --- FIM DA ALTERAÇÃO ---
 
   TrainingClass({
     required this.id,
@@ -833,7 +831,7 @@ class TrainingClass {
     this.level = 'Todos os Níveis',
     this.location,
     this.recurringId,
-    this.audience = 'Adulto',
+    this.audience,
     this.isPrivate = false,
     this.allowedStudentIds = const [],
     this.unitId,
@@ -856,15 +854,13 @@ class TrainingClass {
       level: data['level'] ?? 'Todos os Níveis',
       location: data['location'],
       recurringId: data['recurringId'],
-      audience: data['audience'] ?? 'Adulto',
+      audience: data['audience'],
       isPrivate: data['isPrivate'] ?? false,
       allowedStudentIds: List<String>.from(data['allowedStudentIds'] ?? []),
       unitId: data['unitId'],
       unitName: data['unitName'],
-      // --- INÍCIO DA ALTERAÇÃO ---
       curriculumId: data['curriculumId'],
       curriculumName: data['curriculumName'],
-      // --- FIM DA ALTERAÇÃO ---
     );
   }
 
@@ -885,10 +881,8 @@ class TrainingClass {
       'allowedStudentIds': allowedStudentIds,
       'unitId': unitId,
       'unitName': unitName,
-      // --- INÍCIO DA ALTERAÇÃO ---
       'curriculumId': curriculumId,
       'curriculumName': curriculumName,
-      // --- FIM DA ALTERAÇÃO ---
     };
   }
 }
@@ -958,7 +952,7 @@ class VideoPlaylist {
     final data = doc.data() as Map<String, dynamic>;
     return VideoPlaylist(
       id: doc.id,
-      name: data['name'] ?? '',
+      name: data['name'] ?? 'Playlist sem nome',
       createdAt: data['createdAt'] ?? Timestamp.now(),
     );
   }
@@ -1484,11 +1478,9 @@ class TrainingGoal {
 class TaughtTechnique {
   String name;
   String description;
-  // --- INÍCIO DA ALTERAÇÃO ---
   String? videoId;
   String? videoTitle;
   String? videoThumbnailUrl;
-  // --- FIM DA ALTERAÇÃO ---
 
   TaughtTechnique({
     required this.name,
@@ -1502,11 +1494,9 @@ class TaughtTechnique {
     return {
       'name': name,
       'description': description,
-      // --- INÍCIO DA ALTERAÇÃO ---
       'videoId': videoId,
       'videoTitle': videoTitle,
       'videoThumbnailUrl': videoThumbnailUrl,
-      // --- FIM DA ALTERAÇÃO ---
     };
   }
 
@@ -1514,7 +1504,6 @@ class TaughtTechnique {
     return TaughtTechnique(
       name: map['name'] ?? '',
       description: map['description'] ?? '',
-      // --- INÍCIO DA ALTERAÇÃO ---
       videoId: map['videoId'],
       videoTitle: map['videoTitle'],
       videoThumbnailUrl: map['videoThumbnailUrl'],
@@ -1525,8 +1514,11 @@ class TaughtTechnique {
 class LessonPlan {
   final String id;
   final String academyId;
-  final String classId; // ID da aula do schedule
+  final String classId;
   final DateTime classDate;
+  // --- INÍCIO DA CORREÇÃO ---
+  final String? curriculumId; // Campo que estava faltando
+  // --- FIM DA CORREÇÃO ---
   String warmup;
   List<TaughtTechnique> techniques;
   String observations;
@@ -1542,6 +1534,7 @@ class LessonPlan {
     required this.academyId,
     required this.classId,
     required this.classDate,
+    this.curriculumId, // Adicionado ao construtor
     this.warmup = '',
     this.techniques = const [],
     this.observations = '',
@@ -1560,6 +1553,7 @@ class LessonPlan {
       academyId: data['academyId'] ?? '',
       classId: data['classId'] ?? '',
       classDate: (data['classDate'] as Timestamp).toDate(),
+      curriculumId: data['curriculumId'], // Lendo o campo do Firestore
       warmup: data['warmup'] ?? '',
       techniques: (data['techniques'] as List<dynamic>? ?? [])
           .map((techData) => TaughtTechnique.fromMap(techData))
@@ -1579,6 +1573,7 @@ class LessonPlan {
       'academyId': academyId,
       'classId': classId,
       'classDate': Timestamp.fromDate(classDate),
+      'curriculumId': curriculumId, // Escrevendo o campo no Firestore
       'warmup': warmup,
       'techniques': techniques.map((t) => t.toMap()).toList(),
       'observations': observations,
@@ -1595,8 +1590,8 @@ class LessonPlan {
 class WeeklyPlan {
   final String id;
   final String academyId;
-  final DateTime weekStartDate; // Sempre a data da última segunda-feira
-  final List<TaughtTechnique> techniques; // Campo alterado de String para Lista
+  final DateTime weekStartDate;
+  final List<TaughtTechnique> techniques;
   final String observations;
   final String lastUpdatedByUid;
   final String lastUpdatedByName;
@@ -1619,7 +1614,6 @@ class WeeklyPlan {
       id: doc.id,
       academyId: data['academyId'] ?? '',
       weekStartDate: (data['weekStartDate'] as Timestamp).toDate(),
-      // Mapeia a lista de mapas do Firestore para a lista de objetos TaughtTechnique
       techniques: (data['techniques'] as List<dynamic>? ?? [])
           .map((techData) => TaughtTechnique.fromMap(techData))
           .toList(),
@@ -1634,7 +1628,6 @@ class WeeklyPlan {
     return {
       'academyId': academyId,
       'weekStartDate': Timestamp.fromDate(weekStartDate),
-      // Mapeia a lista de objetos para uma lista de mapas para salvar no Firestore
       'techniques': techniques.map((t) => t.toMap()).toList(),
       'observations': observations,
       'lastUpdatedByUid': lastUpdatedByUid,

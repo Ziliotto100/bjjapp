@@ -265,7 +265,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       ),
       floatingActionButton: isManager
           ? FloatingActionButton(
-              heroTag: 'add_product_fab',
+              heroTag: 'shop_fab_${widget.user.uid}', // Tag única
               onPressed: () {
                 Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => EditProductPage(

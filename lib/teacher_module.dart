@@ -453,8 +453,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   Widget? _buildFloatingActionButton() {
     final currentModuleId = _allPageModules[_paginaAtual].id;
     if (currentModuleId == 'teacher_students') {
+      // --- INÍCIO DA CORREÇÃO ---
+      // O heroTag agora é único, usando o UID do professor.
       return FloatingActionButton(
-        heroTag: 'teacher_add_student_fab',
+        heroTag: 'teacher_fab_${widget.user.uid}',
         onPressed: () {
           showDialog(
             context: context,
@@ -511,6 +513,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         tooltip: 'Adicionar Aluno',
         child: const Icon(Icons.add),
       );
+      // --- FIM DA CORREÇÃO ---
     }
     return null;
   }

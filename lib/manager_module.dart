@@ -599,12 +599,14 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     );
   }
 
+  // --- CORREÇÃO APLICADA AQUI ---
   Widget? _buildFloatingActionButton() {
     final currentModuleId = _allPageModules[_paginaAtual].id;
 
     if (currentModuleId == 'manager_students') {
       return FloatingActionButton(
-        heroTag: 'manager_add_student_fab',
+        heroTag:
+            'manager_fab_student_${widget.user.uid}', // Tag única e dinâmica
         onPressed: () {
           showDialog(
             context: context,
@@ -662,7 +664,8 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       );
     } else if (currentModuleId == 'manager_teachers') {
       return FloatingActionButton(
-        heroTag: 'manager_add_teacher_fab',
+        heroTag:
+            'manager_fab_teacher_${widget.user.uid}', // Tag única e dinâmica
         onPressed: () async {
           final result = await showDialog<Map<String, String>?>(
             context: context,
@@ -2433,15 +2436,11 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
     Navigator.of(context).pop();
   }
 
-  // --- INÍCIO DA ALTERAÇÃO ---
   Future<void> _saveEditedAluno() async {
     final alunoAtualizado = _buildAlunoFromForm();
-    // A chamada do callback que faz a atualização no banco de dados
     widget.onAlunoAdicionado?.call(alunoAtualizado, _newProfileImageFile);
-    // A linha que faltava: fechar o diálogo após a ação de salvar
     Navigator.of(context).pop();
   }
-  // --- FIM DA ALTERAÇÃO ---
 
   Aluno _buildAlunoFromForm() {
     DateTime? dataNascimento;
@@ -3807,6 +3806,8 @@ class _StudentPaymentHistoryPageState extends State<StudentPaymentHistoryPage> {
                       initiallyExpanded: year == DateTime.now().year,
                       title: Text(year.toString(),
                           style: Theme.of(context).textTheme.titleLarge),
+                      subtitle: Text(
+                          'Total Anual: R\$ ${paymentsForYear.fold<double>(0, (prev, p) => prev + p.amount).toStringAsFixed(2)}'),
                       children: paymentsForYear.map((payment) {
                         return ListTile(
                           leading: const Icon(Icons.check_circle,
@@ -4028,15 +4029,18 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     _detailsFuture = _fetchAllDetails();
   }
 
+  // --- INÍCIO DA CORREÇÃO ---
   Future<Map<String, dynamic>> _fetchAllDetails() async {
+    // A consulta agora busca na coleção principal de checkins da academia,
+    // filtrando pelo ID do aluno, que é o correto.
     final checkinsSnapshot = await FirebaseFirestore.instance
         .collection('academies')
         .doc(widget.academyId)
-        .collection('students')
-        .doc(widget.student.id)
         .collection('checkins')
+        .where('studentId', isEqualTo: widget.student.id) // <-- CORREÇÃO AQUI
         .orderBy('date', descending: true)
         .get();
+    // --- FIM DA CORREÇÃO ---
 
     final List<CheckinEntry> checkins = [];
     for (final doc in checkinsSnapshot.docs) {

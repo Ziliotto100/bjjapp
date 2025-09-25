@@ -1,5 +1,5 @@
 // lib/lesson_planner_module.dart
-// ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,9 +8,7 @@ import 'package:intl/intl.dart';
 import 'models.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
-// --- INÍCIO DA ALTERAÇÃO ---
 import 'video_picker_dialog.dart';
-// --- FIM DA ALTERAÇÃO ---
 
 class EditLessonPlanPage extends StatefulWidget {
   final UserModel currentUser;
@@ -34,38 +32,50 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
   final _formKey = GlobalKey<FormState>();
   final _warmupController = TextEditingController();
   final _observationsController = TextEditingController();
+
   List<TaughtTechnique> _techniques = [];
+  final List<TextEditingController> _nameControllers = [];
+  final List<TextEditingController> _descriptionControllers = [];
+
   bool _isLoading = false;
-  // --- INÍCIO DA ALTERAÇÃO ---
   bool _hasVideoAccess = false;
-  // --- FIM DA ALTERAÇÃO ---
 
   bool get _isEditing => widget.existingPlan != null;
 
   @override
   void initState() {
     super.initState();
-    // --- INÍCIO DA ALTERAÇÃO ---
     _checkVideoAccess();
-    // --- FIM DA ALTERAÇÃO ---
     if (_isEditing) {
       final plan = widget.existingPlan!;
       _warmupController.text = plan.warmup;
       _observationsController.text = plan.observations;
-      _techniques =
-          List<TaughtTechnique>.from(plan.techniques.map((t) => TaughtTechnique(
-                name: t.name,
-                description: t.description,
-                videoId: t.videoId,
-                videoTitle: t.videoTitle,
-                videoThumbnailUrl: t.videoThumbnailUrl,
-              )));
+      _techniques = List<TaughtTechnique>.from(
+          plan.techniques.map((t) => TaughtTechnique.fromMap(t.toMap())));
+
+      for (var tech in _techniques) {
+        _nameControllers.add(TextEditingController(text: tech.name));
+        _descriptionControllers
+            .add(TextEditingController(text: tech.description));
+      }
     } else {
       _warmupController.text = 'Padrão';
     }
   }
 
-  // --- INÍCIO DA ALTERAÇÃO ---
+  @override
+  void dispose() {
+    _warmupController.dispose();
+    _observationsController.dispose();
+    for (var controller in _nameControllers) {
+      controller.dispose();
+    }
+    for (var controller in _descriptionControllers) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
   Future<void> _checkVideoAccess() async {
     try {
       final doc = await FirebaseFirestore.instance
@@ -83,31 +93,46 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
       debugPrint("Erro ao verificar acesso à videoteca: $e");
     }
   }
-  // --- FIM DA ALTERAÇÃO ---
 
   void _addTechnique() {
     setState(() {
       _techniques.add(TaughtTechnique(name: '', description: ''));
+      _nameControllers.add(TextEditingController());
+      _descriptionControllers.add(TextEditingController());
     });
   }
 
   void _removeTechnique(int index) {
     setState(() {
+      _nameControllers[index].dispose();
+      _descriptionControllers[index].dispose();
+      _nameControllers.removeAt(index);
+      _descriptionControllers.removeAt(index);
       _techniques.removeAt(index);
     });
   }
 
   Future<void> _savePlan() async {
     if (!_formKey.currentState!.validate()) return;
-    _formKey.currentState!.save();
 
     setState(() => _isLoading = true);
 
+    for (int i = 0; i < _techniques.length; i++) {
+      _techniques[i].name = _nameControllers[i].text.trim();
+      _techniques[i].description = _descriptionControllers[i].text.trim();
+    }
+
     final now = Timestamp.now();
+
+    // --- INÍCIO DA CORREÇÃO ---
+    // Garante que o curriculumId seja salvo, usando o campo 'audience' como fallback
+    // para aulas antigas que talvez não tenham o campo 'curriculumId'.
     final planData = {
       'academyId': widget.currentUser.academyId,
       'classId': widget.trainingClass.id,
       'classDate': Timestamp.fromDate(widget.classDate),
+      'curriculumId': widget.trainingClass.curriculumId ??
+          widget.trainingClass.audience, // <-- CORREÇÃO APLICADA AQUI
       'warmup': _warmupController.text.trim(),
       'observations': _observationsController.text.trim(),
       'techniques': _techniques.map((t) => t.toMap()).toList(),
@@ -115,6 +140,7 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
       'lastUpdatedByName': widget.currentUser.name,
       'lastUpdatedAt': now,
     };
+    // --- FIM DA CORREÇÃO ---
 
     try {
       final collectionRef = FirebaseFirestore.instance
@@ -170,25 +196,36 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
                     padding: const EdgeInsets.all(16.0),
                     children: [
                       _buildHeader(context),
-                      const SizedBox(height: 24),
-                      TextFormField(
-                        controller: _warmupController,
-                        decoration: const InputDecoration(
-                          labelText: 'Aquecimento Específico',
-                          alignLabelWithHint: true,
+                      const SizedBox(height: 16),
+                      _buildSectionCard(
+                        title: 'Aquecimento Específico',
+                        child: TextFormField(
+                          controller: _warmupController,
+                          decoration: const InputDecoration(
+                            alignLabelWithHint: true,
+                            hintText: 'Descreva o aquecimento realizado...',
+                          ),
+                          keyboardType: TextInputType.multiline,
+                          minLines: 1,
+                          maxLines: null,
                         ),
-                        maxLines: 3,
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 16),
                       _buildTechniquesSection(context),
-                      const SizedBox(height: 24),
-                      TextFormField(
-                        controller: _observationsController,
-                        decoration: const InputDecoration(
-                          labelText: 'Observações do Professor',
-                          alignLabelWithHint: true,
+                      const SizedBox(height: 16),
+                      _buildSectionCard(
+                        title: 'Observações do Professor',
+                        child: TextFormField(
+                          controller: _observationsController,
+                          decoration: const InputDecoration(
+                            alignLabelWithHint: true,
+                            hintText:
+                                'Anotações sobre a turma, dificuldades, etc.',
+                          ),
+                          keyboardType: TextInputType.multiline,
+                          minLines: 1,
+                          maxLines: null,
                         ),
-                        maxLines: 4,
                       ),
                     ],
                   ),
@@ -198,28 +235,68 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
+  Widget _buildSectionCard({required String title, required Widget child}) {
     return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              DateFormat.yMMMMEEEEd('pt_BR').format(widget.classDate),
-              style: Theme.of(context)
-                  .textTheme
-                  .titleLarge
-                  ?.copyWith(color: primaryAccent),
+            Text(title, style: Theme.of(context).textTheme.titleLarge),
+            const Divider(height: 20),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8.0,
+                    runSpacing: 4.0,
+                    children: [
+                      Text(
+                        widget.trainingClass.level,
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(color: primaryAccent),
+                      ),
+                      Text(
+                        '(${widget.trainingClass.startTime} - ${widget.trainingClass.endTime})',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Professor: ${widget.trainingClass.teacherName}',
+                    style: const TextStyle(color: textHint, fontSize: 14),
+                  ),
+                ],
+              ),
             ),
-            const Divider(height: 16),
+            const SizedBox(width: 8),
             Text(
-              '${widget.trainingClass.level} (${widget.trainingClass.startTime} - ${widget.trainingClass.endTime})',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            Text(
-              'Professor: ${widget.trainingClass.teacherName}',
-              style: const TextStyle(color: textHint),
+              DateFormat('dd/MM/yyyy').format(widget.classDate),
+              style: const TextStyle(
+                color: textHint,
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -234,54 +311,53 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Técnicas da Aula',
-                style: Theme.of(context).textTheme.titleLarge),
+            Padding(
+              padding: const EdgeInsets.only(left: 8.0),
+              child: Text('Técnicas da Aula',
+                  style: Theme.of(context).textTheme.titleLarge),
+            ),
             IconButton(
-              icon: const Icon(Icons.add_circle_outline, color: primaryAccent),
+              icon:
+                  const Icon(Icons.add_circle, color: primaryAccent, size: 30),
               onPressed: _addTechnique,
               tooltip: 'Adicionar Técnica',
             )
           ],
         ),
-        const Divider(height: 8),
+        const SizedBox(height: 8),
         if (_techniques.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24.0),
-            child: Center(
-              child: Text('Nenhuma técnica adicionada.',
-                  style: TextStyle(color: textHint)),
-            ),
-          ),
-        ..._techniques.asMap().entries.map((entry) {
-          int index = entry.key;
-          TaughtTechnique technique = entry.value;
-          return _TechniqueEditCard(
-              key: ValueKey('${technique.name}-${index}'),
-              technique: technique,
-              onRemove: () => _removeTechnique(index),
-              onSaved: (updatedTechnique) {
-                _techniques[index] = updatedTechnique;
-              },
-              // --- INÍCIO DA ALTERAÇÃO ---
-              hasVideoAccess: _hasVideoAccess,
-              academyId: widget.currentUser.academyId,
-              onVideoChanged: (video) {
-                setState(() {
-                  _techniques[index].videoId = video.id;
-                  _techniques[index].videoTitle = video.title;
-                  _techniques[index].videoThumbnailUrl = video.thumbnailUrl;
+          const EmptyStateWidget(
+            icon: Icons.list_alt_rounded,
+            title: 'Nenhuma Técnica',
+            message: 'Adicione as técnicas ensinadas na aula.',
+          )
+        else
+          ..._techniques.asMap().entries.map((entry) {
+            int index = entry.key;
+            TaughtTechnique technique = entry.value;
+            return _TechniqueEditCard(
+                key: ObjectKey(technique),
+                technique: technique,
+                nameController: _nameControllers[index],
+                descriptionController: _descriptionControllers[index],
+                onRemove: () => _removeTechnique(index),
+                hasVideoAccess: _hasVideoAccess,
+                academyId: widget.currentUser.academyId,
+                onVideoChanged: (video) {
+                  setState(() {
+                    _techniques[index].videoId = video.id;
+                    _techniques[index].videoTitle = video.title;
+                    _techniques[index].videoThumbnailUrl = video.thumbnailUrl;
+                  });
+                },
+                onVideoRemoved: () {
+                  setState(() {
+                    _techniques[index].videoId = null;
+                    _techniques[index].videoTitle = null;
+                    _techniques[index].videoThumbnailUrl = null;
+                  });
                 });
-              },
-              onVideoRemoved: () {
-                setState(() {
-                  _techniques[index].videoId = null;
-                  _techniques[index].videoTitle = null;
-                  _techniques[index].videoThumbnailUrl = null;
-                });
-              }
-              // --- FIM DA ALTERAÇÃO ---
-              );
-        }),
+          }),
       ],
     );
   }
@@ -290,26 +366,25 @@ class _EditLessonPlanPageState extends State<EditLessonPlanPage> {
 class _TechniqueEditCard extends StatelessWidget {
   final TaughtTechnique technique;
   final VoidCallback onRemove;
-  final ValueSetter<TaughtTechnique> onSaved;
-  // --- INÍCIO DA ALTERAÇÃO ---
+  final TextEditingController nameController;
+  final TextEditingController descriptionController;
   final bool hasVideoAccess;
   final String academyId;
   final ValueSetter<VideoItem> onVideoChanged;
   final VoidCallback onVideoRemoved;
-  // --- FIM DA ALTERAÇÃO ---
 
   const _TechniqueEditCard({
     super.key,
     required this.technique,
     required this.onRemove,
-    required this.onSaved,
+    required this.nameController,
+    required this.descriptionController,
     required this.hasVideoAccess,
     required this.academyId,
     required this.onVideoChanged,
     required this.onVideoRemoved,
   });
 
-  // --- INÍCIO DA ALTERAÇÃO ---
   Future<void> _selectVideo(BuildContext context) async {
     final VideoItem? selectedVideo = await showDialog<VideoItem>(
       context: context,
@@ -320,12 +395,11 @@ class _TechniqueEditCard extends StatelessWidget {
       onVideoChanged(selectedVideo);
     }
   }
-  // --- FIM DA ALTERAÇÃO ---
 
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6.0),
+      margin: const EdgeInsets.symmetric(vertical: 4.0),
       child: Padding(
         padding: const EdgeInsets.all(12.0),
         child: Column(
@@ -341,22 +415,21 @@ class _TechniqueEditCard extends StatelessWidget {
               ],
             ),
             TextFormField(
-              initialValue: technique.name,
+              controller: nameController,
               decoration: const InputDecoration(labelText: 'Nome da Técnica'),
               validator: (v) => (v == null || v.trim().isEmpty)
                   ? 'O nome é obrigatório'
                   : null,
-              onSaved: (value) => technique.name = value ?? '',
             ),
             const SizedBox(height: 12),
             TextFormField(
-              initialValue: technique.description,
+              controller: descriptionController,
               decoration:
                   const InputDecoration(labelText: 'Descrição (opcional)'),
-              maxLines: 2,
-              onSaved: (value) => technique.description = value ?? '',
+              keyboardType: TextInputType.multiline,
+              minLines: 1,
+              maxLines: null,
             ),
-            // --- INÍCIO DA ALTERAÇÃO ---
             if (hasVideoAccess) ...[
               const SizedBox(height: 12),
               if (technique.videoId != null)
@@ -378,7 +451,6 @@ class _TechniqueEditCard extends StatelessWidget {
                   label: const Text('Anexar Vídeo'),
                 ),
             ]
-            // --- FIM DA ALTERAÇÃO ---
           ],
         ),
       ),
