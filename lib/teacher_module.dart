@@ -453,8 +453,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   Widget? _buildFloatingActionButton() {
     final currentModuleId = _allPageModules[_paginaAtual].id;
     if (currentModuleId == 'teacher_students') {
-      // --- INÍCIO DA CORREÇÃO ---
-      // O heroTag agora é único, usando o UID do professor.
       return FloatingActionButton(
         heroTag: 'teacher_fab_${widget.user.uid}',
         onPressed: () {
@@ -513,7 +511,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         tooltip: 'Adicionar Aluno',
         child: const Icon(Icons.add),
       );
-      // --- FIM DA CORREÇÃO ---
     }
     return null;
   }
@@ -567,6 +564,30 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
       });
     });
   }
+
+  // --- INÍCIO DA OTIMIZAÇÃO ---
+  Stream<QuerySnapshot> _buildStudentQuery() {
+    Query query = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('students');
+
+    if (_beltFilter != null) {
+      query = query.where('faixa', isEqualTo: _beltFilter);
+    }
+    if (_unitFilter != null) {
+      query = query.where('unitId', isEqualTo: _unitFilter);
+    }
+
+    if (_sortOption == 'nome') {
+      query = query.orderBy('nome');
+    } else {
+      query = query.orderBy('nome');
+    }
+
+    return query.snapshots();
+  }
+  // --- FIM DA OTIMIZAÇÃO ---
 
   Future<Map<String, UserModel>> _fetchUsersMap() async {
     final snapshot = await FirebaseFirestore.instance
@@ -753,11 +774,9 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
               final usersMap = usersSnapshot.data ?? {};
 
               return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('academies')
-                    .doc(widget.academyId)
-                    .collection('students')
-                    .snapshots(),
+                // --- INÍCIO DA OTIMIZAÇÃO ---
+                stream: _buildStudentQuery(),
+                // --- FIM DA OTIMIZAÇÃO ---
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -789,30 +808,21 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
                     }).toList();
                   }
 
-                  if (_beltFilter != null) {
-                    processedAlunos
-                        .retainWhere((aluno) => aluno.faixa == _beltFilter);
+                  if (_sortOption != 'nome') {
+                    processedAlunos.sort((a, b) {
+                      switch (_sortOption) {
+                        case 'faixa':
+                          return _getBeltIndex(a.faixa)
+                              .compareTo(_getBeltIndex(b.faixa));
+                        case 'peso':
+                          return a.peso.compareTo(b.peso);
+                        default:
+                          return a.nome
+                              .toLowerCase()
+                              .compareTo(b.nome.toLowerCase());
+                      }
+                    });
                   }
-
-                  if (_unitFilter != null) {
-                    processedAlunos
-                        .retainWhere((aluno) => aluno.unitId == _unitFilter);
-                  }
-
-                  processedAlunos.sort((a, b) {
-                    switch (_sortOption) {
-                      case 'faixa':
-                        return _getBeltIndex(a.faixa)
-                            .compareTo(_getBeltIndex(b.faixa));
-                      case 'peso':
-                        return a.peso.compareTo(b.peso);
-                      case 'nome':
-                      default:
-                        return a.nome
-                            .toLowerCase()
-                            .compareTo(b.nome.toLowerCase());
-                    }
-                  });
 
                   if (processedAlunos.isEmpty) {
                     return const EmptyStateWidget(
@@ -979,9 +989,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     return ListView(
       children: [
         UserProfileHeader(user: widget.user),
-        // --- INÍCIO DA ALTERAÇÃO ---
         TodaysBirthdaysCard(academyId: widget.user.academyId),
-        // --- FIM DA ALTERAÇÃO ---
         if (widget.isSparringMode)
           Padding(
             padding:

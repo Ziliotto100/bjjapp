@@ -1100,6 +1100,36 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
     super.dispose();
   }
 
+  // --- INÍCIO DA OTIMIZAÇÃO ---
+  Stream<QuerySnapshot> _buildStudentQuery() {
+    Query query = FirebaseFirestore.instance
+        .collection('academies')
+        .doc(widget.academyId)
+        .collection('students');
+
+    // Aplica filtros do servidor
+    if (_beltFilter != null) {
+      query = query.where('faixa', isEqualTo: _beltFilter);
+    }
+    if (_unitFilter != null) {
+      query = query.where('unitId', isEqualTo: _unitFilter);
+    }
+
+    // Aplica ordenação do servidor
+    // O Firestore requer um índice para ordenar por um campo diferente do filtro 'where'.
+    // Para simplificar, ordenamos aqui por 'nome', que é o mais comum.
+    // A ordenação por faixa e peso, se selecionada, será feita no cliente.
+    if (_sortOption == 'nome') {
+      query = query.orderBy('nome');
+    } else {
+      // Para outros tipos de ordenação, mantemos a busca geral e ordenamos no cliente.
+      query = query.orderBy('nome');
+    }
+
+    return query.snapshots();
+  }
+  // --- FIM DA OTIMIZAÇÃO ---
+
   Future<void> _showUnitFilterDialog() async {
     final unitsSnapshot = await FirebaseFirestore.instance
         .collection('academies')
@@ -1269,11 +1299,9 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
               final usersMap = usersSnapshot.data ?? {};
 
               return StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('academies')
-                    .doc(widget.academyId)
-                    .collection('students')
-                    .snapshots(),
+                // --- INÍCIO DA OTIMIZAÇÃO ---
+                stream: _buildStudentQuery(),
+                // --- FIM DA OTIMIZAÇÃO ---
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -1290,6 +1318,7 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
                     );
                   }
 
+                  // A lista `allAlunos` agora já vem pré-filtrada do servidor.
                   final allAlunos = snapshot.data!.docs.map((doc) {
                     return Aluno.fromJson(
                         doc.id, doc.data() as Map<String, dynamic>);
@@ -1297,6 +1326,7 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
 
                   List<Aluno> processedAlunos = List.from(allAlunos);
 
+                  // A busca por nome continua no cliente para permitir busca parcial.
                   if (_searchQuery.isNotEmpty) {
                     processedAlunos = processedAlunos.where((aluno) {
                       return aluno.nome
@@ -1305,30 +1335,23 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
                     }).toList();
                   }
 
-                  if (_beltFilter != null) {
-                    processedAlunos
-                        .retainWhere((aluno) => aluno.faixa == _beltFilter);
+                  // A ordenação por faixa e peso precisa ser feita no cliente
+                  // se a ordenação principal no servidor for por nome.
+                  if (_sortOption != 'nome') {
+                    processedAlunos.sort((a, b) {
+                      switch (_sortOption) {
+                        case 'faixa':
+                          return _getBeltIndex(a.faixa)
+                              .compareTo(_getBeltIndex(b.faixa));
+                        case 'peso':
+                          return a.peso.compareTo(b.peso);
+                        default:
+                          return a.nome
+                              .toLowerCase()
+                              .compareTo(b.nome.toLowerCase());
+                      }
+                    });
                   }
-
-                  if (_unitFilter != null) {
-                    processedAlunos
-                        .retainWhere((aluno) => aluno.unitId == _unitFilter);
-                  }
-
-                  processedAlunos.sort((a, b) {
-                    switch (_sortOption) {
-                      case 'faixa':
-                        return _getBeltIndex(a.faixa)
-                            .compareTo(_getBeltIndex(b.faixa));
-                      case 'peso':
-                        return a.peso.compareTo(b.peso);
-                      case 'nome':
-                      default:
-                        return a.nome
-                            .toLowerCase()
-                            .compareTo(b.nome.toLowerCase());
-                    }
-                  });
 
                   if (processedAlunos.isEmpty) {
                     return const EmptyStateWidget(
@@ -1417,6 +1440,33 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
     _searchController.dispose();
     super.dispose();
   }
+
+  // --- INÍCIO DA OTIMIZAÇÃO ---
+  Stream<QuerySnapshot> _buildTeacherQuery() {
+    Query query = FirebaseFirestore.instance
+        .collection('users')
+        .where('academyId', isEqualTo: widget.academyId)
+        .where('role', isEqualTo: 'teacher');
+
+    // Aplica filtros do servidor
+    if (_beltFilter != null) {
+      query = query.where('faixa', isEqualTo: _beltFilter);
+    }
+    if (_unitFilter != null) {
+      query = query.where('unitId', isEqualTo: _unitFilter);
+    }
+
+    // Aplica ordenação do servidor
+    if (_sortOption == 'nome') {
+      query = query.orderBy('name');
+    } else if (_sortOption == 'faixa') {
+      // O Firestore pode exigir um índice composto para esta consulta
+      query = query.orderBy('faixa').orderBy('name');
+    }
+
+    return query.snapshots();
+  }
+  // --- FIM DA OTIMIZAÇÃO ---
 
   Future<void> _showUnitFilterDialog() async {
     final unitsSnapshot = await FirebaseFirestore.instance
@@ -1569,11 +1619,9 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
         ),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            stream: FirebaseFirestore.instance
-                .collection('users')
-                .where('academyId', isEqualTo: widget.academyId)
-                .where('role', isEqualTo: 'teacher')
-                .snapshots(),
+            // --- INÍCIO DA OTIMIZAÇÃO ---
+            stream: _buildTeacherQuery(),
+            // --- FIM DA OTIMIZAÇÃO ---
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -1594,36 +1642,23 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
                 return UserModel.fromFirestore(doc);
               }).toList();
 
-              List<UserModel> processedProfessores = List.from(allProfessores);
+              // A busca por nome ainda é no cliente.
+              List<UserModel> processedProfessores = _searchQuery.isNotEmpty
+                  ? allProfessores.where((prof) {
+                      return prof.name
+                          .toLowerCase()
+                          .contains(_searchQuery.toLowerCase());
+                    }).toList()
+                  : allProfessores;
 
-              if (_searchQuery.isNotEmpty) {
-                processedProfessores = processedProfessores.where((prof) {
-                  return prof.name
-                      .toLowerCase()
-                      .contains(_searchQuery.toLowerCase());
-                }).toList();
+              // Ordenação de faixa é tratada na query. Se _sortOption for 'faixa',
+              // o Firestore já retorna ordenado.
+              if (_sortOption != 'nome' && _sortOption != 'faixa') {
+                processedProfessores.sort((a, b) {
+                  // Adicionar outras lógicas de ordenação aqui se necessário
+                  return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+                });
               }
-
-              if (_beltFilter != null) {
-                processedProfessores
-                    .retainWhere((prof) => prof.faixa == _beltFilter);
-              }
-
-              if (_unitFilter != null) {
-                processedProfessores
-                    .retainWhere((prof) => prof.unitId == _unitFilter);
-              }
-
-              processedProfessores.sort((a, b) {
-                switch (_sortOption) {
-                  case 'faixa':
-                    return _getBeltIndex(a.faixa ?? 'Branca')
-                        .compareTo(_getBeltIndex(b.faixa ?? 'Branca'));
-                  case 'nome':
-                  default:
-                    return a.name.toLowerCase().compareTo(b.name.toLowerCase());
-                }
-              });
 
               if (processedProfessores.isEmpty) {
                 return const EmptyStateWidget(
