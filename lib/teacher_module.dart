@@ -20,6 +20,7 @@ import 'schedule_module.dart';
 import 'navigation_service.dart';
 import 'app_drawer.dart';
 import 'user_card_widget.dart';
+import 'training_log_module.dart';
 
 // --- FUNÇÃO DE LOG DE AUDITORIA ---
 /// Função auxiliar para criar uma entrada no log de auditoria.
@@ -2596,6 +2597,43 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
     }
   }
 
+  Future<void> _carregarUltimosParticipantes() async {
+    final logService = TrainingLogService(userId: widget.user.uid);
+    final ultimosIds = await logService
+        .getLatestSparringSessionPartners(widget.user.academyId);
+
+    if (ultimosIds.isEmpty) {
+      showBjjSnackBar(
+          context, 'Nenhum treino em grupo anterior encontrado no histórico.',
+          type: 'info');
+      return;
+    }
+
+    final todosDaUnidade = widget.todosParticipantesDaAcademia.where((aluno) {
+      return _selectedUnitId == 'all' || aluno.unitId == _selectedUnitId;
+    }).toList();
+
+    final ultimosParticipantes =
+        todosDaUnidade.where((aluno) => ultimosIds.contains(aluno.id)).toList();
+
+    if (ultimosParticipantes.isEmpty && ultimosIds.isNotEmpty) {
+      showBjjSnackBar(context,
+          'Os participantes do último treino não pertencem à unidade selecionada.',
+          type: 'warning');
+    }
+
+    // Abre a tela de seleção já com os últimos participantes marcados.
+    final List<Aluno>? r = await Navigator.of(context).push(MaterialPageRoute(
+      builder: (context) => SelecaoAlunosTeacherPage(
+        todosOsAlunos: todosDaUnidade,
+        alunosSelecionadosIniciais: ultimosParticipantes,
+      ),
+    ));
+    if (r != null) {
+      _atualizarAlunosParticipantes(r);
+    }
+  }
+
   void _gerarRodadasClicado() {
     if (widget.isSparringMode) {
       showBjjSnackBar(context, 'Finalize o treino atual primeiro.',
@@ -2813,13 +2851,30 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
                     ],
                   ),
                   const SizedBox(height: 16),
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.group_add_outlined),
-                    label: Text(
-                        'Selecionar Participantes (${_alunosParticipantes.length})'),
-                    onPressed: widget.isSparringMode
-                        ? null
-                        : _navegarParaSelecaoAlunos,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.group_add_outlined),
+                          label: Text(
+                              'Selecionar (${_alunosParticipantes.length})'),
+                          onPressed: widget.isSparringMode
+                              ? null
+                              : _navegarParaSelecaoAlunos,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // --- INÍCIO DA ALTERAÇÃO ---
+                      // Botão de texto removido, substituído por IconButton.
+                      IconButton(
+                        icon: const Icon(Icons.replay_rounded),
+                        tooltip: 'Repetir Última Seleção',
+                        onPressed: widget.isSparringMode
+                            ? null
+                            : _carregarUltimosParticipantes,
+                      ),
+                      // --- FIM DA ALTERAÇÃO ---
+                    ],
                   ),
                   const SizedBox(height: 16),
                   DropdownButtonFormField<String>(
