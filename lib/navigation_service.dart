@@ -320,6 +320,14 @@ class NavigationService {
             pageBuilder: (user, teachers, students) => ProfessoresManagerPage(
                 academyId: user.academyId, manager: user),
           ),
+          AppModule(
+            id: 'manager_units',
+            title: 'Unidades',
+            icon: Icons.store_mall_directory_outlined,
+            requiredRoles: [UserRole.manager],
+            pageBuilder: (user, teachers, students) =>
+                ManageUnitsPage(academyId: user.academyId, manager: user),
+          ),
         ]..sort((a, b) => a.title.compareTo(b.title)),
       ),
 
