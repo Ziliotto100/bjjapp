@@ -1,12 +1,18 @@
 // lib/super_admin_module.dart
 // ignore_for_file: use_build_context_synchronously, prefer_final_fields, unnecessary_to_list_in_spreads, unnecessary_cast, unused_import
 
+import 'dart:io';
+
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'admin_dashboard_module.dart';
 import 'admin_financial_page.dart';
@@ -656,8 +662,6 @@ class _AddEditTutorialDialogState extends State<_AddEditTutorialDialog> {
   }
 }
 
-// O restante do arquivo super_admin_module.dart continua o mesmo...
-
 // --- NOVA TELA DE CONFIGURAÇÕES ---
 class AdminSettingsPage extends StatefulWidget {
   const AdminSettingsPage({super.key});
@@ -800,6 +804,7 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
 }
 
 // --- WIDGET PARA A LISTA DE ACADEMIAS ---
+// --- INÍCIO DA ALTERAÇÃO ---
 class AcademyListPage extends StatefulWidget {
   const AcademyListPage({super.key});
 
@@ -808,60 +813,165 @@ class AcademyListPage extends StatefulWidget {
 }
 
 class _AcademyListPageState extends State<AcademyListPage> {
+  final _searchController = TextEditingController();
+  String _statusFilter = 'all';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _showCreateAcademyDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => const _CreateAcademyDialog(),
+    ).then((success) {
+      if (success == true && mounted) {
+        showBjjSnackBar(
+          context,
+          'Academia e Gerente criados com sucesso! A senha padrão do gerente é "mudar123".',
+          type: 'success',
+        );
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('academies')
-            .orderBy('name')
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-            return const EmptyStateWidget(
-              icon: Icons.business_center,
-              title: 'Nenhuma Academia Cadastrada',
-            );
-          }
-          final academies = snapshot.data!.docs;
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
-            children: [
-              ...academies.map((academyDoc) {
-                final data = academyDoc.data() as Map<String, dynamic>;
-                final academyName = data['name'] ?? 'Nome não encontrado';
-
-                return Card(
-                  child: ListTile(
-                    leading: const CircleAvatar(
-                      backgroundColor: darkSurface,
-                      child: Icon(Icons.business, color: textHint),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Buscar por nome...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () => _searchController.clear(),
+                            )
+                          : null,
                     ),
-                    title: Text(academyName),
-                    subtitle: const Text('Toque para gerenciar'),
-                    trailing: const Icon(Icons.arrow_forward_ios_rounded),
-                    onTap: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              AcademyDetailPage(academyDoc: academyDoc),
-                        ),
-                      );
-                    },
+                    onChanged: (value) => setState(() {}),
                   ),
+                ),
+                const SizedBox(width: 8),
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.filter_list,
+                      color: _statusFilter != 'all' ? primaryAccent : textHint),
+                  onSelected: (value) => setState(() => _statusFilter = value),
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(value: 'all', child: Text('Todas')),
+                    const PopupMenuItem(value: 'active', child: Text('Ativas')),
+                    const PopupMenuItem(
+                        value: 'inactive', child: Text('Inativas')),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('academies')
+                  .orderBy('name')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                  return const EmptyStateWidget(
+                    icon: Icons.business_center,
+                    title: 'Nenhuma Academia Cadastrada',
+                  );
+                }
+
+                List<DocumentSnapshot> academies = snapshot.data!.docs;
+                final searchQuery = _searchController.text.toLowerCase();
+
+                if (searchQuery.isNotEmpty) {
+                  academies = academies.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    final name = (data['name'] ?? '').toLowerCase();
+                    return name.contains(searchQuery);
+                  }).toList();
+                }
+
+                if (_statusFilter != 'all') {
+                  academies = academies.where((doc) {
+                    final data = doc.data() as Map<String, dynamic>;
+                    return (data['status'] ?? 'active') == _statusFilter;
+                  }).toList();
+                }
+
+                if (academies.isEmpty) {
+                  return const EmptyStateWidget(
+                    icon: Icons.search_off,
+                    title: 'Nenhum Resultado',
+                    message:
+                        'Nenhuma academia corresponde aos filtros selecionados.',
+                  );
+                }
+
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
+                  itemCount: academies.length,
+                  itemBuilder: (context, index) {
+                    final academyDoc = academies[index];
+                    final data = academyDoc.data() as Map<String, dynamic>;
+                    final academyName = data['name'] ?? 'Nome não encontrado';
+                    final academyStatus = data['status'] ?? 'active';
+
+                    return Card(
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: darkSurface,
+                          child: Icon(
+                            Icons.business,
+                            color: academyStatus == 'active'
+                                ? successColor
+                                : errorColor,
+                          ),
+                        ),
+                        title: Text(academyName),
+                        subtitle: Text(
+                            'Status: ${academyStatus == 'active' ? 'Ativa' : 'Inativa'}'),
+                        trailing: const Icon(Icons.arrow_forward_ios_rounded),
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  AcademyDetailPage(academyDoc: academyDoc),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  },
                 );
-              }).toList(),
-            ],
-          );
-        },
+              },
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showCreateAcademyDialog,
+        tooltip: 'Adicionar Academia',
+        child: const Icon(Icons.add),
       ),
     );
   }
 }
+// --- FIM DA ALTERAÇÃO ---
 
 // --- TELA DE DETALHES DA ACADEMIA ---
 class AcademyDetailPage extends StatefulWidget {
@@ -2320,6 +2430,181 @@ class _VideoViewersAuditDialog extends StatelessWidget {
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: const Text('Fechar'),
+        )
+      ],
+    );
+  }
+}
+
+// --- NOVO DIÁLOGO PARA CRIAR ACADEMIA ---
+class _CreateAcademyDialog extends StatefulWidget {
+  const _CreateAcademyDialog();
+
+  @override
+  State<_CreateAcademyDialog> createState() => _CreateAcademyDialogState();
+}
+
+class _CreateAcademyDialogState extends State<_CreateAcademyDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _academyNameController = TextEditingController();
+  final _managerNameController = TextEditingController();
+  final _managerEmailController = TextEditingController();
+  String? _managerBelt;
+  final List<String> _beltOptions = ['Azul', 'Roxa', 'Marrom', 'Preta'];
+  bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _academyNameController.dispose();
+    _managerNameController.dispose();
+    _managerEmailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isLoading = true);
+
+    const temporaryPassword = 'mudar123';
+    final managerEmail = _managerEmailController.text.trim();
+    final managerName = _managerNameController.text.trim();
+    final academyName = _academyNameController.text.trim();
+
+    try {
+      final tempApp = await Firebase.initializeApp(
+        name: 'temp_academy_creation_${DateTime.now().millisecondsSinceEpoch}',
+        options: Firebase.app().options,
+      );
+      final tempAuth = FirebaseAuth.instanceFor(app: tempApp);
+
+      final userCredential = await tempAuth.createUserWithEmailAndPassword(
+        email: managerEmail,
+        password: temporaryPassword,
+      );
+      final newManagerUser = userCredential.user;
+
+      if (newManagerUser == null) {
+        throw Exception("Falha ao criar a conta de autenticação do gerente.");
+      }
+
+      final firestore = FirebaseFirestore.instance;
+      final batch = firestore.batch();
+      final academyRef = firestore.collection('academies').doc();
+      final userRef = firestore.collection('users').doc(newManagerUser.uid);
+
+      batch.set(academyRef, {
+        'name': academyName,
+        'ownerId': newManagerUser.uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': 'active',
+        'subscriptionEndDate':
+            Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
+      });
+
+      final defaultUnitRef = academyRef.collection('units').doc();
+      batch.set(defaultUnitRef, {'name': 'Matriz'});
+
+      batch.set(userRef, {
+        'name': managerName,
+        'email': managerEmail,
+        'academyId': academyRef.id,
+        'role': 'manager',
+        'faixa': _managerBelt,
+        'mustChangePassword': true,
+        'isActive': true,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+        'hasSeenWelcomePopup': false,
+      });
+
+      await batch.commit();
+      await tempApp.delete();
+
+      if (mounted) {
+        Navigator.of(context).pop(true); // Retorna sucesso
+      }
+    } on FirebaseAuthException catch (e) {
+      String message = 'Erro ao criar academia.';
+      if (e.code == 'email-already-in-use') {
+        message = 'Este e-mail já está sendo usado por outra conta.';
+      }
+      if (mounted) showBjjSnackBar(context, message, type: 'error');
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Ocorreu um erro inesperado: $e',
+            type: 'error');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Criar Nova Academia'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _academyNameController,
+                decoration:
+                    const InputDecoration(labelText: 'Nome da Academia'),
+                validator: (v) =>
+                    v!.trim().isEmpty ? 'Campo obrigatório' : null,
+              ),
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 16),
+              Text('Dados do Gerente',
+                  style: Theme.of(context).textTheme.titleMedium),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _managerNameController,
+                decoration: const InputDecoration(labelText: 'Nome do Gerente'),
+                validator: (v) =>
+                    v!.trim().isEmpty ? 'Campo obrigatório' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _managerEmailController,
+                decoration:
+                    const InputDecoration(labelText: 'E-mail do Gerente'),
+                keyboardType: TextInputType.emailAddress,
+                validator: (v) =>
+                    (v == null || !v.contains('@')) ? 'E-mail inválido' : null,
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _managerBelt,
+                decoration:
+                    const InputDecoration(labelText: 'Faixa do Gerente'),
+                items: _beltOptions
+                    .map((b) => DropdownMenuItem(value: b, child: Text(b)))
+                    .toList(),
+                onChanged: (value) => setState(() => _managerBelt = value),
+                validator: (v) => v == null ? 'Selecione uma faixa' : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: _isLoading ? null : _submit,
+          child: _isLoading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Criar'),
         ),
       ],
     );
