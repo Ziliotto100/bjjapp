@@ -2,6 +2,7 @@
 // ignore_for_file: use_build_context_synchronously
 
 import 'dart:io';
+import 'package:bjjapp/models.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -15,8 +16,14 @@ import 'common_widgets.dart';
 
 class AcademyProfilePage extends StatefulWidget {
   final String academyId;
+  // NOVO PARÂMETRO para receber o plano de assinatura
+  final SubscriptionPlan? currentPlan;
 
-  const AcademyProfilePage({super.key, required this.academyId});
+  const AcademyProfilePage({
+    super.key,
+    required this.academyId,
+    this.currentPlan, // Adicionado ao construtor
+  });
 
   @override
   State<AcademyProfilePage> createState() => _AcademyProfilePageState();
@@ -33,12 +40,9 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
   final _responsibleNameController = TextEditingController();
   final _responsiblePhoneController = TextEditingController();
 
-  // --- INÍCIO DA ALTERAÇÃO ---
   final _pixKeyController = TextEditingController();
   final _monthlyFeeController = TextEditingController();
-  // --- FIM DA ALTERAÇÃO ---
 
-  // NOVOS controladores para endereço
   final _logradouroController = TextEditingController();
   final _numeroController = TextEditingController();
   final _bairroController = TextEditingController();
@@ -59,9 +63,21 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
 
   @override
   void dispose() {
-    // Certifique-se de descartar os novos controladores
     _pixKeyController.dispose();
     _monthlyFeeController.dispose();
+    _nameController.dispose();
+    _descriptionController.dispose();
+    _phoneController.dispose();
+    _instagramController.dispose();
+    _websiteController.dispose();
+    _cnpjController.dispose();
+    _responsibleNameController.dispose();
+    _responsiblePhoneController.dispose();
+    _logradouroController.dispose();
+    _numeroController.dispose();
+    _bairroController.dispose();
+    _cidadeController.dispose();
+    _cepController.dispose();
     super.dispose();
   }
 
@@ -85,16 +101,13 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
         _responsiblePhoneController.text = data['responsiblePhone'] ?? '';
         _hasCnpj = data['cnpj'] != null;
 
-        // --- INÍCIO DA ALTERAÇÃO ---
         _pixKeyController.text = data['pixKey'] ?? '';
         if (data['monthlyFee'] != null) {
           _monthlyFeeController.text = (data['monthlyFee'] as num)
               .toStringAsFixed(2)
               .replaceAll('.', ',');
         }
-        // --- FIM DA ALTERAÇÃO ---
 
-        // Carrega os dados do mapa de endereço, se existir
         if (data['address'] is Map) {
           final addressMap = data['address'] as Map<String, dynamic>;
           _logradouroController.text = addressMap['logradouro'] ?? '';
@@ -152,11 +165,8 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
         'cep': _cepController.text.trim(),
       };
 
-      // --- INÍCIO DA ALTERAÇÃO ---
-      // Converte o valor da mensalidade para double
       final monthlyFeeValue = double.tryParse(
           _monthlyFeeController.text.trim().replaceAll(',', '.'));
-      // --- FIM DA ALTERAÇÃO ---
 
       await FirebaseFirestore.instance
           .collection('academies')
@@ -172,10 +182,8 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
         'address': addressMap,
         'responsibleName': _responsibleNameController.text.trim(),
         'responsiblePhone': _responsiblePhoneController.text.trim(),
-        // --- INÍCIO DA ALTERAÇÃO ---
         'pixKey': _pixKeyController.text.trim(),
         'monthlyFee': monthlyFeeValue,
-        // --- FIM DA ALTERAÇÃO ---
       });
 
       showBjjSnackBar(context, 'Perfil da academia atualizado com sucesso!',
@@ -192,6 +200,11 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
 
   @override
   Widget build(BuildContext context) {
+    // --- LÓGICA DE PERMISSÃO ---
+    // Verifica se a feature de relatórios financeiros está ativa no plano
+    final hasFinancials =
+        widget.currentPlan?.features['financial_reports'] ?? false;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
@@ -300,8 +313,7 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
                             ],
                           ),
                           const SizedBox(height: 24),
-                          Text(
-                              "Contato e Pagamentos", // Título da seção atualizado
+                          Text("Contato e Pagamentos",
                               style: Theme.of(context).textTheme.titleLarge),
                           const SizedBox(height: 16),
                           TextFormField(
@@ -314,22 +326,27 @@ class _AcademyProfilePageState extends State<AcademyProfilePage> {
                               PhoneInputFormatter(),
                             ],
                           ),
-                          // --- INÍCIO DA ALTERAÇÃO ---
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _pixKeyController,
-                            decoration: const InputDecoration(
-                                labelText: 'Chave PIX para Mensalidades'),
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _monthlyFeeController,
-                            decoration: const InputDecoration(
-                                labelText: 'Valor Padrão da Mensalidade (R\$)'),
-                            keyboardType: const TextInputType.numberWithOptions(
-                                decimal: true),
-                          ),
-                          // --- FIM DA ALTERAÇÃO ---
+
+                          // --- EXIBIÇÃO CONDICIONAL DOS CAMPOS DE PAGAMENTO ---
+                          if (hasFinancials) ...[
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _pixKeyController,
+                              decoration: const InputDecoration(
+                                  labelText: 'Chave PIX para Mensalidades'),
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _monthlyFeeController,
+                              decoration: const InputDecoration(
+                                  labelText:
+                                      'Valor Padrão da Mensalidade (R\$)'),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                            ),
+                          ],
+
                           const SizedBox(height: 24),
                           Text("Responsável Legal",
                               style: Theme.of(context).textTheme.titleLarge),

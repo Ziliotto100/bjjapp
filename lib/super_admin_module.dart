@@ -1,6 +1,7 @@
 // lib/super_admin_module.dart
-// ignore_for_file: use_build_context_synchronously, prefer_final_fields, unnecessary_to_list_in_spreads, unnecessary_cast, unused_import
+// ignore_for_file: use_build_context_synchronously, prefer_final_fields, unnecessary_to_list_in_spreads, unnecessary_cast, unused_import, unnecessary_import
 
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -17,7 +18,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'admin_dashboard_module.dart';
 import 'admin_financial_page.dart';
 import 'admin_notifications_page.dart';
-import 'app_drawer.dart'; // <<< CORREÇÃO AQUI
+import 'app_drawer.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'models.dart';
@@ -25,6 +26,7 @@ import 'auth_gate.dart';
 import 'video_library_module.dart';
 import 'tutorials_module.dart';
 import 'navigation_service.dart';
+import 'features.dart'; // NOVO IMPORT
 
 // --- TELA CONTAINER DO SUPER ADMIN COM NAVEGAÇÃO ---
 class SuperAdminPage extends StatefulWidget {
@@ -35,31 +37,16 @@ class SuperAdminPage extends StatefulWidget {
 }
 
 class _SuperAdminPageState extends State<SuperAdminPage> {
-  int _currentIndex = 0;
+  int _paginaAtual = 0;
+  bool _isLoading = true;
 
-  // Variáveis para o Drawer
   late final NavigationService _navService;
   late final UserModel _superAdminUser;
-  List<AppModule> _drawerModules = [];
   List<AppModule> _allPageModules = [];
-
-  final List<Widget> _pages = [
-    const AdminDashboardPage(),
-    const AdminFinancialPage(),
-    const AcademyListPage(),
-    const AdminNotificationsPage(),
-    const VideoAuditPage(),
-    const TutorialsAdminPage(),
-  ];
-
-  final List<String> _pageTitles = [
-    'Dashboard',
-    'Financeiro',
-    'Academias',
-    'Comunicados',
-    'Vídeos',
-    'Tutoriais',
-  ];
+  List<AppModule> _drawerModules = [];
+  List<AppModule> _visibleModules = [];
+  List<Widget> _telas = [];
+  StreamSubscription? _settingsSubscription;
 
   @override
   void initState() {
@@ -75,26 +62,95 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
     );
 
     _navService = NavigationService(
-        userId: _superAdminUser.uid, userRole: _superAdminUser.role);
-    _drawerModules = _navService.getDrawerModulesForCurrentUser();
-    _allPageModules = _navService.getFlatPageModulesForCurrentUser();
+      userId: _superAdminUser.uid,
+      userRole: _superAdminUser.role,
+      currentPlan: null, // SuperAdmin não tem plano
+    );
+    _loadNavigation();
   }
 
-  void _navigateToModuleId(String moduleId) {
-    final newIndex = _allPageModules.indexWhere((m) => m.id == moduleId);
-    if (newIndex != -1 && newIndex < _pages.length) {
+  @override
+  void dispose() {
+    _settingsSubscription?.cancel();
+    super.dispose();
+  }
+
+  void _loadNavigation() {
+    _settingsSubscription =
+        _navService.getTabSettingsStream().listen((settingsDoc) {
+      if (mounted) {
+        _configureNavigation(settingsDoc);
+      }
+    });
+  }
+
+  void _configureNavigation(DocumentSnapshot? settingsDoc) {
+    Map<String, dynamic> settings;
+    if (settingsDoc != null && settingsDoc.exists) {
+      settings = settingsDoc.data() as Map<String, dynamic>;
+    } else {
+      settings = _navService.getDefaultTabSettings();
+    }
+
+    _drawerModules = _navService.getDrawerModulesForCurrentUser();
+    _allPageModules = _navService.getFlatPageModulesForCurrentUser();
+
+    final List<String> visibleIds =
+        List<String>.from(settings['visible'] ?? []);
+
+    if (mounted) {
       setState(() {
-        _currentIndex = newIndex;
+        _telas = _allPageModules
+            .map((module) => module.pageBuilder!(_superAdminUser, [], [],
+                null)) // Passa listas vazias e plano nulo
+            .toList();
+
+        _visibleModules =
+            _allPageModules.where((m) => visibleIds.contains(m.id)).toList();
+
+        int dashboardIndex =
+            _allPageModules.indexWhere((m) => m.id == 'superadmin_dashboard');
+        _paginaAtual = (dashboardIndex != -1) ? dashboardIndex : 0;
+
+        if (_paginaAtual >= _allPageModules.length) {
+          _paginaAtual = 0;
+        }
+
+        _isLoading = false;
       });
     }
   }
 
+  void _navigateToModuleId(String moduleId) {
+    final newIndex = _allPageModules.indexWhere((m) => m.id == moduleId);
+    if (newIndex != -1) {
+      setState(() {
+        _paginaAtual = newIndex;
+      });
+    }
+  }
+
+  void _onItemTapped(int index) {
+    final selectedModuleId = _visibleModules[index].id;
+    _navigateToModuleId(selectedModuleId);
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: AppBackground(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    final currentModule = _allPageModules[_paginaAtual];
+    final currentVisibleIndex =
+        _visibleModules.indexWhere((m) => m.id == currentModule.id);
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_pageTitles[_currentIndex]),
+        title: Text(currentModule.title),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings),
@@ -116,50 +172,31 @@ class _SuperAdminPageState extends State<SuperAdminPage> {
       body: AppBackground(
         child: SafeArea(
           child: IndexedStack(
-            index: _currentIndex,
-            children: _pages,
+            index: _paginaAtual,
+            children: _telas,
           ),
         ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: _currentIndex,
-        onTap: (index) {
-          setState(() {
-            _currentIndex = index;
-          });
-        },
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.dashboard_rounded),
-            label: 'Dashboard',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.monetization_on_outlined),
-            label: 'Financeiro',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.business_rounded),
-            label: 'Academias',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.campaign_rounded),
-            label: 'Comunicados',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.video_library_outlined),
-            label: 'Vídeos',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.help_outline_rounded),
-            label: 'Tutoriais',
-          ),
-        ],
-      ),
+      bottomNavigationBar: _visibleModules.isNotEmpty
+          ? BottomNavigationBar(
+              currentIndex: currentVisibleIndex != -1 ? currentVisibleIndex : 0,
+              onTap: _onItemTapped,
+              items: _visibleModules.map((module) {
+                return BottomNavigationBarItem(
+                  icon: Icon(module.icon),
+                  label: module.title,
+                );
+              }).toList(),
+            )
+          : null,
     );
   }
 }
+// O restante do arquivo (classes e diálogos existentes) permanece.
+// ... cole aqui o resto do seu arquivo original ...
+// A única alteração necessária será no `EditAcademySubscriptionDialog`.
 
-// --- TELA DE GERENCIAMENTO DE TUTORIAIS (AGORA COM PLAYLISTS) ---
+// --- TELA DE GERENCIAMENTO DE TUTORIAIS (Inalterada) ---
 class TutorialsAdminPage extends StatefulWidget {
   const TutorialsAdminPage({super.key});
 
@@ -1182,7 +1219,10 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
                 context: context,
                 builder: (_) => EditAcademySubscriptionDialog(
                     academyDoc: widget.academyDoc),
-              );
+              ).then((_) {
+                // Atualiza os dados da academia na tela após fechar o diálogo.
+                setState(() {});
+              });
             },
           ),
         ],
@@ -1304,7 +1344,7 @@ class _AcademyDetailPageState extends State<AcademyDetailPage> {
   }
 }
 
-// --- TELA DE LOG DE AUDITORIA ---
+// --- TELA DE LOG DE AUDITORIA (Inalterada) ---
 class AcademyAuditLogPage extends StatelessWidget {
   final String academyId;
   final String academyName;
@@ -1396,7 +1436,7 @@ class AcademyAuditLogPage extends StatelessWidget {
   }
 }
 
-// --- WIDGET DE DIÁLOGO PARA EDITAR USUÁRIO (COM BOTÃO DE RESET) ---
+// --- WIDGET DE DIÁLOGO PARA EDITAR USUÁRIO (Inalterado) ---
 class _EditUserDialog extends StatefulWidget {
   final dynamic user;
 
@@ -1665,6 +1705,7 @@ class _AcademyInfoDialog extends StatelessWidget {
   }
 }
 
+// --- DIÁLOGO DE ASSINATURA ATUALIZADO ---
 class EditAcademySubscriptionDialog extends StatefulWidget {
   final DocumentSnapshot academyDoc;
   const EditAcademySubscriptionDialog({super.key, required this.academyDoc});
@@ -1676,19 +1717,20 @@ class EditAcademySubscriptionDialog extends StatefulWidget {
 
 class _EditAcademySubscriptionDialogState
     extends State<EditAcademySubscriptionDialog> {
+  String? _selectedPlanId;
   late String _currentStatus;
   late DateTime _currentEndDate;
-  late bool _hasVideoAccess;
   bool _isLifetime = false;
-  bool _isLoading = false;
+  bool _isLoading = true;
+  List<SubscriptionPlan> _availablePlans = [];
 
   @override
   void initState() {
     super.initState();
     final data = widget.academyDoc.data() as Map<String, dynamic>;
+    _selectedPlanId = data['planId'];
     _currentStatus = data['status'] ?? 'active';
     final endDate = (data['subscriptionEndDate'] as Timestamp?)?.toDate();
-    _hasVideoAccess = data['hasVideoLibraryAccess'] ?? false;
 
     if (endDate == null) {
       _isLifetime = true;
@@ -1696,6 +1738,26 @@ class _EditAcademySubscriptionDialogState
     } else {
       _isLifetime = false;
       _currentEndDate = endDate;
+    }
+    _loadPlans();
+  }
+
+  Future<void> _loadPlans() async {
+    setState(() => _isLoading = true);
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('subscription_plans')
+          .orderBy('price')
+          .get();
+      _availablePlans =
+          snapshot.docs.map((d) => SubscriptionPlan.fromFirestore(d)).toList();
+    } catch (e) {
+      showBjjSnackBar(context, 'Erro ao carregar planos disponíveis.',
+          type: 'error');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -1708,9 +1770,7 @@ class _EditAcademySubscriptionDialogState
       locale: const Locale('pt', 'BR'),
     );
     if (pickedDate != null) {
-      setState(() {
-        _currentEndDate = pickedDate;
-      });
+      setState(() => _currentEndDate = pickedDate);
     }
   }
 
@@ -1721,15 +1781,14 @@ class _EditAcademySubscriptionDialogState
         'status': _currentStatus,
         'subscriptionEndDate':
             _isLifetime ? null : Timestamp.fromDate(_currentEndDate),
-        'hasVideoLibraryAccess': _hasVideoAccess,
+        'planId': _selectedPlanId,
       };
 
       await widget.academyDoc.reference.update(updateData);
 
       if (mounted) {
         Navigator.of(context).pop();
-        showBjjSnackBar(context, 'Assinatura atualizada com sucesso!',
-            type: 'success');
+        showBjjSnackBar(context, 'Assinatura atualizada!', type: 'success');
       }
     } catch (e) {
       if (mounted) {
@@ -1746,67 +1805,69 @@ class _EditAcademySubscriptionDialogState
   Widget build(BuildContext context) {
     return AlertDialog(
       title: Text(widget.academyDoc['name'] ?? 'Editar Assinatura'),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DropdownButtonFormField<String>(
-              value: _currentStatus,
-              decoration:
-                  const InputDecoration(labelText: 'Status da Academia'),
-              items: const [
-                DropdownMenuItem(value: 'active', child: Text('Ativa')),
-                DropdownMenuItem(value: 'inactive', child: Text('Inativa')),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _currentStatus = value;
-                  });
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-            SwitchListTile(
-              title: const Text('Assinatura Vitalícia'),
-              value: _isLifetime,
-              onChanged: (value) {
-                setState(() {
-                  _isLifetime = value;
-                });
-              },
-              contentPadding: EdgeInsets.zero,
-            ),
-            SwitchListTile(
-              title: const Text('Acesso à Videoteca'),
-              value: _hasVideoAccess,
-              onChanged: (value) {
-                setState(() {
-                  _hasVideoAccess = value;
-                });
-              },
-              contentPadding: EdgeInsets.zero,
-            ),
-            if (!_isLifetime)
-              Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: InkWell(
-                  onTap: _pickDate,
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Data de Expiração da Assinatura',
-                      prefixIcon: Icon(Icons.calendar_today),
-                    ),
-                    child: Text(
-                      DateFormat('dd/MM/yyyy').format(_currentEndDate),
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
+      content: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  DropdownButtonFormField<String>(
+                    value: _selectedPlanId,
+                    decoration: const InputDecoration(labelText: 'Plano Ativo'),
+                    items: _availablePlans
+                        .map((plan) => DropdownMenuItem(
+                              value: plan.id,
+                              child: Text(
+                                  '${plan.name} - ${NumberFormat.simpleCurrency(locale: 'pt_BR').format(plan.price)}'),
+                            ))
+                        .toList(),
+                    onChanged: (value) =>
+                        setState(() => _selectedPlanId = value),
+                    validator: (v) => v == null ? 'Selecione um plano' : null,
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<String>(
+                    value: _currentStatus,
+                    decoration:
+                        const InputDecoration(labelText: 'Status da Academia'),
+                    items: const [
+                      DropdownMenuItem(value: 'active', child: Text('Ativa')),
+                      DropdownMenuItem(
+                          value: 'inactive', child: Text('Inativa')),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() => _currentStatus = value);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  SwitchListTile(
+                    title: const Text('Assinatura Vitalícia'),
+                    value: _isLifetime,
+                    onChanged: (value) => setState(() => _isLifetime = value),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (!_isLifetime)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: InkWell(
+                        onTap: _pickDate,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Data de Expiração',
+                            prefixIcon: Icon(Icons.calendar_today),
+                          ),
+                          child: Text(
+                            DateFormat('dd/MM/yyyy').format(_currentEndDate),
+                            style: Theme.of(context).textTheme.titleMedium,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
               ),
-          ],
-        ),
-      ),
+            ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
@@ -1814,18 +1875,14 @@ class _EditAcademySubscriptionDialogState
         ),
         ElevatedButton(
           onPressed: _isLoading ? null : _saveChanges,
-          child: _isLoading
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2))
-              : const Text('Salvar'),
+          child: const Text('Salvar'),
         ),
       ],
     );
   }
 }
 
+// O restante das classes (_CreateAcademyDialog, etc.) permanece aqui...
 class AcademyPaymentHistoryPage extends StatelessWidget {
   final String academyId;
   final String academyName;
@@ -2606,6 +2663,239 @@ class _CreateAcademyDialogState extends State<_CreateAcademyDialog> {
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('Criar'),
         ),
+      ],
+    );
+  }
+}
+
+// --- NOVA TELA DE GERENCIAMENTO DE PLANOS ---
+class AdminPlansPage extends StatefulWidget {
+  const AdminPlansPage({super.key});
+
+  @override
+  State<AdminPlansPage> createState() => _AdminPlansPageState();
+}
+
+class _AdminPlansPageState extends State<AdminPlansPage> {
+  void _showPlanDialog({SubscriptionPlan? plan}) {
+    showDialog(
+      context: context,
+      builder: (_) => _PlanEditDialog(planToEdit: plan),
+    );
+  }
+
+  Future<void> _deletePlan(SubscriptionPlan plan) async {
+    // Primeiro, verifique se o plano está em uso
+    final inUseSnapshot = await FirebaseFirestore.instance
+        .collection('academies')
+        .where('planId', isEqualTo: plan.id)
+        .limit(1)
+        .get();
+
+    if (inUseSnapshot.docs.isNotEmpty) {
+      showBjjSnackBar(context,
+          'Este plano não pode ser excluído pois está em uso por uma ou mais academias.',
+          type: 'error');
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Excluir Plano?'),
+        content: Text('Tem certeza que deseja excluir o plano "${plan.name}"?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text('Excluir'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await FirebaseFirestore.instance
+          .collection('subscription_plans')
+          .doc(plan.id)
+          .delete();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final priceFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('subscription_plans')
+            .orderBy('price')
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const EmptyStateWidget(
+              icon: Icons.star_outline_rounded,
+              title: 'Nenhum Plano Criado',
+              message: 'Clique em "+" para adicionar o primeiro plano.',
+            );
+          }
+
+          final plans = snapshot.data!.docs
+              .map((doc) => SubscriptionPlan.fromFirestore(doc))
+              .toList();
+
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+            itemCount: plans.length,
+            itemBuilder: (context, index) {
+              final plan = plans[index];
+              return Card(
+                child: ListTile(
+                  title: Text(plan.name,
+                      style: Theme.of(context).textTheme.titleMedium),
+                  subtitle: Text(priceFormat.format(plan.price)),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined, color: textHint),
+                        onPressed: () => _showPlanDialog(plan: plan),
+                      ),
+                      IconButton(
+                        icon:
+                            const Icon(Icons.delete_outline, color: errorColor),
+                        onPressed: () => _deletePlan(plan),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _showPlanDialog(),
+        child: const Icon(Icons.add),
+      ),
+    );
+  }
+}
+
+class _PlanEditDialog extends StatefulWidget {
+  final SubscriptionPlan? planToEdit;
+  const _PlanEditDialog({this.planToEdit});
+
+  @override
+  State<_PlanEditDialog> createState() => _PlanEditDialogState();
+}
+
+class _PlanEditDialogState extends State<_PlanEditDialog> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _priceController = TextEditingController();
+  late Map<String, bool> _features;
+
+  bool get _isEditing => widget.planToEdit != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (_isEditing) {
+      _nameController.text = widget.planToEdit!.name;
+      _priceController.text =
+          widget.planToEdit!.price.toStringAsFixed(2).replaceAll('.', ',');
+      _features = Map<String, bool>.from(widget.planToEdit!.features);
+    } else {
+      // Inicializa todas as features como 'false' se for um novo plano
+      _features = {
+        for (var key in AppFeatures.availableFeatures.keys) key: false
+      };
+    }
+  }
+
+  Future<void> _savePlan() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final name = _nameController.text.trim();
+    final price =
+        double.tryParse(_priceController.text.replaceAll(',', '.')) ?? 0.0;
+
+    final planData = {
+      'name': name,
+      'price': price,
+      'features': _features,
+    };
+
+    if (_isEditing) {
+      await FirebaseFirestore.instance
+          .collection('subscription_plans')
+          .doc(widget.planToEdit!.id)
+          .update(planData);
+    } else {
+      await FirebaseFirestore.instance
+          .collection('subscription_plans')
+          .add(planData);
+    }
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(_isEditing ? 'Editar Plano' : 'Novo Plano'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(labelText: 'Nome do Plano'),
+                validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _priceController,
+                decoration: const InputDecoration(labelText: 'Preço (R\$)'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                validator: (v) => v!.isEmpty ? 'Campo obrigatório' : null,
+              ),
+              const SizedBox(height: 24),
+              Text('Funcionalidades Inclusas',
+                  style: Theme.of(context).textTheme.titleSmall),
+              const Divider(),
+              ...AppFeatures.availableFeatures.entries.map((entry) {
+                return SwitchListTile(
+                  title: Text(entry.value),
+                  value: _features[entry.key] ?? false,
+                  onChanged: (bool value) {
+                    setState(() {
+                      _features[entry.key] = value;
+                    });
+                  },
+                );
+              }).toList(),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar')),
+        ElevatedButton(onPressed: _savePlan, child: const Text('Salvar')),
       ],
     );
   }

@@ -20,7 +20,14 @@ import 'common_widgets.dart';
 // --- TELA PRINCIPAL DA LOJA (COM CATEGORIAS) ---
 class ShopPage extends StatefulWidget {
   final UserModel user;
-  const ShopPage({super.key, required this.user});
+  // O plano da academia é recebido para verificar a permissão
+  final SubscriptionPlan? currentPlan;
+
+  const ShopPage({
+    super.key,
+    required this.user,
+    this.currentPlan, // Adicionado ao construtor
+  });
 
   @override
   State<ShopPage> createState() => _ShopPageState();
@@ -77,7 +84,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     );
   }
 
-  // --- NOVO WIDGET: BARRA DE PESQUISA INTEGRADA ---
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
@@ -103,12 +109,31 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
     final bool isManager = widget.user.role == UserRole.manager;
     final priceFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 
-    // --- CORREÇÃO: REMOVIDO O SCAFFOLD E APPBAR DAQUI ---
+    // --- LÓGICA DE PERMISSÃO CENTRALIZADA AQUI ---
+    final bool hasAccess = widget.currentPlan?.features['shop_module'] ?? false;
+
+    if (!hasAccess) {
+      // Se o plano não dá acesso, mostra a tela de "Recurso Premium".
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: const AppBackground(
+          child: SafeArea(
+            child: EmptyStateWidget(
+              icon: Icons.storefront_outlined,
+              title: 'Recurso Premium',
+              message:
+                  'A Loja Virtual é um recurso exclusivo. Peça ao gerente da sua academia para saber mais sobre os planos de assinatura.',
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Se o acesso for permitido, constrói a tela normal da loja.
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Column(
         children: [
-          // --- BARRA DE PESQUISA E ABAS AGORA FAZEM PARTE DO CORPO ---
           _buildSearchBar(),
           Container(
             color: darkSurface,
@@ -181,23 +206,19 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                 return TabBarView(
                   controller: _tabController,
                   children: _categories.map((category) {
-                    // LÓGICA DE FILTRAGEM ALTERADA AQUI
                     final List<Product> filteredProducts;
                     if (category == 'Todos') {
-                      // Se for a aba 'Todos', remove os produtos que já estão em destaque
                       filteredProducts =
                           searchedProducts.where((p) => !p.isFeatured).toList();
                     } else {
-                      // Para outras abas, mantém o comportamento normal
                       filteredProducts = searchedProducts
                           .where((p) =>
                               p.category.toLowerCase() ==
                               category.toLowerCase())
                           .toList();
                     }
-                    // FIM DA ALTERAÇÃO
 
-                    if (filteredProducts.isEmpty) {
+                    if (filteredProducts.isEmpty && category != 'Todos') {
                       return EmptyStateWidget(
                         icon: Icons.search_off_rounded,
                         title: 'Nenhum Produto',
@@ -219,6 +240,15 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
                                 user: widget.user,
                                 featuredProducts: featuredProducts,
                                 priceFormat: priceFormat,
+                              ),
+                            ),
+                          if (filteredProducts.isEmpty && showCarousel)
+                            const SliverFillRemaining(
+                              child: Center(
+                                child: Text(
+                                  "Nenhum outro produto encontrado.",
+                                  style: TextStyle(color: textHint),
+                                ),
                               ),
                             ),
                           SliverPadding(
@@ -265,7 +295,7 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
       ),
       floatingActionButton: isManager
           ? FloatingActionButton(
-              heroTag: 'shop_fab_${widget.user.uid}', // Tag única
+              heroTag: 'shop_fab_${widget.user.uid}',
               onPressed: () {
                 Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => EditProductPage(
@@ -280,7 +310,6 @@ class _ShopPageState extends State<ShopPage> with TickerProviderStateMixin {
   }
 }
 
-// --- WIDGET DO CARD DE PRODUTO (COM ANIMAÇÃO E NOVO LAYOUT) ---
 class _ProductCard extends StatefulWidget {
   final Product product;
   final UserModel user;
@@ -395,7 +424,6 @@ class _ProductCardState extends State<_ProductCard> {
   }
 }
 
-// --- WIDGET DOS SELOS NO CARD ---
 class _ProductCardOverlays extends StatelessWidget {
   final Product product;
   const _ProductCardOverlays({required this.product});
@@ -453,7 +481,6 @@ class _ProductCardOverlays extends StatelessWidget {
   }
 }
 
-// --- NOVO WIDGET: CARROSSEL DE PRODUTOS EM DESTAQUE ---
 class _FeaturedProductsCarousel extends StatefulWidget {
   final List<Product> featuredProducts;
   final UserModel user;
@@ -477,7 +504,6 @@ class _FeaturedProductsCarouselState extends State<_FeaturedProductsCarousel> {
   @override
   void initState() {
     super.initState();
-    // Inicia o timer para auto-scroll se houver mais de um item
     if (widget.featuredProducts.length > 1) {
       _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
         if (_pageController.page == widget.featuredProducts.length - 1) {
@@ -538,7 +564,6 @@ class _FeaturedProductsCarouselState extends State<_FeaturedProductsCarousel> {
   }
 }
 
-// --- WIDGET DO BANNER DE DESTAQUE (AGORA USADO NO CARROSSEL) ---
 class _FeaturedProductBanner extends StatelessWidget {
   final Product product;
   final UserModel user;
@@ -611,7 +636,6 @@ class _FeaturedProductBanner extends StatelessWidget {
   }
 }
 
-// --- TELA DE DETALHES DO PRODUTO (COM DESIGN REFINADO) ---
 class ProductDetailPage extends StatefulWidget {
   final UserModel user;
   final Product product;
@@ -909,7 +933,6 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
   }
 }
 
-// --- TELA DE EDIÇÃO/CRIAÇÃO DE PRODUTO ---
 class EditProductPage extends StatefulWidget {
   final String academyId;
   final Product? productToEdit;
@@ -1246,7 +1269,6 @@ class _EditProductPageState extends State<EditProductPage> {
   }
 }
 
-// --- TELA PARA VISUALIZAR IMAGEM (MODIFICADA PARA GALERIA) ---
 class _ImageViewerPage extends StatefulWidget {
   final List<String> imageUrls;
   final int initialIndex;

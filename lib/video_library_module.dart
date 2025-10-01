@@ -23,8 +23,15 @@ import 'app_theme.dart';
 class VideoLibraryPage extends StatefulWidget {
   final UserModel user;
   final VideoPlaylist? currentPlaylist;
+  // O plano da academia é recebido para verificar a permissão
+  final SubscriptionPlan? currentPlan;
 
-  const VideoLibraryPage({super.key, required this.user, this.currentPlaylist});
+  const VideoLibraryPage({
+    super.key,
+    required this.user,
+    this.currentPlaylist,
+    this.currentPlan, // Adicionado ao construtor
+  });
 
   @override
   State<VideoLibraryPage> createState() => _VideoLibraryPageState();
@@ -208,87 +215,77 @@ class _VideoLibraryPageState extends State<VideoLibraryPage> {
     final bool canManage = widget.user.role == UserRole.manager ||
         widget.user.role == UserRole.teacher;
 
-    return StreamBuilder<DocumentSnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('academies')
-          .doc(widget.user.academyId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    // --- LÓGICA DE PERMISSÃO CENTRALIZADA AQUI ---
+    final bool hasAccess =
+        widget.currentPlan?.features['video_library'] ?? false;
 
-        final academyData = snapshot.data?.data() as Map<String, dynamic>?;
-        final bool hasAccess = academyData?['hasVideoLibraryAccess'] ?? false;
-
-        if (!hasAccess) {
-          return Scaffold(
-            backgroundColor: Colors.transparent,
-            body: const AppBackground(
-              child: SafeArea(
-                child: EmptyStateWidget(
-                  icon: Icons.play_disabled_rounded,
-                  title: 'Recurso Premium',
-                  message:
-                      'As Videoaulas são um recurso exclusivo. Peça ao seu gerente para entrar em contato com o suporte para saber mais.',
-                ),
-              ),
-            ),
-          );
-        }
-
-        return Scaffold(
-          backgroundColor: Colors.transparent,
-          appBar: widget.currentPlaylist != null
-              ? AppBar(title: Text(widget.currentPlaylist!.name))
-              : null,
-          body: AppBackground(
-            child: SafeArea(
-              child: Column(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: InputDecoration(
-                        hintText: 'Buscar por título, tag ou professor...',
-                        prefixIcon: const Icon(Icons.search),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear),
-                                onPressed: () => _searchController.clear(),
-                              )
-                            : null,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: FutureBuilder<List<UserModel>>(
-                      future: _allUsersFuture,
-                      builder: (context, allUsersSnapshot) {
-                        if (!allUsersSnapshot.hasData) {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
-                        final allUsers = allUsersSnapshot.data!;
-                        return _buildContentList(allUsers);
-                      },
-                    ),
-                  ),
-                ],
-              ),
+    if (!hasAccess) {
+      // Se o plano não dá acesso, mostra a tela de "Recurso Premium".
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: const AppBackground(
+          child: SafeArea(
+            child: EmptyStateWidget(
+              icon: Icons.play_disabled_rounded,
+              title: 'Recurso Premium',
+              message:
+                  'A Videoteca é um recurso exclusivo. Peça ao gerente da sua academia para saber mais sobre os planos de assinatura.',
             ),
           ),
-          floatingActionButton: canManage
-              ? FloatingActionButton.extended(
-                  heroTag: 'fab-${widget.currentPlaylist?.id ?? 'root'}',
-                  onPressed: _showAddMenu,
-                  label: const Text('Adicionar'),
-                  icon: const Icon(Icons.add),
-                )
-              : null,
-        );
-      },
+        ),
+      );
+    }
+
+    // Se o acesso for permitido, constrói a tela normal da videoteca.
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: widget.currentPlaylist != null
+          ? AppBar(title: Text(widget.currentPlaylist!.name))
+          : null, // AppBar só aparece dentro de uma playlist
+      body: AppBackground(
+        child: SafeArea(
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: TextField(
+                  controller: _searchController,
+                  decoration: InputDecoration(
+                    hintText: 'Buscar por título, tag ou professor...',
+                    prefixIcon: const Icon(Icons.search),
+                    suffixIcon: _searchController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () => _searchController.clear(),
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: FutureBuilder<List<UserModel>>(
+                  future: _allUsersFuture,
+                  builder: (context, allUsersSnapshot) {
+                    if (!allUsersSnapshot.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    final allUsers = allUsersSnapshot.data!;
+                    return _buildContentList(allUsers);
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      floatingActionButton: canManage
+          ? FloatingActionButton.extended(
+              heroTag: 'fab-${widget.currentPlaylist?.id ?? 'root'}',
+              onPressed: _showAddMenu,
+              label: const Text('Adicionar'),
+              icon: const Icon(Icons.add),
+            )
+          : null,
     );
   }
 
@@ -380,7 +377,9 @@ class _VideoLibraryPageState extends State<VideoLibraryPage> {
                                       .push(MaterialPageRoute(
                                     builder: (_) => VideoLibraryPage(
                                         user: widget.user,
-                                        currentPlaylist: playlist),
+                                        currentPlaylist: playlist,
+                                        currentPlan: widget
+                                            .currentPlan), // Passa o plano adiante
                                   )),
                                   onEdit: () => _showAddPlaylistDialog(
                                       playlistToEdit: playlist),
@@ -502,6 +501,8 @@ class _VideoLibraryPageState extends State<VideoLibraryPage> {
   }
 }
 
+// O restante do arquivo (_PlaylistListItem, _VideoListItem, VideoPlayerPage, AddVideoPage, etc.)
+// permanece o mesmo. Cole-os aqui a partir do seu arquivo original.
 class _PlaylistListItem extends StatelessWidget {
   final VideoPlaylist playlist;
   final UserModel user;

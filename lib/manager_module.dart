@@ -26,7 +26,6 @@ import 'graduation_timeline_page.dart';
 import 'teacher_module.dart';
 import 'manager_units_module.dart';
 import 'academy_profile_page.dart';
-// Imports adicionados para a nova dashboard
 import 'manager_reports_page.dart';
 import 'financial_student_list_page.dart';
 import 'tutorials_module.dart';
@@ -82,7 +81,7 @@ int _getBeltIndex(String faixa) {
   ];
   final index =
       ordemFaixas.indexWhere((f) => f.toLowerCase() == faixa.toLowerCase());
-  return index == -1 ? 99 : index; // Retorna um número alto se não encontrar
+  return index == -1 ? 99 : index;
 }
 
 // --- LÓGICA DE GERENCIAMENTO DE USUÁRIOS ---
@@ -210,11 +209,13 @@ class UserManagementService {
 class ManagerHomePage extends StatefulWidget {
   final UserModel user;
   final bool isImpersonating;
+  final SubscriptionPlan? currentPlan;
 
   const ManagerHomePage({
     super.key,
     required this.user,
     this.isImpersonating = false,
+    this.currentPlan,
   });
 
   @override
@@ -244,7 +245,10 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     super.initState();
     _currentUser = widget.user;
     _navService = NavigationService(
-        userId: _currentUser.uid, userRole: _currentUser.role);
+      userId: _currentUser.uid,
+      userRole: _currentUser.role,
+      currentPlan: widget.currentPlan,
+    );
     _loadInitialData();
     _listenToSparringState();
   }
@@ -442,7 +446,8 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
         onCheckinAlunos: _checkinAlunos,
       );
     }
-    return module.pageBuilder!(_currentUser, _teachers, _students);
+    return module.pageBuilder!(
+        _currentUser, _teachers, _students, widget.currentPlan);
   }
 
   void _configureNavigation(DocumentSnapshot? settingsDoc) {
@@ -462,7 +467,8 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     if (mounted) {
       setState(() {
         _telas = _allPageModules
-            .map((module) => _buildPageForModule(module))
+            .map((module) => module.pageBuilder!(
+                _currentUser, _teachers, _students, widget.currentPlan))
             .toList();
 
         _visibleModules =
@@ -494,7 +500,8 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   void _navigateToSettings() async {
     _settingsSubscription?.pause();
     await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ManagerSettingsPage(user: _currentUser),
+      builder: (_) => ManagerSettingsPage(
+          user: _currentUser, currentPlan: widget.currentPlan),
     ));
     if (mounted) {
       _settingsSubscription?.resume();
@@ -545,6 +552,29 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     if (_isLoading) {
       return const Scaffold(
         body: AppBackground(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    if (_allPageModules.isEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(title: Text(widget.user.name)),
+        drawer: AppDrawer(
+          user: _currentUser,
+          drawerModules: _drawerModules,
+          allPageModules: _allPageModules,
+          onSelectItem: _navigateToModuleId,
+        ),
+        body: AppBackground(
+          child: SafeArea(
+            child: EmptyStateWidget(
+              icon: Icons.lock_outline,
+              title: "Nenhum Módulo Disponível",
+              message:
+                  "Seu plano de assinatura atual pode não incluir módulos visíveis ou ocorreu um erro de configuração.",
+            ),
+          ),
+        ),
       );
     }
 
@@ -599,14 +629,13 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     );
   }
 
-  // --- CORREÇÃO APLICADA AQUI ---
   Widget? _buildFloatingActionButton() {
+    if (_allPageModules.isEmpty) return null;
     final currentModuleId = _allPageModules[_paginaAtual].id;
 
     if (currentModuleId == 'manager_students') {
       return FloatingActionButton(
-        heroTag:
-            'manager_fab_student_${widget.user.uid}', // Tag única e dinâmica
+        heroTag: 'manager_fab_student_${widget.user.uid}',
         onPressed: () {
           showDialog(
             context: context,
@@ -664,8 +693,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
       );
     } else if (currentModuleId == 'manager_teachers') {
       return FloatingActionButton(
-        heroTag:
-            'manager_fab_teacher_${widget.user.uid}', // Tag única e dinâmica
+        heroTag: 'manager_fab_teacher_${widget.user.uid}',
         onPressed: () async {
           final result = await showDialog<Map<String, String>?>(
             context: context,
@@ -4417,7 +4445,13 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
 
 class ManagerSettingsPage extends StatefulWidget {
   final UserModel user;
-  const ManagerSettingsPage({super.key, required this.user});
+  final SubscriptionPlan? currentPlan; // PARÂMETRO ADICIONADO
+
+  const ManagerSettingsPage({
+    super.key,
+    required this.user,
+    this.currentPlan, // PARÂMETRO ADICIONADO
+  });
 
   @override
   State<ManagerSettingsPage> createState() => _ManagerSettingsPageState();
@@ -4498,7 +4532,10 @@ class _ManagerSettingsPageState extends State<ManagerSettingsPage> {
                         onTap: () {
                           Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => AcademyProfilePage(
-                                academyId: widget.user.academyId),
+                              academyId: widget.user.academyId,
+                              currentPlan:
+                                  widget.currentPlan, // PASSA O PLANO AQUI
+                            ),
                           ));
                         },
                       ),

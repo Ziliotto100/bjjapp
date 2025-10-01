@@ -6,18 +6,21 @@ import 'package:flutter/material.dart';
 
 import 'models.dart';
 import 'app_theme.dart';
-import 'common_widgets.dart'; // Import necessário para showBjjSnackBar
+import 'common_widgets.dart'; // Import necessário para showBjjSnackBar e EmptyStateWidget
 
 class MatchSetupPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> todosAlunosDaAcademia;
-  final UserModel user; // PARÂMETRO ADICIONADO
+  final UserModel user;
+  // O plano da academia é recebido para verificar a permissão
+  final SubscriptionPlan? currentPlan;
 
   const MatchSetupPage({
     super.key,
     required this.academyId,
     required this.todosAlunosDaAcademia,
-    required this.user, // PARÂMETRO ADICIONADO
+    required this.user,
+    this.currentPlan, // Adicionado ao construtor
   });
 
   @override
@@ -92,17 +95,32 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
 
   @override
   Widget build(BuildContext context) {
-    // CORREÇÃO: Troca ListView por uma estrutura de Column com Expanded
-    // para garantir que o layout se ajuste à tela sem rolagem.
+    // --- LÓGICA DE PERMISSÃO CENTRALIZADA AQUI ---
+    final bool hasAccess =
+        widget.currentPlan?.features['scoreboard_module'] ?? false;
+
+    if (!hasAccess) {
+      // Se o plano não dá acesso, mostra a tela de "Recurso Premium".
+      return const AppBackground(
+        child: SafeArea(
+          child: EmptyStateWidget(
+            icon: Icons.scoreboard_outlined,
+            title: 'Recurso Premium',
+            message:
+                'O Placar é um recurso exclusivo. Peça ao gerente da sua academia para saber mais sobre os planos de assinatura.',
+          ),
+        ),
+      );
+    }
+
+    // Se o acesso for permitido, constrói a tela normal.
     return Form(
       key: _formKey,
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
           children: [
-            // O Expanded faz com que este conteúdo ocupe todo o espaço disponível.
             Expanded(
-              // O SingleChildScrollView evita erros de overflow em telas muito pequenas.
               child: SingleChildScrollView(
                 child: Column(
                   children: [
@@ -198,7 +216,6 @@ class _MatchSetupPageState extends State<MatchSetupPage> {
                 ),
               ),
             ),
-            // O botão fica fora do Expanded, fixo na parte de baixo.
             const SizedBox(height: 24),
             ElevatedButton.icon(
               icon: const Icon(Icons.play_arrow_rounded),
@@ -596,7 +613,7 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
                   Text(
                     _timerString,
                     style: TextStyle(
-                      fontSize: 56, // MODIFICAÇÃO: Tamanho do tempo reduzido
+                      fontSize: 56,
                       fontWeight: FontWeight.bold,
                       fontFamily: 'monospace',
                       color: _isMatchOver ? textHint : textPrimary,
@@ -702,7 +719,7 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
             Text(
               '${score.totalScore}',
               style: TextStyle(
-                fontSize: 48, // MODIFICAÇÃO: Tamanho da pontuação reduzido
+                fontSize: 48,
                 fontWeight: FontWeight.bold,
                 color: displayColor,
                 height: 1,
@@ -792,7 +809,6 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
     );
   }
 
-  // MODIFICAÇÃO: Widget de botão de pontuação reestruturado
   Widget _buildScoreButton({
     required String label,
     required String pointsLabel,
@@ -812,7 +828,7 @@ class _ScoreboardPageState extends State<ScoreboardPage> {
             constraints: const BoxConstraints(),
           ),
           SizedBox(
-            width: 160, // Aumentado para dar mais espaço
+            width: 160,
             child: Column(
               children: [
                 Text(label,

@@ -28,11 +28,13 @@ import 'graduation_timeline_page.dart';
 class StudentHomePage extends StatefulWidget {
   final UserModel user;
   final bool isImpersonating;
+  final SubscriptionPlan? currentPlan; // NOVO PARÂMETRO
 
   const StudentHomePage({
     super.key,
     required this.user,
     this.isImpersonating = false,
+    this.currentPlan, // NOVO PARÂMETRO
   });
 
   @override
@@ -56,8 +58,12 @@ class _StudentHomePageState extends State<StudentHomePage> {
   @override
   void initState() {
     super.initState();
-    _navService =
-        NavigationService(userId: widget.user.uid, userRole: widget.user.role);
+    // --- ALTERAÇÃO: Passa o plano para o NavigationService ---
+    _navService = NavigationService(
+      userId: widget.user.uid,
+      userRole: widget.user.role,
+      currentPlan: widget.currentPlan, // Passando o plano
+    );
     _loadInitialData();
   }
 
@@ -109,6 +115,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     }
   }
 
+  // --- CORREÇÃO APLICADA AQUI ---
   void _configureNavigation(DocumentSnapshot? settingsDoc) {
     Map<String, dynamic> settings;
     if (settingsDoc != null && settingsDoc.exists) {
@@ -127,9 +134,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
 
     if (mounted) {
       setState(() {
+        // Passa o widget.currentPlan para o pageBuilder ao construir a lista de telas
         _telas = _allPageModules
-            .map((module) =>
-                module.pageBuilder!(widget.user, _teachers, _students))
+            .map((module) => module.pageBuilder!(
+                widget.user, _teachers, _students, widget.currentPlan))
             .toList();
 
         _visibleModules =
@@ -171,6 +179,29 @@ class _StudentHomePageState extends State<StudentHomePage> {
     if (_isLoading) {
       return const Scaffold(
         body: AppBackground(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    if (_allPageModules.isEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(title: Text(widget.user.name)),
+        drawer: AppDrawer(
+          user: widget.user,
+          drawerModules: _drawerModules,
+          allPageModules: _allPageModules,
+          onSelectItem: _navigateToModuleId,
+        ),
+        body: AppBackground(
+          child: SafeArea(
+            child: EmptyStateWidget(
+              icon: Icons.lock_outline,
+              title: "Nenhum Módulo Disponível",
+              message:
+                  "Seu plano de assinatura atual pode não incluir módulos visíveis ou ocorreu um erro de configuração.",
+            ),
+          ),
+        ),
       );
     }
 
@@ -1029,7 +1060,7 @@ class UserProfilePage extends StatefulWidget {
   const UserProfilePage({
     super.key,
     required this.user,
-    this.hasScaffold = true,
+    this.hasScaffold = false,
   });
 
   @override
@@ -1441,8 +1472,6 @@ class _UserProfilePageState extends State<UserProfilePage> {
   }
 }
 
-// --- INÍCIO DA ALTERAÇÃO ---
-// Novo widget que combina a meta mensal com o link para a página de metas
 class _GoalsAndProgressCard extends StatelessWidget {
   final UserModel currentUser;
   final int monthlyCheckins;
@@ -1528,7 +1557,6 @@ class _GoalsAndProgressCard extends StatelessWidget {
     );
   }
 }
-// --- FIM DA ALTERAÇÃO ---
 
 class EditUserProfilePage extends StatefulWidget {
   final UserModel user;

@@ -16,8 +16,14 @@ import 'video_picker_dialog.dart';
 // --- TELA PRINCIPAL QUE LISTA OS PÚBLICOS-ALVO COMO CURRÍCULOS ---
 class ClassPlanPage extends StatefulWidget {
   final UserModel user;
+  // O plano da academia é recebido para verificar a permissão
+  final SubscriptionPlan? currentPlan;
 
-  const ClassPlanPage({super.key, required this.user});
+  const ClassPlanPage({
+    super.key,
+    required this.user,
+    this.currentPlan, // Adicionado ao construtor
+  });
 
   @override
   State<ClassPlanPage> createState() => _ClassPlanPageState();
@@ -52,6 +58,28 @@ class _ClassPlanPageState extends State<ClassPlanPage> {
 
   @override
   Widget build(BuildContext context) {
+    // --- LÓGICA DE PERMISSÃO CENTRALIZADA AQUI ---
+    final bool hasAccess =
+        widget.currentPlan?.features['class_plan_module'] ?? false;
+
+    if (!hasAccess) {
+      // Se o plano não dá acesso, mostra a tela de "Recurso Premium".
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: const AppBackground(
+          child: SafeArea(
+            child: EmptyStateWidget(
+              icon: Icons.edit_calendar_outlined,
+              title: 'Recurso Premium',
+              message:
+                  'O Plano de Aulas é um recurso exclusivo. Peça ao gerente da sua academia para saber mais sobre os planos de assinatura.',
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Se o acesso for permitido, constrói a tela normal.
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: StreamBuilder<QuerySnapshot>(

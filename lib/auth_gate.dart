@@ -11,7 +11,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'models.dart';
+import 'models.dart'; // Importa os modelos, incluindo o novo SubscriptionPlan
 import 'common_widgets.dart';
 import 'app_theme.dart';
 import 'manager_module.dart';
@@ -23,14 +23,11 @@ import 'dev_quick_login.dart';
 import 'tutorials_module.dart';
 import 'notification_service.dart';
 
-// --- CLASSE DE CONFIGURAÇÃO ---
+// --- CLASSE DE CONFIGURAÇÃO (Inalterada) ---
 class EnvConfig {
   static const _flavor = String.fromEnvironment('FLAVOR');
-
-  // --- SEUS UIDs JÁ ESTÃO AQUI ---
   static const _devAdminUid = "rwq5LYtBxLU9o54h0wNN2H1hHJ02";
   static const _prodAdminUid = "tV5CXlYjQcOdD4dOqMUc4Ac5Odw1";
-  // -----------------------------
 
   static String get superAdminUid {
     if (_flavor == 'prod') {
@@ -39,12 +36,12 @@ class EnvConfig {
     return _devAdminUid;
   }
 
-  // *** NOVA FUNÇÃO PARA VERIFICAR O AMBIENTE ***
   static bool isProd() {
     return _flavor == 'prod';
   }
 }
 
+// --- AuthGate (Lógica principal de autenticação) ---
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
 
@@ -74,18 +71,14 @@ class _AuthGateState extends State<AuthGate> {
         }
 
         if (!authSnapshot.hasData || authSnapshot.data == null) {
-          // *** LÓGICA ALTERADA PARA USAR O FLAVOR ***
-          // Se o flavor for 'prod', mostra a tela de login normal.
-          // Caso contrário, mostra a tela de atalhos de desenvolvimento.
-          if (EnvConfig.isProd()) {
-            return const LoginPage();
-          } else {
-            return const DevQuickLoginPage();
-          }
+          return EnvConfig.isProd()
+              ? const LoginPage()
+              : const DevQuickLoginPage();
         }
 
         final authUser = authSnapshot.data!;
 
+        // Lógica para Super Admin e personificação
         if (authUser.uid == EnvConfig.superAdminUid) {
           return FutureBuilder<DocumentSnapshot?>(
             future: _getImpersonationSession(authUser.uid),
@@ -94,19 +87,25 @@ class _AuthGateState extends State<AuthGate> {
                   ConnectionState.waiting) {
                 return loadingScaffold;
               }
-
               final impersonationDoc = impersonationSnapshot.data;
-
               if (impersonationDoc != null && impersonationDoc.exists) {
                 final targetUid = impersonationDoc.get('targetUid');
-                return _buildUserFlow(targetUid, isImpersonating: true);
+                // NOVO: Usa o UserFlowLoader para carregar o fluxo do usuário personificado
+                return UserFlowLoader(
+                    key: ValueKey(targetUid),
+                    uid: targetUid,
+                    isImpersonating: true);
               } else {
                 return const SuperAdminPage();
               }
             },
           );
         } else {
-          return _buildUserFlow(authUser.uid, isImpersonating: false);
+          // NOVO: Usa o UserFlowLoader para carregar o fluxo do usuário normal
+          return UserFlowLoader(
+              key: ValueKey(authUser.uid),
+              uid: authUser.uid,
+              isImpersonating: false);
         }
       },
     );
@@ -124,10 +123,148 @@ class _AuthGateState extends State<AuthGate> {
       return null;
     }
   }
+}
 
-  // --- NOVA FUNÇÃO PARA O DIÁLOGO DE BOAS-VINDAS ---
+// --- NOVO WIDGET DE CARREGAMENTO ---
+/// Carrega todos os dados necessários (usuário, academia, plano) antes de decidir
+/// para qual tela de início o usuário deve ser direcionado.
+class UserFlowLoader extends StatefulWidget {
+  final String uid;
+  final bool isImpersonating;
+
+  const UserFlowLoader(
+      {super.key, required this.uid, required this.isImpersonating});
+
+  @override
+  State<UserFlowLoader> createState() => _UserFlowLoaderState();
+}
+
+class _UserFlowLoaderState extends State<UserFlowLoader> {
+  // Estrutura para conter todos os dados carregados
+  late Future<
+          ({UserModel user, DocumentSnapshot academy, SubscriptionPlan? plan})>
+      _loaderFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _loaderFuture = _loadUserDataAndPermissions();
+  }
+
+  Future<({UserModel user, DocumentSnapshot academy, SubscriptionPlan? plan})>
+      _loadUserDataAndPermissions() async {
+    final firestore = FirebaseFirestore.instance;
+
+    // 1. Busca o documento do usuário
+    final userDoc = await firestore.collection('users').doc(widget.uid).get();
+    if (!userDoc.exists) {
+      throw Exception('Usuário não encontrado no Firestore.');
+    }
+    final userModel = UserModel.fromFirestore(userDoc);
+
+    // 2. Busca o documento da academia
+    final academyDoc =
+        await firestore.collection('academies').doc(userModel.academyId).get();
+    if (!academyDoc.exists) {
+      throw Exception('Academia não encontrada no Firestore.');
+    }
+
+    // 3. Busca o plano de assinatura da academia (se houver)
+    SubscriptionPlan? activePlan;
+    final planId =
+        (academyDoc.data() as Map<String, dynamic>)['planId'] as String?;
+    if (planId != null) {
+      final planDoc =
+          await firestore.collection('subscription_plans').doc(planId).get();
+      if (planDoc.exists) {
+        activePlan = SubscriptionPlan.fromFirestore(planDoc);
+      }
+    }
+
+    // Retorna todos os dados em uma única estrutura (record)
+    return (user: userModel, academy: academyDoc, plan: activePlan);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const loadingScaffold = Scaffold(
+        body: AppBackground(child: Center(child: CircularProgressIndicator())));
+
+    return FutureBuilder(
+      future: _loaderFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return loadingScaffold;
+        }
+
+        // Se ocorrer um erro em qualquer uma das buscas, desloga o usuário
+        if (snapshot.hasError || !snapshot.hasData) {
+          FirebaseAuth.instance.signOut();
+          return const LoginPage();
+        }
+
+        // Desestrutura os dados carregados
+        final loadedData = snapshot.data!;
+        final userModel = loadedData.user;
+        final academyDoc = loadedData.academy;
+        final activePlan = loadedData.plan;
+
+        // INICIALIZAÇÃO DE SERVIÇOS
+        // A lógica de notificações é chamada aqui, após sabermos que o usuário é válido
+        if (!widget.isImpersonating) {
+          NotificationService().initNotifications().then((_) {
+            NotificationService().saveTokenForCurrentUser();
+          });
+          _showWelcomeDialog(context, userModel);
+        }
+
+        // VERIFICAÇÕES DE ACESSO
+        final academyData = academyDoc.data() as Map<String, dynamic>;
+        final academyStatus = academyData['status'] ?? 'active';
+        final subscriptionEndDate =
+            (academyData['subscriptionEndDate'] as Timestamp?)?.toDate();
+
+        if (academyStatus != 'active') {
+          return const SuspendedAcademyPage();
+        }
+
+        if (subscriptionEndDate != null &&
+            DateTime.now().isAfter(subscriptionEndDate)) {
+          return const SuspendedAcademyPage(isSubscriptionExpired: true);
+        }
+
+        if (userModel.mustChangePassword) {
+          return ChangePasswordPage(isFirstLogin: true, user: userModel);
+        }
+
+        // DIRECIONAMENTO FINAL
+        // O `activePlan` agora é passado para a página inicial correspondente.
+        // O `NavigationService` também é instanciado com o plano.
+        switch (userModel.role) {
+          case UserRole.manager:
+            return ManagerHomePage(
+                user: userModel,
+                isImpersonating: widget.isImpersonating,
+                currentPlan: activePlan); // Passa o plano
+          case UserRole.teacher:
+            return TeacherHomePage(
+                user: userModel,
+                isImpersonating: widget.isImpersonating,
+                currentPlan: activePlan); // Passa o plano
+          case UserRole.student:
+            return StudentHomePage(
+                user: userModel,
+                isImpersonating: widget.isImpersonating,
+                currentPlan: activePlan); // Passa o plano
+          default:
+            FirebaseAuth.instance.signOut();
+            return const LoginPage();
+        }
+      },
+    );
+  }
+
   void _showWelcomeDialog(BuildContext context, UserModel user) {
-    // Garante que o diálogo seja exibido apenas uma vez
     if (!user.hasSeenWelcomePopup) {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         await showDialog(
@@ -157,7 +294,6 @@ class _AuthGateState extends State<AuthGate> {
             ],
           ),
         );
-        // Marca que o pop-up foi visto
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
@@ -165,98 +301,11 @@ class _AuthGateState extends State<AuthGate> {
       });
     }
   }
-
-  // <<< ALTERAÇÃO AQUI >>>
-  // Removemos o 'if (kIsWeb)' para que as notificações sejam inicializadas em todas as plataformas.
-  void _initializeNotifications() {
-    NotificationService().initNotifications().then((_) {
-      NotificationService().saveTokenForCurrentUser();
-    });
-  }
-
-  Widget _buildUserFlow(String uid, {required bool isImpersonating}) {
-    const loadingScaffold = Scaffold(
-        body: AppBackground(child: Center(child: CircularProgressIndicator())));
-
-    return FutureBuilder<DocumentSnapshot>(
-      future: FirebaseFirestore.instance.collection('users').doc(uid).get(),
-      builder: (context, userDocSnapshot) {
-        if (userDocSnapshot.connectionState == ConnectionState.waiting) {
-          return loadingScaffold;
-        }
-
-        if (userDocSnapshot.hasError ||
-            !userDocSnapshot.hasData ||
-            !userDocSnapshot.data!.exists) {
-          FirebaseAuth.instance.signOut();
-          return const LoginPage();
-        }
-
-        final userModel = UserModel.fromFirestore(userDocSnapshot.data!);
-
-        _initializeNotifications();
-
-        // --- CHAMADA DO DIÁLOGO DE BOAS-VINDAS ---
-        if (!isImpersonating) {
-          // Evita mostrar o pop-up durante a personificação
-          _showWelcomeDialog(context, userModel);
-        }
-
-        return FutureBuilder<DocumentSnapshot>(
-          future: FirebaseFirestore.instance
-              .collection('academies')
-              .doc(userModel.academyId)
-              .get(),
-          builder: (context, academySnapshot) {
-            if (academySnapshot.connectionState == ConnectionState.waiting) {
-              return loadingScaffold;
-            }
-
-            if (!academySnapshot.hasData || !academySnapshot.data!.exists) {
-              FirebaseAuth.instance.signOut();
-              return const LoginPage();
-            }
-
-            final academyData =
-                academySnapshot.data!.data() as Map<String, dynamic>;
-            final academyStatus = academyData['status'] ?? 'active';
-            final subscriptionEndDate =
-                (academyData['subscriptionEndDate'] as Timestamp?)?.toDate();
-
-            if (academyStatus != 'active') {
-              return const SuspendedAcademyPage();
-            }
-
-            if (subscriptionEndDate != null &&
-                DateTime.now().isAfter(subscriptionEndDate)) {
-              return const SuspendedAcademyPage(isSubscriptionExpired: true);
-            }
-
-            if (userModel.mustChangePassword) {
-              return ChangePasswordPage(isFirstLogin: true, user: userModel);
-            }
-
-            switch (userModel.role) {
-              case UserRole.manager:
-                return ManagerHomePage(
-                    user: userModel, isImpersonating: isImpersonating);
-              case UserRole.teacher:
-                return TeacherHomePage(
-                    user: userModel, isImpersonating: isImpersonating);
-              case UserRole.student:
-                return StudentHomePage(
-                    user: userModel, isImpersonating: isImpersonating);
-              default:
-                FirebaseAuth.instance.signOut();
-                return const LoginPage();
-            }
-          },
-        );
-      },
-    );
-  }
 }
 
+// --- TELAS DE ESTADO (Suspensa, Login, Registro, etc.) ---
+// O restante do arquivo (LoginPage, SuspendedAcademyPage, RegisterAcademyPage, etc.)
+// permanece o mesmo. Cole-os aqui a partir do seu arquivo original.
 class SuspendedAcademyPage extends StatefulWidget {
   final bool isSubscriptionExpired;
   const SuspendedAcademyPage({super.key, this.isSubscriptionExpired = false});
@@ -287,7 +336,6 @@ class _SuspendedAcademyPageState extends State<SuspendedAcademyPage> {
         });
       }
     } catch (e) {
-      // Fail silently, the button just won't appear
       debugPrint("Could not fetch support number: $e");
     } finally {
       if (mounted) {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'app_theme.dart';
 import 'models.dart';
 import 'dart:collection'; // Import para o LinkedHashMap
+import 'common_widgets.dart'; // Import para o EmptyStateWidget
 
 // --- Estrutura de Dados para as Tabelas de Peso ---
 class WeightCategory {
@@ -87,7 +88,14 @@ class MatchTime {
 // --- Tela Principal do Módulo ---
 class RulesPage extends StatefulWidget {
   final UserModel user;
-  const RulesPage({super.key, required this.user});
+  // O plano da academia é recebido para verificar a permissão
+  final SubscriptionPlan? currentPlan;
+
+  const RulesPage({
+    super.key,
+    required this.user,
+    this.currentPlan, // Adicionado ao construtor
+  });
 
   @override
   State<RulesPage> createState() => _RulesPageState();
@@ -111,6 +119,25 @@ class _RulesPageState extends State<RulesPage>
 
   @override
   Widget build(BuildContext context) {
+    // --- LÓGICA DE PERMISSÃO CENTRALIZADA AQUI ---
+    final bool hasAccess =
+        widget.currentPlan?.features['rules_module'] ?? false;
+
+    if (!hasAccess) {
+      // Se o plano não dá acesso, mostra a tela de "Recurso Premium".
+      return const AppBackground(
+        child: SafeArea(
+          child: EmptyStateWidget(
+            icon: Icons.gavel_rounded,
+            title: 'Recurso Premium',
+            message:
+                'O Livro de Regras é um recurso exclusivo. Peça ao gerente da sua academia para saber mais sobre os planos de assinatura.',
+          ),
+        ),
+      );
+    }
+
+    // Se o acesso for permitido, constrói a tela normal.
     return Column(
       children: [
         Container(
@@ -142,7 +169,8 @@ class _RulesPageState extends State<RulesPage>
   }
 }
 
-// --- WIDGET DA ABA DE CATEGORIAS DE PESO ---
+// O restante do arquivo (WeightCategoriesTab, ScoringTab, etc.)
+// permanece o mesmo. Cole-os aqui a partir do seu arquivo original.
 class WeightCategoriesTab extends StatefulWidget {
   const WeightCategoriesTab({super.key});
 
@@ -322,7 +350,6 @@ class _WeightCategoriesTabState extends State<WeightCategoriesTab> {
   }
 }
 
-// --- ABA DE PONTUAÇÃO E PUNIÇÕES ---
 class ScoringTab extends StatelessWidget {
   const ScoringTab({super.key});
 
@@ -412,7 +439,6 @@ class ScoringTab extends StatelessWidget {
   }
 }
 
-// --- WIDGET REUTILIZÁVEL PARA CARDS DE INFORMAÇÃO ---
 class _InfoCard extends StatelessWidget {
   final String title;
   final IconData icon;
@@ -453,11 +479,9 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-// --- ABA DE TEMPO DE LUTA (COM MELHORIAS VISUAIS) ---
 class MatchTimeTab extends StatelessWidget {
   const MatchTimeTab({super.key});
 
-  // ALTERAÇÃO: Dados atualizados com as idades
   static final List<MatchTime> matchTimes = [
     MatchTime(category: 'Adulto', belt: 'Branca', duration: '5 min'),
     MatchTime(category: 'Adulto', belt: 'Azul', duration: '6 min'),
@@ -513,7 +537,6 @@ class MatchTimeTab extends StatelessWidget {
                     rows: matchTimes
                         .map((mt) => DataRow(cells: [
                               DataCell(
-                                // ALTERAÇÃO: Categoria e idade em uma coluna
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   mainAxisAlignment: MainAxisAlignment.center,
@@ -545,7 +568,6 @@ class MatchTimeTab extends StatelessWidget {
   }
 }
 
-// --- ABA DE GOLPES PROIBIDOS (COM PESQUISA) ---
 class IllegalMovesTab extends StatefulWidget {
   const IllegalMovesTab({super.key});
 
@@ -559,7 +581,6 @@ class _IllegalMovesTabState extends State<IllegalMovesTab> {
   Map<String, List<String>> _movesToCategoriesMap = {};
   List<IllegalMove> _filteredMoves = [];
 
-  // Dados estáticos como antes
   static final List<IllegalMove> allIllegalMoves = [
     IllegalMove(
         number: 1,
@@ -1046,7 +1067,6 @@ class _OriginalViewState extends State<_OriginalView> {
   }
 }
 
-// --- TELA DE DETALHES DA IMAGEM DO GOLPE ---
 class IllegalMoveDetailPage extends StatelessWidget {
   final IllegalMove move;
   const IllegalMoveDetailPage({super.key, required this.move});

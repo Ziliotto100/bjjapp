@@ -81,11 +81,13 @@ int _getBeltIndex(String faixa) {
 class TeacherHomePage extends StatefulWidget {
   final UserModel user;
   final bool isImpersonating;
+  final SubscriptionPlan? currentPlan; // NOVO PARÂMETRO
 
   const TeacherHomePage({
     super.key,
     required this.user,
     this.isImpersonating = false,
+    this.currentPlan, // NOVO PARÂMETRO
   });
 
   @override
@@ -116,8 +118,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   @override
   void initState() {
     super.initState();
-    _navService =
-        NavigationService(userId: widget.user.uid, userRole: widget.user.role);
+    // --- ALTERAÇÃO: Passa o plano para o NavigationService ---
+    _navService = NavigationService(
+      userId: widget.user.uid,
+      userRole: widget.user.role,
+      currentPlan: widget.currentPlan, // Passando o plano
+    );
     _loadInitialData();
     _listenToSparringState();
   }
@@ -294,11 +300,12 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     });
   }
 
+  // --- CORREÇÃO APLICADA AQUI ---
   Widget _buildPageForModule(AppModule module) {
     switch (module.id) {
       case 'teacher_dashboard':
         return TeacherDashboardPage(
-          key: _dashboardKey, // Atribui a chave global
+          key: _dashboardKey,
           user: widget.user,
           isSparringMode: _isSparringMode,
           onNavigateToSparring: () {
@@ -322,10 +329,13 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           onCheckinAlunos: _checkinAlunos,
         );
       default:
-        return module.pageBuilder!(widget.user, _teachers, _students);
+        // Passa o widget.currentPlan para o pageBuilder
+        return module.pageBuilder!(
+            widget.user, _teachers, _students, widget.currentPlan);
     }
   }
 
+  // --- CORREÇÃO APLICADA AQUI ---
   void _configureNavigation(DocumentSnapshot? settingsDoc) {
     Map<String, dynamic> settings;
     if (settingsDoc != null && settingsDoc.exists) {
@@ -344,8 +354,10 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
 
     if (mounted) {
       setState(() {
+        // Passa o widget.currentPlan para o pageBuilder ao construir a lista de telas
         _telas = _allPageModules
-            .map((module) => _buildPageForModule(module))
+            .map((module) => module.pageBuilder!(
+                widget.user, _teachers, _students, widget.currentPlan))
             .toList();
 
         _visibleModules =
@@ -371,7 +383,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   void _navigateToModuleId(String moduleId) {
     final newIndex = _allPageModules.indexWhere((m) => m.id == moduleId);
     if (newIndex != -1) {
-      // Se a aba de início for selecionada, chama o método de atualização
       if (moduleId == 'teacher_dashboard') {
         _dashboardKey.currentState?.refreshData();
       }
@@ -391,6 +402,29 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     if (_isLoading) {
       return const Scaffold(
         body: AppBackground(child: Center(child: CircularProgressIndicator())),
+      );
+    }
+
+    if (_allPageModules.isEmpty) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(title: Text(widget.user.name)),
+        drawer: AppDrawer(
+          user: widget.user,
+          drawerModules: _drawerModules,
+          allPageModules: _allPageModules,
+          onSelectItem: _navigateToModuleId,
+        ),
+        body: AppBackground(
+          child: SafeArea(
+            child: EmptyStateWidget(
+              icon: Icons.lock_outline,
+              title: "Nenhum Módulo Disponível",
+              message:
+                  "Seu plano de assinatura atual pode não incluir módulos visíveis ou ocorreu um erro de configuração.",
+            ),
+          ),
+        ),
       );
     }
 
@@ -452,6 +486,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   }
 
   Widget? _buildFloatingActionButton() {
+    if (_allPageModules.isEmpty) return null;
     final currentModuleId = _allPageModules[_paginaAtual].id;
     if (currentModuleId == 'teacher_students') {
       return FloatingActionButton(

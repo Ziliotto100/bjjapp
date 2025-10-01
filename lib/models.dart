@@ -1636,3 +1636,36 @@ class WeeklyPlan {
     };
   }
 }
+
+class SubscriptionPlan {
+  final String id;
+  final String name;
+  final double price;
+  final Map<String, bool>
+      features; // Chave: 'videoLibrary', 'financialReports', etc.
+
+  SubscriptionPlan({
+    required this.id,
+    required this.name,
+    required this.price,
+    required this.features,
+  });
+
+  factory SubscriptionPlan.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return SubscriptionPlan(
+      id: doc.id,
+      name: data['name'] ?? 'Plano sem nome',
+      price: (data['price'] as num?)?.toDouble() ?? 0.0,
+      features: Map<String, bool>.from(data['features'] ?? {}),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'price': price,
+      'features': features,
+    };
+  }
+}

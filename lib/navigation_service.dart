@@ -24,6 +24,7 @@ import 'admin_dashboard_module.dart';
 import 'admin_financial_page.dart';
 import 'admin_notifications_page.dart';
 import 'class_plan_module.dart';
+import 'features.dart';
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -31,8 +32,11 @@ class AppModule {
   final String title;
   final IconData icon;
   final List<UserRole>? requiredRoles;
-  final Widget Function(UserModel, List<UserModel>, List<Aluno>)? pageBuilder;
+  // --- ASSINATURA DA FUNÇÃO CORRIGIDA ---
+  final Widget Function(
+      UserModel, List<UserModel>, List<Aluno>, SubscriptionPlan?)? pageBuilder;
   final List<AppModule>? subModules;
+  final String? requiredFeature;
 
   AppModule({
     required this.id,
@@ -41,6 +45,7 @@ class AppModule {
     this.requiredRoles,
     this.pageBuilder,
     this.subModules,
+    this.requiredFeature,
   });
 }
 
@@ -48,8 +53,13 @@ class AppModule {
 class NavigationService {
   final String userId;
   final UserRole userRole;
+  final SubscriptionPlan? currentPlan;
 
-  NavigationService({required this.userId, required this.userRole});
+  NavigationService({
+    required this.userId,
+    required this.userRole,
+    this.currentPlan,
+  });
 
   CollectionReference get _tabSettingsCollection => FirebaseFirestore.instance
       .collection('users')
@@ -59,26 +69,34 @@ class NavigationService {
   List<AppModule> _filterModules(List<AppModule> allModules) {
     List<AppModule> filtered = [];
     for (var module in allModules) {
-      bool canView = module.requiredRoles == null ||
+      bool canViewByRole = module.requiredRoles == null ||
           module.requiredRoles!.contains(userRole);
 
-      if (userRole == UserRole.superAdmin) {
-        if (module.requiredRoles == null ||
-            !module.requiredRoles!.contains(UserRole.superAdmin)) {
-          canView = false;
-        }
-      } else if (userRole == UserRole.manager) {
+      if (userRole == UserRole.manager) {
         const hiddenForManager = [
           'student_profile',
           'teacher_dashboard',
           'teacher_students',
         ];
         if (hiddenForManager.contains(module.id)) {
-          canView = false;
+          canViewByRole = false;
         }
       }
 
-      if (canView) {
+      if (userRole == UserRole.superAdmin) {
+        if (module.requiredRoles == null ||
+            !module.requiredRoles!.contains(UserRole.superAdmin)) {
+          canViewByRole = false;
+        }
+      }
+
+      bool canViewByFeature = true;
+      if (module.requiredFeature != null) {
+        canViewByFeature =
+            currentPlan?.features[module.requiredFeature] ?? false;
+      }
+
+      if (canViewByRole && canViewByFeature) {
         AppModule newModule = module;
         if (module.subModules != null) {
           final filteredSubModules = _filterModules(module.subModules!);
@@ -90,6 +108,7 @@ class NavigationService {
               requiredRoles: module.requiredRoles,
               pageBuilder: module.pageBuilder,
               subModules: filteredSubModules,
+              requiredFeature: module.requiredFeature,
             );
             filtered.add(newModule);
           }
@@ -148,6 +167,7 @@ class NavigationService {
     return flatList;
   }
 
+  // --- CHAMADAS DO PAGEBUILDER CORRIGIDAS ---
   List<AppModule> _getAllPossibleModules() {
     return [
       // Módulos do Super Admin
@@ -156,52 +176,63 @@ class NavigationService {
         title: 'Dashboard',
         icon: Icons.dashboard_rounded,
         requiredRoles: [UserRole.superAdmin],
-        pageBuilder: (user, teachers, students) => const AdminDashboardPage(),
+        pageBuilder: (user, teachers, students, plan) =>
+            const AdminDashboardPage(),
       ),
       AppModule(
         id: 'superadmin_financial',
         title: 'Financeiro',
         icon: Icons.monetization_on_outlined,
         requiredRoles: [UserRole.superAdmin],
-        pageBuilder: (user, teachers, students) => const AdminFinancialPage(),
+        pageBuilder: (user, teachers, students, plan) =>
+            const AdminFinancialPage(),
       ),
       AppModule(
         id: 'superadmin_academies',
         title: 'Academias',
         icon: Icons.business_rounded,
         requiredRoles: [UserRole.superAdmin],
-        pageBuilder: (user, teachers, students) => const AcademyListPage(),
+        pageBuilder: (user, teachers, students, plan) =>
+            const AcademyListPage(),
       ),
       AppModule(
         id: 'superadmin_notifications',
         title: 'Comunicados',
         icon: Icons.campaign_rounded,
         requiredRoles: [UserRole.superAdmin],
-        pageBuilder: (user, teachers, students) =>
+        pageBuilder: (user, teachers, students, plan) =>
             const AdminNotificationsPage(),
+      ),
+      // --- MÓDULO DE PLANOS ADICIONADO ---
+      AppModule(
+        id: 'superadmin_plans',
+        title: 'Planos',
+        icon: Icons.star_border_rounded,
+        requiredRoles: [UserRole.superAdmin],
+        pageBuilder: (user, teachers, students, plan) => const AdminPlansPage(),
       ),
       AppModule(
         id: 'superadmin_videos',
         title: 'Vídeos',
         icon: Icons.video_library_outlined,
         requiredRoles: [UserRole.superAdmin],
-        pageBuilder: (user, teachers, students) => const VideoAuditPage(),
+        pageBuilder: (user, teachers, students, plan) => const VideoAuditPage(),
       ),
       AppModule(
         id: 'superadmin_tutorials',
         title: 'Tutoriais',
         icon: Icons.help_outline_rounded,
         requiredRoles: [UserRole.superAdmin],
-        pageBuilder: (user, teachers, students) => const TutorialsAdminPage(),
+        pageBuilder: (user, teachers, students, plan) =>
+            const TutorialsAdminPage(),
       ),
 
-      // --- INÍCIO DA CORREÇÃO: Módulos de "Início" agora são todos de nível superior ---
       AppModule(
         id: 'manager_dashboard',
         title: 'Início',
         icon: Icons.dashboard_rounded,
         requiredRoles: [UserRole.manager],
-        pageBuilder: (user, teachers, students) =>
+        pageBuilder: (user, teachers, students, plan) =>
             ManagerDashboardPage(user: user),
       ),
       AppModule(
@@ -209,7 +240,7 @@ class NavigationService {
         title: 'Início',
         icon: Icons.dashboard_rounded,
         requiredRoles: [UserRole.teacher],
-        pageBuilder: (user, teachers, students) => TeacherDashboardPage(
+        pageBuilder: (user, teachers, students, plan) => TeacherDashboardPage(
           user: user,
           isSparringMode: false,
           onNavigateToSparring: () {},
@@ -221,36 +252,34 @@ class NavigationService {
         title: 'Início',
         icon: Icons.home_rounded,
         requiredRoles: [UserRole.student],
-        pageBuilder: (user, teachers, students) =>
+        pageBuilder: (user, teachers, students, plan) =>
             UserProfilePage(user: user, hasScaffold: false),
       ),
-      // --- FIM DA CORREÇÃO ---
 
-      // Módulo Financeiro (Apenas Gerente)
       AppModule(
         id: 'manager_financial',
         title: 'Financeiro',
         icon: Icons.monetization_on_rounded,
         requiredRoles: [UserRole.manager],
+        requiredFeature: 'financial_reports',
         subModules: [
           AppModule(
             id: 'manager_fees',
             title: 'Mensalidades',
             icon: Icons.request_quote_outlined,
-            pageBuilder: (user, teachers, students) =>
+            pageBuilder: (user, teachers, students, plan) =>
                 MonthlyFeeManagerPage(academyId: user.academyId),
           ),
           AppModule(
             id: 'manager_reports',
             title: 'Relatórios',
             icon: Icons.bar_chart_rounded,
-            pageBuilder: (user, teachers, students) =>
+            pageBuilder: (user, teachers, students, plan) =>
                 ManagerReportsPage(user: user),
           ),
         ]..sort((a, b) => a.title.compareTo(b.title)),
       ),
 
-      // Módulo Academia
       AppModule(
         id: 'common_academy',
         title: 'Academia',
@@ -260,7 +289,7 @@ class NavigationService {
             id: 'common_birthdays',
             title: 'Aniversários',
             icon: Icons.cake_rounded,
-            pageBuilder: (user, teachers, students) =>
+            pageBuilder: (user, teachers, students, plan) =>
                 BirthdaysPage(academyId: user.academyId, currentUser: user),
           ),
           AppModule(
@@ -268,7 +297,7 @@ class NavigationService {
             title: 'Check-in',
             icon: Icons.check_circle_outline_rounded,
             requiredRoles: [UserRole.teacher],
-            pageBuilder: (user, teachers, students) => CheckinTeacherPage(
+            pageBuilder: (user, teachers, students, plan) => CheckinTeacherPage(
                 user: user,
                 academyId: user.academyId,
                 todosParticipantesDaAcademia: students),
@@ -278,14 +307,14 @@ class NavigationService {
             title: 'Comunicados',
             icon: Icons.campaign_outlined,
             requiredRoles: [UserRole.manager, UserRole.teacher],
-            pageBuilder: (user, teachers, students) =>
+            pageBuilder: (user, teachers, students, plan) =>
                 AcademyNotificationsPage(user: user),
           ),
           AppModule(
             id: 'common_schedule',
             title: 'Grade',
             icon: Icons.calendar_month_rounded,
-            pageBuilder: (user, teachers, students) =>
+            pageBuilder: (user, teachers, students, plan) =>
                 SchedulePage(user: user, teachers: teachers),
           ),
           AppModule(
@@ -293,15 +322,16 @@ class NavigationService {
             title: 'Plano de Aulas',
             icon: Icons.edit_calendar_rounded,
             requiredRoles: [UserRole.manager, UserRole.teacher],
-            pageBuilder: (user, teachers, students) =>
-                ClassPlanPage(user: user),
+            requiredFeature: 'class_plan_module',
+            pageBuilder: (user, teachers, students, plan) =>
+                ClassPlanPage(user: user, currentPlan: plan),
           ),
           AppModule(
             id: 'teacher_students',
             title: 'Alunos',
             icon: Icons.people_alt_rounded,
             requiredRoles: [UserRole.teacher],
-            pageBuilder: (user, teachers, students) =>
+            pageBuilder: (user, teachers, students, plan) =>
                 AlunosTeacherPage(academyId: user.academyId, teacher: user),
           ),
           AppModule(
@@ -309,7 +339,7 @@ class NavigationService {
             title: 'Alunos',
             icon: Icons.people_alt_rounded,
             requiredRoles: [UserRole.manager],
-            pageBuilder: (user, teachers, students) =>
+            pageBuilder: (user, teachers, students, plan) =>
                 AlunosManagerPage(academyId: user.academyId, manager: user),
           ),
           AppModule(
@@ -317,21 +347,21 @@ class NavigationService {
             title: 'Professores',
             icon: Icons.school_rounded,
             requiredRoles: [UserRole.manager],
-            pageBuilder: (user, teachers, students) => ProfessoresManagerPage(
-                academyId: user.academyId, manager: user),
+            pageBuilder: (user, teachers, students, plan) =>
+                ProfessoresManagerPage(
+                    academyId: user.academyId, manager: user),
           ),
           AppModule(
             id: 'manager_units',
             title: 'Unidades',
             icon: Icons.store_mall_directory_outlined,
             requiredRoles: [UserRole.manager],
-            pageBuilder: (user, teachers, students) =>
+            pageBuilder: (user, teachers, students, plan) =>
                 ManageUnitsPage(academyId: user.academyId, manager: user),
           ),
         ]..sort((a, b) => a.title.compareTo(b.title)),
       ),
 
-      // Módulo Unificado "Painel Pessoal"
       AppModule(
         id: 'personal_panel',
         title: 'Painel Pessoal',
@@ -342,28 +372,28 @@ class NavigationService {
             id: 'common_training_log',
             title: 'Diário de Treinos',
             icon: Icons.auto_stories_outlined,
-            pageBuilder: (user, teachers, students) =>
+            pageBuilder: (user, teachers, students, plan) =>
                 TrainingLogPage(user: user),
           ),
           AppModule(
             id: 'common_notebook',
             title: 'Caderno de Estudos',
             icon: Icons.book_rounded,
-            pageBuilder: (user, teachers, students) =>
-                StudyNotebookPage(userId: user.uid),
+            requiredFeature: 'study_notebook',
+            pageBuilder: (user, teachers, students, plan) =>
+                StudyNotebookPage(userId: user.uid, currentPlan: plan),
           ),
           AppModule(
             id: 'common_history',
             title: 'Histórico',
             icon: Icons.calendar_today_rounded,
             requiredRoles: [UserRole.teacher, UserRole.student],
-            pageBuilder: (user, teachers, students) =>
+            pageBuilder: (user, teachers, students, plan) =>
                 MyCheckinsPage(user: user),
           ),
         ]..sort((a, b) => a.title.compareTo(b.title)),
       ),
 
-      // Módulo Ferramentas
       AppModule(
         id: 'common_tools',
         title: 'Ferramentas',
@@ -373,13 +403,16 @@ class NavigationService {
             id: 'common_rules',
             title: 'Livro de Regras',
             icon: Icons.gavel_rounded,
-            pageBuilder: (user, teachers, students) => RulesPage(user: user),
+            requiredFeature: 'rules_module',
+            pageBuilder: (user, teachers, students, plan) =>
+                RulesPage(user: user, currentPlan: plan),
           ),
           AppModule(
             id: 'common_scoreboard',
             title: 'Placar',
             icon: Icons.scoreboard_rounded,
-            pageBuilder: (user, teachers, students) => MatchSetupPage(
+            requiredFeature: 'scoreboard_module',
+            pageBuilder: (user, teachers, students, plan) => MatchSetupPage(
                 user: user,
                 academyId: user.academyId,
                 todosAlunosDaAcademia: students),
@@ -389,7 +422,8 @@ class NavigationService {
             title: 'Sorteio de Treinos',
             icon: Icons.shuffle_rounded,
             requiredRoles: [UserRole.teacher, UserRole.manager],
-            pageBuilder: (user, teachers, students) => SorteioTeacherPage(
+            requiredFeature: 'sparring_draw',
+            pageBuilder: (user, teachers, students, plan) => SorteioTeacherPage(
               user: user,
               academyId: user.academyId,
               todosParticipantesDaAcademia: students,
@@ -401,18 +435,21 @@ class NavigationService {
         ]..sort((a, b) => a.title.compareTo(b.title)),
       ),
 
-      // Módulos comuns restantes
       AppModule(
         id: 'common_video_aulas',
         title: 'Videoaulas',
         icon: Icons.video_library_rounded,
-        pageBuilder: (user, teachers, students) => VideoLibraryPage(user: user),
+        requiredFeature: 'video_library',
+        pageBuilder: (user, teachers, students, plan) =>
+            VideoLibraryPage(user: user, currentPlan: plan),
       ),
       AppModule(
         id: 'common_shop',
         title: 'Loja',
         icon: Icons.storefront_rounded,
-        pageBuilder: (user, teachers, students) => ShopPage(user: user),
+        requiredFeature: 'shop_module',
+        pageBuilder: (user, teachers, students, plan) =>
+            ShopPage(user: user, currentPlan: plan),
       ),
     ];
   }
@@ -425,7 +462,7 @@ class NavigationService {
           'superadmin_dashboard',
           'superadmin_financial',
           'superadmin_academies',
-          'superadmin_notifications',
+          'superadmin_plans', // Adicionado
           'superadmin_tutorials',
         ];
         break;

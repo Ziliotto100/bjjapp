@@ -21,7 +21,7 @@ import 'app_theme.dart';
 import 'user_card_widget.dart';
 import 'video_library_module.dart';
 
-// --- SERVICE ---
+// --- SERVICE (Inalterado) ---
 class StudyNoteService {
   final String userId;
 
@@ -267,7 +267,14 @@ class StudyNoteService {
 // --- TELA PRINCIPAL (ASSUNTOS) ---
 class StudyNotebookPage extends StatefulWidget {
   final String userId;
-  const StudyNotebookPage({super.key, required this.userId});
+  // O plano da academia é recebido para verificar a permissão
+  final SubscriptionPlan? currentPlan;
+
+  const StudyNotebookPage({
+    super.key,
+    required this.userId,
+    this.currentPlan, // Adicionado ao construtor
+  });
 
   @override
   State<StudyNotebookPage> createState() => _StudyNotebookPageState();
@@ -409,6 +416,27 @@ class _StudyNotebookPageState extends State<StudyNotebookPage> {
 
   @override
   Widget build(BuildContext context) {
+    // --- LÓGICA DE PERMISSÃO CENTRALIZADA AQUI ---
+    final bool hasAccess =
+        widget.currentPlan?.features['study_notebook'] ?? false;
+
+    if (!hasAccess) {
+      return Scaffold(
+        backgroundColor: Colors.transparent,
+        body: const AppBackground(
+          child: SafeArea(
+            child: EmptyStateWidget(
+              icon: Icons.book_outlined,
+              title: 'Recurso Premium',
+              message:
+                  'O Caderno de Estudos é um recurso exclusivo. Peça ao gerente da sua academia para saber mais sobre os planos de assinatura.',
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Se o acesso for permitido, constrói a tela normal.
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: CustomScrollView(
