@@ -1669,3 +1669,242 @@ class SubscriptionPlan {
     };
   }
 }
+
+// --- NOVOS MODELOS PARA O MÓDULO DE MUSCULAÇÃO ---
+
+/// Representa um único exercício na biblioteca.
+class Exercise {
+  final String id;
+  final String name;
+  final String muscleGroup;
+  final String? equipment;
+  final String? instructions;
+  final String? videoUrl; // URL para um vídeo/animação de demonstração
+
+  Exercise({
+    required this.id,
+    required this.name,
+    required this.muscleGroup,
+    this.equipment,
+    this.instructions,
+    this.videoUrl,
+  });
+
+  factory Exercise.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return Exercise(
+      id: doc.id,
+      name: data['name'] ?? '',
+      muscleGroup: data['muscleGroup'] ?? '',
+      equipment: data['equipment'],
+      instructions: data['instructions'],
+      videoUrl: data['videoUrl'],
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'muscleGroup': muscleGroup,
+      'equipment': equipment,
+      'instructions': instructions,
+      'videoUrl': videoUrl,
+    };
+  }
+}
+
+/// Representa um item de exercício dentro de uma ficha de treino.
+class RoutineItem {
+  final String exerciseId;
+  final String exerciseName;
+  final int series;
+  final String repetitions; // Ex: "8-12"
+  final int restTimeInSeconds;
+  final String? notes;
+
+  RoutineItem({
+    required this.exerciseId,
+    required this.exerciseName,
+    required this.series,
+    required this.repetitions,
+    required this.restTimeInSeconds,
+    this.notes,
+  });
+
+  factory RoutineItem.fromMap(Map<String, dynamic> map) {
+    return RoutineItem(
+      exerciseId: map['exerciseId'] ?? '',
+      exerciseName: map['exerciseName'] ?? '',
+      series: map['series'] ?? 3,
+      repetitions: map['repetitions'] ?? '10',
+      restTimeInSeconds: map['restTimeInSeconds'] ?? 60,
+      notes: map['notes'],
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'exerciseId': exerciseId,
+      'exerciseName': exerciseName,
+      'series': series,
+      'repetitions': repetitions,
+      'restTimeInSeconds': restTimeInSeconds,
+      'notes': notes,
+    };
+  }
+}
+
+/// Representa uma ficha de treino completa.
+class WorkoutRoutine {
+  final String id;
+  final String name;
+  final List<RoutineItem> items;
+  final List<String> daysOfWeek;
+
+  WorkoutRoutine({
+    required this.id,
+    required this.name,
+    required this.items,
+    this.daysOfWeek = const [],
+  });
+
+  factory WorkoutRoutine.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return WorkoutRoutine(
+      id: doc.id,
+      name: data['name'] ?? '',
+      items: (data['items'] as List<dynamic>? ?? [])
+          .map((itemData) => RoutineItem.fromMap(itemData))
+          .toList(),
+      daysOfWeek: List<String>.from(data['daysOfWeek'] ?? []),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'name': name,
+      'items': items.map((item) => item.toMap()).toList(),
+      'daysOfWeek': daysOfWeek,
+    };
+  }
+}
+
+/// Representa uma série única realizada em um treino.
+class LoggedSet {
+  final double weight;
+  final int repetitions;
+
+  LoggedSet({required this.weight, required this.repetitions});
+
+  factory LoggedSet.fromMap(Map<String, dynamic> map) {
+    return LoggedSet(
+      weight: (map['weight'] as num?)?.toDouble() ?? 0.0,
+      repetitions: map['repetitions'] ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'weight': weight,
+      'repetitions': repetitions,
+    };
+  }
+}
+
+/// Representa um exercício completo dentro de um treino registrado.
+class LoggedExercise {
+  final String exerciseId;
+  final String exerciseName;
+  final List<LoggedSet> sets;
+
+  LoggedExercise(
+      {required this.exerciseId,
+      required this.exerciseName,
+      required this.sets});
+
+  factory LoggedExercise.fromMap(Map<String, dynamic> map) {
+    return LoggedExercise(
+      exerciseId: map['exerciseId'] ?? '',
+      exerciseName: map['exerciseName'] ?? '',
+      sets: (map['sets'] as List<dynamic>? ?? [])
+          .map((setData) => LoggedSet.fromMap(setData))
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'exerciseId': exerciseId,
+      'exerciseName': exerciseName,
+      'sets': sets.map((s) => s.toMap()).toList(),
+    };
+  }
+}
+
+/// Representa um treino completo que foi salvo.
+class WorkoutLog {
+  final String id;
+  final String routineName;
+  final DateTime date;
+  final List<LoggedExercise> exercises;
+
+  WorkoutLog(
+      {required this.id,
+      required this.routineName,
+      required this.date,
+      required this.exercises});
+
+  factory WorkoutLog.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return WorkoutLog(
+      id: doc.id,
+      routineName: data['routineName'] ?? '',
+      date: (data['date'] as Timestamp).toDate(),
+      exercises: (data['exercises'] as List<dynamic>? ?? [])
+          .map((exerciseData) => LoggedExercise.fromMap(exerciseData))
+          .toList(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'routineName': routineName,
+      'date': Timestamp.fromDate(date),
+      'exercises': exercises.map((e) => e.toMap()).toList(),
+    };
+  }
+}
+
+/// Representa um registro de medida corporal.
+class BodyMeasurement {
+  final String id;
+  final DateTime date;
+  final double? weight;
+  final double? bodyFatPercentage;
+  // Outras medidas podem ser adicionadas aqui (ex: braço, peito, etc.)
+
+  BodyMeasurement({
+    required this.id,
+    required this.date,
+    this.weight,
+    this.bodyFatPercentage,
+  });
+
+  factory BodyMeasurement.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    return BodyMeasurement(
+      id: doc.id,
+      date: (data['date'] as Timestamp).toDate(),
+      weight: (data['weight'] as num?)?.toDouble(),
+      bodyFatPercentage: (data['bodyFatPercentage'] as num?)?.toDouble(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'date': Timestamp.fromDate(date),
+      'weight': weight,
+      'bodyFatPercentage': bodyFatPercentage,
+    };
+  }
+}

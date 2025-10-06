@@ -21,6 +21,7 @@ import 'navigation_service.dart';
 import 'app_drawer.dart';
 import 'user_card_widget.dart';
 import 'training_log_module.dart';
+import 'sparring_service.dart';
 
 // --- FUNÇÃO DE LOG DE AUDITORIA ---
 /// Função auxiliar para criar uma entrada no log de auditoria.
@@ -300,7 +301,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     });
   }
 
-  // --- CORREÇÃO APLICADA AQUI ---
   Widget _buildPageForModule(AppModule module) {
     switch (module.id) {
       case 'teacher_dashboard':
@@ -329,7 +329,6 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           onCheckinAlunos: _checkinAlunos,
         );
       default:
-        // Passa o widget.currentPlan para o pageBuilder
         return module.pageBuilder!(
             widget.user, _teachers, _students, widget.currentPlan);
     }
@@ -354,10 +353,9 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
 
     if (mounted) {
       setState(() {
-        // Passa o widget.currentPlan para o pageBuilder ao construir a lista de telas
+        // Constrói a lista de telas usando o método interno que passa os callbacks corretos
         _telas = _allPageModules
-            .map((module) => module.pageBuilder!(
-                widget.user, _teachers, _students, widget.currentPlan))
+            .map((module) => _buildPageForModule(module))
             .toList();
 
         _visibleModules =
@@ -2680,132 +2678,17 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
           type: 'error');
       return;
     }
-    setState(() => _rodadasGeradas = []);
-    if (_tipoGeracao == 'Aleatório') {
-      _gerarRodadasAleatorias();
-    } else {
-      _gerarRodadasHierarquicas();
-    }
-  }
 
-  void _gerarRodadasAleatorias() {
-    List<Aluno> tempAlunos = List.from(_alunosParticipantes);
-    tempAlunos.shuffle();
+    final sparringService = SparringService(
+      participantes: _alunosParticipantes,
+      tipoGeracao: _tipoGeracao,
+    );
 
-    if (tempAlunos.length % 2 != 0) {
-      tempAlunos.add(Aluno.novo(
-          id: 'descansa-id', nome: "DESCANSA", faixa: "Branca", peso: 0));
-    }
-    int numRodadas = tempAlunos.length - 1;
-    if (numRodadas <= 0) numRodadas = 1;
+    final rodadas = sparringService.gerarRodadas();
 
-    List<List<Map<String, String>>> rodadas = [];
-    for (int i = 0; i < numRodadas; i++) {
-      List<Map<String, String>> rodadaAtual = [];
-      for (int j = 0; j < tempAlunos.length / 2; j++) {
-        final aluno1 = tempAlunos[j];
-        final aluno2 = tempAlunos[tempAlunos.length - 1 - j];
-        rodadaAtual.add({'p1': aluno1.id, 'p2': aluno2.id});
-      }
-      rodadas.add(rodadaAtual);
-      tempAlunos.insert(1, tempAlunos.removeLast());
-    }
-    setState(() => _rodadasGeradas = rodadas);
-  }
-
-  void _gerarRodadasHierarquicas() {
-    List<Aluno> tempAlunos = List.from(_alunosParticipantes);
-    if (tempAlunos.length % 2 != 0) {
-      tempAlunos.add(Aluno.novo(
-          id: 'descansa-id', nome: "DESCANSA", faixa: "Branca", peso: 0));
-    }
-
-    int numRodadas = tempAlunos.length - 1;
-    if (numRodadas <= 0) numRodadas = 1;
-
-    List<List<Luta>> rodadasDeLutas = [];
-
-    // 1. Gera o cronograma completo usando Round Robin
-    for (int i = 0; i < numRodadas; i++) {
-      List<Luta> rodadaAtual = [];
-      for (int j = 0; j < tempAlunos.length / 2; j++) {
-        final aluno1 = tempAlunos[j];
-        final aluno2 = tempAlunos[tempAlunos.length - 1 - j];
-        rodadaAtual.add(Luta(aluno1, aluno2, _calcularCusto(aluno1, aluno2)));
-      }
-      rodadasDeLutas.add(rodadaAtual);
-      // Gira os participantes para a próxima rodada
-      tempAlunos.insert(1, tempAlunos.removeLast());
-    }
-
-    // 2. Ordena as rodadas com base no custo médio
-    rodadasDeLutas.sort((a, b) {
-      final lutasReaisA = a.where((l) => l.custo != double.infinity);
-      final lutasReaisB = b.where((l) => l.custo != double.infinity);
-
-      if (lutasReaisA.isEmpty) return 1;
-      if (lutasReaisB.isEmpty) return -1;
-
-      final custoMedioA =
-          lutasReaisA.map((l) => l.custo).reduce((v, e) => v + e) /
-              lutasReaisA.length;
-      final custoMedioB =
-          lutasReaisB.map((l) => l.custo).reduce((v, e) => v + e) /
-              lutasReaisB.length;
-
-      return custoMedioA.compareTo(custoMedioB);
+    setState(() {
+      _rodadasGeradas = rodadas;
     });
-
-    // 3. Converte para o formato de mapa de IDs
-    final rodadasFinais = rodadasDeLutas.map((rodada) {
-      return rodada.map((luta) {
-        return {'p1': luta.aluno1.id, 'p2': luta.aluno2.id};
-      }).toList();
-    }).toList();
-
-    setState(() => _rodadasGeradas = rodadasFinais);
-  }
-
-  double _calcularCusto(Aluno a1, Aluno a2) {
-    if (a1.id == 'descansa-id' || a2.id == 'descansa-id') {
-      return double.infinity;
-    }
-
-    if (_tipoGeracao == 'Por Peso') {
-      return (a1.peso - a2.peso).abs();
-    } else {
-      // 'Por Faixa'
-      int indexFaixa1 = _getBeltIndex(a1.faixa);
-      int indexFaixa2 = _getBeltIndex(a2.faixa);
-      double diffPeso = (a1.peso - a2.peso).abs();
-      return ((indexFaixa1 - indexFaixa2).abs() * 1000) + diffPeso;
-    }
-  }
-
-  int _getBeltIndex(String faixa) {
-    const List<String> ordemFaixas = [
-      'Branca',
-      'Cinza/Branca',
-      'Cinza',
-      'Cinza/Preta',
-      'Amarela/Branca',
-      'Amarela',
-      'Amarela/Preta',
-      'Laranja/Branca',
-      'Laranja',
-      'Laranja/Preta',
-      'Verde/Branca',
-      'Verde',
-      'Verde/Preta',
-      'Azul',
-      'Roxa',
-      'Marrom',
-      'Preta'
-    ];
-    final faixaPrincipal = faixa.split(" ")[0].trim();
-    final index = ordemFaixas
-        .indexWhere((f) => f.toLowerCase() == faixaPrincipal.toLowerCase());
-    return index == -1 ? 0 : index;
   }
 
   void _iniciarSparringClicado() {
@@ -2899,8 +2782,6 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      // --- INÍCIO DA ALTERAÇÃO ---
-                      // Botão de texto removido, substituído por IconButton.
                       IconButton(
                         icon: const Icon(Icons.replay_rounded),
                         tooltip: 'Repetir Última Seleção',
@@ -2908,7 +2789,6 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
                             ? null
                             : _carregarUltimosParticipantes,
                       ),
-                      // --- FIM DA ALTERAÇÃO ---
                     ],
                   ),
                   const SizedBox(height: 16),

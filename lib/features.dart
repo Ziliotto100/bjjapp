@@ -16,6 +16,7 @@ class AppFeatures {
     'study_notebook': 'Caderno de Estudos (Alunos e Professores)',
     'rules_module': 'Livro de Regras (Ferramentas)', // NOVO
     'scoreboard_module': 'Placar (Ferramentas)', // NOVO
+    'strength_training_module': 'Musculação (Força & Performance)',
     // Adicione futuras funcionalidades premium aqui. Por exemplo:
     // 'event_management': 'Módulo de Eventos',
   };

@@ -9,7 +9,7 @@ class SparringService {
   SparringService({required this.participantes, required this.tipoGeracao});
 
   /// Ponto de entrada principal para gerar as rodadas com base no tipo selecionado.
-  List<List<String>> gerarRodadas() {
+  List<List<Map<String, String>>> gerarRodadas() {
     if (participantes.length < 2) {
       return [];
     }
@@ -22,32 +22,26 @@ class SparringService {
   }
 
   /// Gera rodadas usando o algoritmo de pareamento aleatório (Round Robin).
-  List<List<String>> _gerarRodadasAleatorias() {
+  List<List<Map<String, String>>> _gerarRodadasAleatorias() {
     List<Aluno> tempAlunos = List.from(participantes);
     tempAlunos.shuffle();
 
     // Adiciona um participante "fantasma" se o número for ímpar
     if (tempAlunos.length % 2 != 0) {
       tempAlunos.add(Aluno.novo(
-          nome: "DESCANSA", faixa: "Branca", peso: 0, id: 'descansa'));
+          nome: "DESCANSA", faixa: "Branca", peso: 0, id: 'descansa-id'));
     }
     int numRodadas = tempAlunos.length - 1;
     // Para o caso de apenas 2 participantes, precisamos de 1 rodada.
     if (numRodadas <= 0) numRodadas = 1;
 
-    List<List<String>> rodadas = [];
+    List<List<Map<String, String>>> rodadas = [];
     for (int i = 0; i < numRodadas; i++) {
-      List<String> rodadaAtual = [];
+      List<Map<String, String>> rodadaAtual = [];
       for (int j = 0; j < tempAlunos.length / 2; j++) {
         final aluno1 = tempAlunos[j];
         final aluno2 = tempAlunos[tempAlunos.length - 1 - j];
-        if (aluno1.id == "descansa") {
-          rodadaAtual.add('${aluno2.nome} (descansa)');
-        } else if (aluno2.id == "descansa") {
-          rodadaAtual.add('${aluno1.nome} (descansa)');
-        } else {
-          rodadaAtual.add('${aluno1.nome} x ${aluno2.nome}');
-        }
+        rodadaAtual.add({'p1': aluno1.id, 'p2': aluno2.id});
       }
       rodadas.add(rodadaAtual);
       // Gira os participantes para a próxima rodada
@@ -57,13 +51,13 @@ class SparringService {
   }
 
   /// Lógica corrigida que garante "todos contra todos" e depois ordena as rodadas.
-  List<List<String>> _gerarRodadasHierarquicasCorrigido() {
+  List<List<Map<String, String>>> _gerarRodadasHierarquicasCorrigido() {
     List<Aluno> tempAlunos = List.from(participantes);
 
     // Adiciona um participante "fantasma" se o número for ímpar
     if (tempAlunos.length % 2 != 0) {
       tempAlunos.add(Aluno.novo(
-          nome: "DESCANSA", faixa: "Branca", peso: 0, id: 'descansa'));
+          nome: "DESCANSA", faixa: "Branca", peso: 0, id: 'descansa-id'));
     }
 
     int numRodadas = tempAlunos.length - 1;
@@ -104,20 +98,10 @@ class SparringService {
       return custoMedioA.compareTo(custoMedioB);
     });
 
-    // 3. Converte as rodadas ordenadas para o formato de texto final
+    // 3. Converte as rodadas ordenadas para o formato de mapa de IDs
     return rodadasDeLutas.map((rodada) {
       return rodada.map((luta) {
-        if (luta.aluno1.id == 'descansa') {
-          return '${luta.aluno2.nome} (descansa)';
-        } else if (luta.aluno2.id == 'descansa') {
-          return '${luta.aluno1.nome} (descansa)';
-        } else {
-          // Garante uma ordem consistente para a mesma dupla (ex: Aluno A x Aluno B)
-          if (luta.aluno1.nome.compareTo(luta.aluno2.nome) > 0) {
-            return '${luta.aluno2.nome} x ${luta.aluno1.nome}';
-          }
-          return '${luta.aluno1.nome} x ${luta.aluno2.nome}';
-        }
+        return {'p1': luta.aluno1.id, 'p2': luta.aluno2.id};
       }).toList();
     }).toList();
   }
@@ -125,7 +109,7 @@ class SparringService {
   /// Calcula o "custo" de uma luta para fins de ordenação.
   double _calcularCusto(Aluno a1, Aluno a2) {
     // Se um dos alunos é o "DESCANSA", o custo é infinito para não influenciar no cálculo médio da rodada.
-    if (a1.id == 'descansa' || a2.id == 'descansa') {
+    if (a1.id == 'descansa-id' || a2.id == 'descansa-id') {
       return double.infinity;
     }
 
@@ -162,10 +146,8 @@ class SparringService {
       'Marrom',
       'Preta'
     ];
-    // Considera apenas a cor principal para simplificar
-    final faixaPrincipal = faixa.split("/")[0].trim();
-    final index = ordemFaixas
-        .indexWhere((f) => f.toLowerCase() == faixaPrincipal.toLowerCase());
-    return index == -1 ? 0 : index; // Retorna 0 (Branca) se não encontrar
+    final index =
+        ordemFaixas.indexWhere((f) => f.toLowerCase() == faixa.toLowerCase());
+    return index == -1 ? 99 : index; // Retorna um número alto se não encontrar
   }
 }

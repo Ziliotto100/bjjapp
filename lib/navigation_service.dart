@@ -25,6 +25,7 @@ import 'admin_financial_page.dart';
 import 'admin_notifications_page.dart';
 import 'class_plan_module.dart';
 import 'features.dart';
+import 'strength_training_module.dart';
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -203,7 +204,6 @@ class NavigationService {
         pageBuilder: (user, teachers, students, plan) =>
             const AdminNotificationsPage(),
       ),
-      // --- MÓDULO DE PLANOS ADICIONADO ---
       AppModule(
         id: 'superadmin_plans',
         title: 'Planos',
@@ -432,6 +432,22 @@ class NavigationService {
               onCheckinAlunos: (students) {},
             ),
           ),
+          // --- INÍCIO DA ALTERAÇÃO ---
+          // Módulo movido para dentro de "Ferramentas"
+          AppModule(
+            id: 'strength_training',
+            title: 'Musculação', // Título alterado para ser mais direto
+            icon: Icons.fitness_center,
+            requiredRoles: [
+              UserRole.manager,
+              UserRole.teacher,
+              UserRole.student
+            ],
+            requiredFeature: 'strength_training_module',
+            pageBuilder: (user, teachers, students, plan) =>
+                StrengthTrainingPage(user: user),
+          ),
+          // --- FIM DA ALTERAÇÃO ---
         ]..sort((a, b) => a.title.compareTo(b.title)),
       ),
 
@@ -462,10 +478,12 @@ class NavigationService {
           'superadmin_dashboard',
           'superadmin_financial',
           'superadmin_academies',
-          'superadmin_plans', // Adicionado
+          'superadmin_plans',
           'superadmin_tutorials',
         ];
         break;
+      // --- INÍCIO DA ALTERAÇÃO ---
+      // Removido 'strength_training' da lista de abas padrão
       case UserRole.manager:
         defaultVisibleIds = [
           'manager_dashboard',
@@ -494,6 +512,7 @@ class NavigationService {
           'common_video_aulas',
         ];
         break;
+      // --- FIM DA ALTERAÇÃO ---
     }
 
     final allModuleIds =
