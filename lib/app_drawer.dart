@@ -16,6 +16,7 @@ import 'tutorials_module.dart';
 
 class AppDrawer extends StatefulWidget {
   final UserModel user;
+  final SubscriptionPlan? currentPlan; // NOVO PARÂMETRO
   final List<AppModule> drawerModules;
   final List<AppModule> allPageModules;
   final Function(String) onSelectItem;
@@ -23,6 +24,7 @@ class AppDrawer extends StatefulWidget {
   const AppDrawer({
     super.key,
     required this.user,
+    this.currentPlan, // ADICIONADO AO CONSTRUTOR
     required this.drawerModules,
     required this.allPageModules,
     required this.onSelectItem,
@@ -135,9 +137,14 @@ class _AppDrawerState extends State<AppDrawer> {
                       style: TextStyle(color: primaryAccent)),
                   onTap: () {
                     Navigator.pop(context);
+                    // --- CORREÇÃO APLICADA AQUI ---
                     Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => CustomizeTabsPage(user: widget.user),
+                      builder: (_) => CustomizeTabsPage(
+                        user: widget.user,
+                        currentPlan: widget.currentPlan,
+                      ),
                     ));
+                    // --- FIM DA CORREÇÃO ---
                   },
                 ),
               ],

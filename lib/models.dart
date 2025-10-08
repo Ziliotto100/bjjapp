@@ -1847,12 +1847,21 @@ class WorkoutLog {
   final String routineName;
   final DateTime date;
   final List<LoggedExercise> exercises;
+  final int performanceRating;
+  final PhysicalCondition? physicalCondition;
+  final int? durationInMinutes;
+  final Timestamp createdAt;
 
-  WorkoutLog(
-      {required this.id,
-      required this.routineName,
-      required this.date,
-      required this.exercises});
+  WorkoutLog({
+    required this.id,
+    required this.routineName,
+    required this.date,
+    required this.exercises,
+    this.performanceRating = 3,
+    this.physicalCondition,
+    this.durationInMinutes,
+    required this.createdAt,
+  });
 
   factory WorkoutLog.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
@@ -1863,6 +1872,10 @@ class WorkoutLog {
       exercises: (data['exercises'] as List<dynamic>? ?? [])
           .map((exerciseData) => LoggedExercise.fromMap(exerciseData))
           .toList(),
+      performanceRating: data['performanceRating'] ?? 3,
+      physicalCondition: physicalConditionFromString(data['physicalCondition']),
+      durationInMinutes: data['durationInMinutes'],
+      createdAt: data['createdAt'] ?? data['date'],
     );
   }
 
@@ -1871,6 +1884,12 @@ class WorkoutLog {
       'routineName': routineName,
       'date': Timestamp.fromDate(date),
       'exercises': exercises.map((e) => e.toMap()).toList(),
+      'performanceRating': performanceRating,
+      'physicalCondition': physicalCondition != null
+          ? physicalConditionToString(physicalCondition!)
+          : null,
+      'durationInMinutes': durationInMinutes,
+      'createdAt': createdAt,
     };
   }
 }

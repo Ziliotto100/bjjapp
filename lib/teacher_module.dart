@@ -452,6 +452,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
         drawerModules: _drawerModules,
         allPageModules: _allPageModules,
         onSelectItem: _navigateToModuleId,
+        currentPlan: widget.currentPlan,
       ),
       body: Column(
         children: [

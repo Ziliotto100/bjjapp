@@ -10,8 +10,13 @@ import 'models.dart';
 
 class CustomizeTabsPage extends StatefulWidget {
   final UserModel user;
+  final SubscriptionPlan? currentPlan; // NOVO PARÂMETRO
 
-  const CustomizeTabsPage({super.key, required this.user});
+  const CustomizeTabsPage({
+    super.key,
+    required this.user,
+    this.currentPlan, // ADICIONADO AO CONSTRUTOR
+  });
 
   @override
   State<CustomizeTabsPage> createState() => _CustomizeTabsPageState();
@@ -26,8 +31,14 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
   @override
   void initState() {
     super.initState();
-    _navService =
-        NavigationService(userId: widget.user.uid, userRole: widget.user.role);
+    // --- CORREÇÃO APLICADA AQUI ---
+    // Agora o NavigationService é inicializado com o plano atual do usuário.
+    _navService = NavigationService(
+      userId: widget.user.uid,
+      userRole: widget.user.role,
+      currentPlan: widget.currentPlan,
+    );
+    // --- FIM DA CORREÇÃO ---
     _loadSettings();
   }
 
@@ -54,17 +65,21 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
       final List<String> savedOrder =
           List<String>.from(settings['order'] ?? []);
 
+      // Garante que novos módulos sejam adicionados à lista de ordenação
       for (var module in allUserModules) {
         if (!savedOrder.contains(module.id)) {
           savedOrder.add(module.id);
         }
       }
+      // Remove módulos antigos que não existem mais para o usuário
       savedOrder.removeWhere((id) => !allUserModules.any((m) => m.id == id));
 
       if (mounted) {
         setState(() {
           _orderedModules = savedOrder
-              .map((id) => allUserModules.firstWhere((m) => m.id == id))
+              .map((id) => allUserModules.firstWhere((m) => m.id == id,
+                  orElse: () => allUserModules
+                      .first)) // Fallback para evitar erros graves
               .toList();
 
           _visibleModuleIds = List<String>.from(settings['visible'] ?? []);
@@ -90,22 +105,29 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
       if (aIsVisible && !bIsVisible) return -1;
       if (!aIsVisible && bIsVisible) return 1;
 
+      // Se ambos são visíveis, ordena pela ordem em _visibleModuleIds
       if (aIsVisible && bIsVisible) {
         return _visibleModuleIds
             .indexOf(a.id)
             .compareTo(_visibleModuleIds.indexOf(b.id));
       }
 
+      // Se ambos não são visíveis, mantém a ordem atual (não muda nada)
       return 0;
     });
   }
 
   Future<void> _saveSettings() async {
     final newOrder = _orderedModules.map((m) => m.id).toList();
-    await _navService.saveTabSettings(newOrder, _visibleModuleIds);
+    final newVisible = _orderedModules
+        .where((m) => _visibleModuleIds.contains(m.id))
+        .map((m) => m.id)
+        .toList();
+
+    await _navService.saveTabSettings(newOrder, newVisible);
     if (mounted) {
       showBjjSnackBar(context, "Preferências salvas!", type: 'success');
-      Navigator.of(context).pop(); // <-- ADICIONADO AQUI
+      Navigator.of(context).pop();
     }
   }
 
@@ -118,7 +140,7 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
         actions: [
           IconButton(
             icon: const Icon(Icons.save_outlined),
-            tooltip: 'Salvar e Sair', // Texto da dica atualizado
+            tooltip: 'Salvar e Sair',
             onPressed: _isLoading ? null : _saveSettings,
           )
         ],
@@ -191,7 +213,7 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
                                             showBjjSnackBar(context,
                                                 "Você pode selecionar no máximo 5 abas.",
                                                 type: 'info');
-                                            return;
+                                            return; // Retorna para não mudar o estado do switch
                                           }
                                         } else {
                                           _visibleModuleIds.remove(module.id);
@@ -214,6 +236,7 @@ class _CustomizeTabsPageState extends State<CustomizeTabsPage> {
                                 _orderedModules.removeAt(oldIndex);
                             _orderedModules.insert(newIndex, item);
 
+                            // Atualiza a ordem da lista de visíveis para corresponder à nova ordem geral
                             final visibleSet = _visibleModuleIds.toSet();
                             _visibleModuleIds = _orderedModules
                                 .where((m) => visibleSet.contains(m.id))

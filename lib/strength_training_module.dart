@@ -1,6 +1,7 @@
 // lib/strength_training_module.dart
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -30,23 +31,13 @@ class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
   }
 
   Future<void> _navigateToWorkoutSession(WorkoutRoutine? routine) async {
-    final DateTime? selectedDate = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
-      locale: const Locale('pt', 'BR'),
-    );
-
-    if (selectedDate != null && mounted) {
-      Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => WorkoutSessionPage(
-          user: widget.user,
-          routine: routine,
-          workoutDate: selectedDate,
-        ),
-      ));
-    }
+    // A seleção de data foi movida para dentro da WorkoutSessionPage
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => WorkoutSessionPage(
+        user: widget.user,
+        routine: routine,
+      ),
+    ));
   }
 
   void _navigateToEditRoutine([WorkoutRoutine? routine]) {
@@ -444,53 +435,57 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
                 ),
                 const Divider(),
                 Expanded(
-                  child: _items.isEmpty
-                      ? const EmptyStateWidget(
-                          icon: Icons.list_alt_rounded,
-                          title: 'Nenhum Exercício',
-                          message: 'Clique em "Adicionar Exercício" abaixo.',
-                        )
-                      : ReorderableListView.builder(
-                          padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
-                          itemCount: _items.length,
-                          itemBuilder: (context, index) {
-                            final item = _items[index];
-                            final subtitle =
-                                '${item.series}x ${item.repetitions} reps - ${item.restTimeInSeconds}s rest';
+                  child: ReorderableListView.builder(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
+                    itemCount: _items.length + 1, // +1 para o botão
+                    itemBuilder: (context, index) {
+                      if (index == _items.length) {
+                        return Padding(
+                          key: const ValueKey('add_button'),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16.0, vertical: 8.0),
+                          child: OutlinedButton.icon(
+                            onPressed: _addExercise,
+                            icon: const Icon(Icons.add),
+                            label: const Text('Adicionar Exercício'),
+                          ),
+                        );
+                      }
+                      final item = _items[index];
+                      final subtitle =
+                          '${item.series}x ${item.repetitions} reps - ${item.restTimeInSeconds}s rest';
 
-                            return Card(
-                              key: ValueKey(item.exerciseId + index.toString()),
-                              child: ListTile(
-                                leading: const Icon(Icons.fitness_center),
-                                title: Text(item.exerciseName),
-                                subtitle: Text(subtitle),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete_outline,
-                                      color: errorColor),
-                                  onPressed: () =>
-                                      setState(() => _items.removeAt(index)),
-                                ),
-                              ),
-                            );
-                          },
-                          onReorder: (oldIndex, newIndex) {
-                            setState(() {
-                              if (oldIndex < newIndex) newIndex -= 1;
-                              final item = _items.removeAt(oldIndex);
-                              _items.insert(newIndex, item);
-                            });
-                          },
+                      return Card(
+                        key: ValueKey(item.exerciseId + index.toString()),
+                        child: ListTile(
+                          leading: const Icon(Icons.fitness_center),
+                          title: Text(item.exerciseName),
+                          subtitle: Text(subtitle),
+                          trailing: IconButton(
+                            icon: const Icon(Icons.delete_outline,
+                                color: errorColor),
+                            onPressed: () =>
+                                setState(() => _items.removeAt(index)),
+                          ),
                         ),
+                      );
+                    },
+                    onReorder: (oldIndex, newIndex) {
+                      setState(() {
+                        if (oldIndex < newIndex) newIndex -= 1;
+                        if (newIndex >= _items.length) {
+                          newIndex = _items.length - 1;
+                        }
+                        final item = _items.removeAt(oldIndex);
+                        _items.insert(newIndex, item);
+                      });
+                    },
+                  ),
                 ),
               ],
             ),
           ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addExercise,
-        label: const Text('Adicionar Exercício'),
-        icon: const Icon(Icons.add),
       ),
     );
   }
@@ -582,13 +577,12 @@ class __RoutineItemDialogState extends State<_RoutineItemDialog> {
 class WorkoutSessionPage extends StatefulWidget {
   final UserModel user;
   final WorkoutRoutine? routine;
-  final DateTime workoutDate;
 
-  const WorkoutSessionPage(
-      {super.key,
-      required this.user,
-      required this.routine,
-      required this.workoutDate});
+  const WorkoutSessionPage({
+    super.key,
+    required this.user,
+    required this.routine,
+  });
 
   @override
   State<WorkoutSessionPage> createState() => _WorkoutSessionPageState();
@@ -597,24 +591,64 @@ class WorkoutSessionPage extends StatefulWidget {
 class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
   late List<LoggedExercise> _loggedExercises;
   bool _isLoading = false;
+  PhysicalCondition? _physicalCondition;
+  DateTime? _workoutDate;
+  bool _isReady = false;
 
   bool get isFreeWorkout => widget.routine == null;
 
   @override
   void initState() {
     super.initState();
-    if (isFreeWorkout) {
-      _loggedExercises = [];
-    } else {
-      _loggedExercises = widget.routine!.items
-          .map((item) => LoggedExercise(
-                exerciseId: item.exerciseId,
-                exerciseName: item.exerciseName,
-                sets: List.generate(item.series,
-                    (index) => LoggedSet(weight: 0, repetitions: 0)),
-              ))
-          .toList();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _showStartWorkoutDialogs();
+    });
+  }
+
+  Future<void> _showStartWorkoutDialogs() async {
+    final DateTime? selectedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      locale: const Locale('pt', 'BR'),
+    );
+
+    if (selectedDate == null) {
+      Navigator.of(context).pop();
+      return;
     }
+
+    if (!mounted) return;
+
+    final PhysicalCondition? result = await showDialog<PhysicalCondition>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _PhysicalConditionDialog(),
+    );
+
+    if (result == null) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    setState(() {
+      _workoutDate = selectedDate;
+      _physicalCondition = result;
+      if (isFreeWorkout) {
+        _loggedExercises = [];
+      } else {
+        _loggedExercises = widget.routine!.items
+            .map((item) => LoggedExercise(
+                  exerciseId: item.exerciseId,
+                  exerciseName: item.exerciseName,
+                  sets: List.generate(item.series,
+                      (index) => LoggedSet(weight: 0, repetitions: 0)),
+                ))
+            .toList();
+      }
+      _isReady = true;
+    });
   }
 
   Future<void> _addExerciseToSession() async {
@@ -627,7 +661,7 @@ class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
         _loggedExercises.add(LoggedExercise(
           exerciseId: selectedExercise.id,
           exerciseName: selectedExercise.name,
-          sets: [], // Começa sem séries definidas
+          sets: [],
         ));
       });
     }
@@ -640,21 +674,44 @@ class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
           type: 'info');
       return;
     }
+
+    final result = await showDialog<Map<String, int?>>(
+      context: context,
+      builder: (_) => const _PerformanceRatingDialog(),
+    );
+
+    if (result == null || result['rating'] == null) {
+      return;
+    }
+    if (result['duration'] == null) {
+      showBjjSnackBar(context, 'Por favor, informe a duração do treino.',
+          type: 'error');
+      return;
+    }
+
+    final confirmedRating = result['rating'];
+    final duration = result['duration'];
+
     setState(() => _isLoading = true);
 
-    final log = WorkoutLog(
-      id: '',
-      routineName: isFreeWorkout ? 'Treino Livre' : widget.routine!.name,
-      date: widget.workoutDate,
-      exercises: _loggedExercises,
-    );
+    final logData = {
+      'routineName': isFreeWorkout ? 'Treino Livre' : widget.routine!.name,
+      'date': Timestamp.fromDate(_workoutDate!),
+      'exercises': _loggedExercises.map((e) => e.toMap()).toList(),
+      'performanceRating': confirmedRating,
+      'physicalCondition': _physicalCondition != null
+          ? physicalConditionToString(_physicalCondition!)
+          : null,
+      'durationInMinutes': duration,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
 
     try {
       await FirebaseFirestore.instance
           .collection('users')
           .doc(widget.user.uid)
           .collection('workout_logs')
-          .add(log.toMap());
+          .add(logData);
 
       showBjjSnackBar(context, 'Treino salvo com sucesso!', type: 'success');
       Navigator.of(context).pop();
@@ -675,7 +732,7 @@ class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
         title: Text(isFreeWorkout ? 'Treino Livre' : widget.routine!.name),
         actions: [
           TextButton(
-            onPressed: _isLoading ? null : _finishWorkout,
+            onPressed: (_isLoading || !_isReady) ? null : _finishWorkout,
             child: const Text('Finalizar'),
           )
         ],
@@ -684,16 +741,11 @@ class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
         child: SafeArea(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
-              : _buildBody(),
+              : !_isReady
+                  ? const Center(child: CircularProgressIndicator())
+                  : _buildBody(),
         ),
       ),
-      floatingActionButton: isFreeWorkout
-          ? FloatingActionButton.extended(
-              onPressed: _addExerciseToSession,
-              label: const Text('Exercício'),
-              icon: const Icon(Icons.add),
-            )
-          : null,
     );
   }
 
@@ -701,22 +753,52 @@ class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
     final List<dynamic> items =
         isFreeWorkout ? _loggedExercises : widget.routine!.items;
 
-    if (items.isEmpty) {
-      return const EmptyStateWidget(
-          icon: Icons.add,
-          title: 'Inicie seu Treino',
-          message: 'Clique em "+ Exercício" para adicionar o primeiro.');
+    if (items.isEmpty && isFreeWorkout) {
+      return Column(
+        children: [
+          const Expanded(
+            child: EmptyStateWidget(
+                icon: Icons.add,
+                title: 'Inicie seu Treino',
+                message: 'Clique em "+ Exercício" para adicionar o primeiro.'),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: ElevatedButton.icon(
+              onPressed: _addExerciseToSession,
+              icon: const Icon(Icons.add),
+              label: const Text('Adicionar Exercício'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 50),
+              ),
+            ),
+          ),
+        ],
+      );
     }
 
     return ListView.builder(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
-      itemCount: items.length,
+      itemCount: items.length + (isFreeWorkout ? 1 : 0),
       itemBuilder: (context, index) {
         if (isFreeWorkout) {
+          if (index == items.length) {
+            return Padding(
+              key: const ValueKey('add_button'),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+              child: OutlinedButton.icon(
+                onPressed: _addExerciseToSession,
+                icon: const Icon(Icons.add),
+                label: const Text('Adicionar Exercício'),
+              ),
+            );
+          }
           return _ExerciseExecutionCard(
             key:
                 ValueKey(_loggedExercises[index].exerciseId + index.toString()),
             loggedExercise: _loggedExercises[index],
+            user: widget.user,
             isFreeWorkout: true,
           );
         } else {
@@ -725,6 +807,7 @@ class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
             key: ValueKey(routineItem.exerciseId + index.toString()),
             routineItem: routineItem,
             loggedExercise: _loggedExercises[index],
+            user: widget.user,
             isFreeWorkout: false,
           );
         }
@@ -733,15 +816,137 @@ class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
   }
 }
 
+class _PhysicalConditionDialog extends StatelessWidget {
+  const _PhysicalConditionDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Como você se sente hoje?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('Selecione sua disposição para o treino de hoje.'),
+          const SizedBox(height: 24),
+          _buildOption(context, 'Disposto(a) 😃', PhysicalCondition.disposto),
+          const SizedBox(height: 8),
+          _buildOption(context, 'Normal 😐', PhysicalCondition.normal),
+          const SizedBox(height: 8),
+          _buildOption(context, 'Cansado(a) 😴', PhysicalCondition.cansado),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOption(
+      BuildContext context, String text, PhysicalCondition value) {
+    return ElevatedButton(
+      onPressed: () => Navigator.of(context).pop(value),
+      style: ElevatedButton.styleFrom(
+        minimumSize: const Size(double.infinity, 48),
+      ),
+      child: Text(text),
+    );
+  }
+}
+
+class _PerformanceRatingDialog extends StatefulWidget {
+  const _PerformanceRatingDialog();
+
+  @override
+  State<_PerformanceRatingDialog> createState() =>
+      _PerformanceRatingDialogState();
+}
+
+class _PerformanceRatingDialogState extends State<_PerformanceRatingDialog> {
+  final _formKey = GlobalKey<FormState>();
+  int _rating = 3;
+  final _durationController = TextEditingController();
+
+  @override
+  void dispose() {
+    _durationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Finalizar e Avaliar Treino'),
+      content: Form(
+        key: _formKey,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Como você avalia sua performance geral hoje?'),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(5, (index) {
+                  return IconButton(
+                    icon: Icon(
+                      index < _rating
+                          ? Icons.star_rounded
+                          : Icons.star_border_rounded,
+                      color: primaryAccent,
+                      size: 32,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _rating = index + 1;
+                      });
+                    },
+                  );
+                }),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _durationController,
+                decoration: const InputDecoration(
+                  labelText: 'Duração do Treino (minutos)',
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty || int.tryParse(v) == 0)
+                        ? 'Duração é obrigatória'
+                        : null,
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancelar')),
+        ElevatedButton(
+          onPressed: () {
+            if (_formKey.currentState!.validate()) {
+              final duration = int.tryParse(_durationController.text);
+              Navigator.of(context)
+                  .pop({'rating': _rating, 'duration': duration});
+            }
+          },
+          child: const Text('Salvar'),
+        ),
+      ],
+    );
+  }
+}
+
 class _ExerciseExecutionCard extends StatefulWidget {
   final RoutineItem? routineItem;
   final LoggedExercise loggedExercise;
+  final UserModel user;
   final bool isFreeWorkout;
 
   const _ExerciseExecutionCard({
     super.key,
     this.routineItem,
     required this.loggedExercise,
+    required this.user,
     this.isFreeWorkout = false,
   });
 
@@ -752,8 +957,41 @@ class _ExerciseExecutionCard extends StatefulWidget {
 class __ExerciseExecutionCardState extends State<_ExerciseExecutionCard> {
   void _addSet() {
     setState(() {
-      widget.loggedExercise.sets.add(LoggedSet(weight: 0, repetitions: 0));
+      final lastSet = widget.loggedExercise.sets.isNotEmpty
+          ? widget.loggedExercise.sets.last
+          : LoggedSet(weight: 0, repetitions: 0);
+      widget.loggedExercise.sets.add(
+          LoggedSet(weight: lastSet.weight, repetitions: lastSet.repetitions));
     });
+  }
+
+  Future<void> _showHistoryDialog() async {
+    final history = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.user.uid)
+        .collection('workout_logs')
+        .orderBy('date', descending: true)
+        .get();
+
+    final List<Map<String, dynamic>> exerciseHistory = [];
+
+    for (var doc in history.docs) {
+      final log = WorkoutLog.fromFirestore(doc);
+      final relevantExercises = log.exercises
+          .where((ex) => ex.exerciseName == widget.loggedExercise.exerciseName);
+      if (relevantExercises.isNotEmpty) {
+        exerciseHistory.add({
+          'date': log.date,
+          'sets': relevantExercises.first.sets,
+        });
+      }
+    }
+
+    showDialog(
+        context: context,
+        builder: (_) => _ExerciseHistoryDialog(
+            exerciseName: widget.loggedExercise.exerciseName,
+            history: exerciseHistory));
   }
 
   @override
@@ -766,8 +1004,19 @@ class __ExerciseExecutionCardState extends State<_ExerciseExecutionCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min, // Importante para o ListView
           children: [
-            Text(widget.loggedExercise.exerciseName,
-                style: Theme.of(context).textTheme.headlineSmall),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(widget.loggedExercise.exerciseName,
+                      style: Theme.of(context).textTheme.headlineSmall),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.history, color: textHint),
+                  onPressed: _showHistoryDialog,
+                  tooltip: 'Ver Histórico de Carga',
+                )
+              ],
+            ),
             const SizedBox(height: 8),
             if (!widget.isFreeWorkout && widget.routineItem != null)
               Text(
@@ -812,6 +1061,67 @@ class __ExerciseExecutionCardState extends State<_ExerciseExecutionCard> {
           ],
         ),
       ),
+    );
+  }
+}
+
+// --- WIDGET DO DIÁLOGO DE HISTÓRICO ---
+class _ExerciseHistoryDialog extends StatelessWidget {
+  final String exerciseName;
+  final List<Map<String, dynamic>> history;
+
+  const _ExerciseHistoryDialog(
+      {required this.exerciseName, required this.history});
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('Histórico de: $exerciseName'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: history.isEmpty
+            ? const Center(
+                child: Text('Nenhum registro encontrado para este exercício.'))
+            : ListView.builder(
+                shrinkWrap: true,
+                itemCount: history.length,
+                itemBuilder: (context, index) {
+                  final record = history[index];
+                  final date = record['date'] as DateTime;
+                  final sets = record['sets'] as List<LoggedSet>;
+
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          DateFormat.yMMMEd('pt_BR').format(date),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: primaryAccent),
+                        ),
+                        const SizedBox(height: 4),
+                        ...sets.asMap().entries.map((entry) {
+                          int setIndex = entry.key + 1;
+                          LoggedSet set = entry.value;
+                          return Text(
+                              'Série $setIndex: ${set.weight} kg x ${set.repetitions} reps');
+                        }),
+                        if (index < history.length - 1)
+                          const Divider(height: 16),
+                      ],
+                    ),
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Fechar'),
+        ),
+      ],
     );
   }
 }
@@ -893,7 +1203,9 @@ class __SetInputRowState extends State<_SetInputRow> {
             color: successColor,
             iconSize: 30,
             onPressed: () {
-              final weight = double.tryParse(_weightController.text) ?? 0;
+              final weight = double.tryParse(
+                      _weightController.text.replaceAll(',', '.')) ??
+                  0;
               final reps = int.tryParse(_repsController.text) ?? 0;
               setState(() {
                 _isCompleted = true;
@@ -1369,7 +1681,7 @@ class ExerciseDetailPage extends StatelessWidget {
 }
 
 // -----------------------------------------------------------------------------
-// TELA DE ESTATÍSTICAS DE FORÇA
+// TELA DE ESTATÍSTICAS DE FORÇA (COM ABAS)
 // -----------------------------------------------------------------------------
 class StrengthStatsPage extends StatefulWidget {
   final UserModel user;
@@ -1379,82 +1691,192 @@ class StrengthStatsPage extends StatefulWidget {
   State<StrengthStatsPage> createState() => _StrengthStatsPageState();
 }
 
-class _StrengthStatsPageState extends State<StrengthStatsPage> {
+class _StrengthStatsPageState extends State<StrengthStatsPage>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      appBar: AppBar(title: const Text('Meu Progresso')),
+      appBar: AppBar(
+        title: const Text('Meu Progresso'),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Visão Geral'),
+            Tab(text: 'Histórico de Treinos'),
+          ],
+        ),
+      ),
       body: AppBackground(
         child: SafeArea(
-          child: StreamBuilder<QuerySnapshot>(
-              stream: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(widget.user.uid)
-                  .collection('workout_logs')
-                  .orderBy('date', descending: true)
-                  .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError ||
-                    !snapshot.hasData ||
-                    snapshot.data!.docs.isEmpty) {
-                  return const EmptyStateWidget(
-                      icon: Icons.bar_chart_rounded,
-                      title: 'Sem Dados',
-                      message:
-                          'Complete alguns treinos para ver suas estatísticas.');
-                }
-
-                final logs = snapshot.data!.docs
-                    .map((doc) => WorkoutLog.fromFirestore(doc))
-                    .toList();
-
-                // Processamento de dados para os cards
-                double totalVolume = 0;
-                for (var log in logs) {
-                  for (var exercise in log.exercises) {
-                    for (var set in exercise.sets) {
-                      totalVolume += set.weight * set.repetitions;
-                    }
-                  }
-                }
-                final totalWorkouts = logs.length;
-                final formatter = NumberFormat.compact(locale: 'pt_BR');
-
-                return ListView(
-                  padding: const EdgeInsets.all(16),
-                  children: [
-                    Text('Visão Geral',
-                        style: Theme.of(context).textTheme.headlineSmall),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                            child: _buildMetricCard(
-                                'Volume Total (kg)',
-                                formatter.format(totalVolume),
-                                Icons.line_weight,
-                                primaryAccent)),
-                        const SizedBox(width: 12),
-                        Expanded(
-                            child: _buildMetricCard(
-                                'Treinos Feitos',
-                                totalWorkouts.toString(),
-                                Icons.calendar_today,
-                                infoColor)),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _CalendarHeatmap(logs: logs),
-                  ],
-                );
-              }),
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _OverviewTab(user: widget.user),
+              _HistoryTab(user: widget.user),
+            ],
+          ),
         ),
       ),
     );
+  }
+}
+
+// ABA "VISÃO GERAL"
+class _OverviewTab extends StatelessWidget {
+  final UserModel user;
+  const _OverviewTab({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(user.uid)
+            .collection('workout_logs')
+            .orderBy('date', descending: true)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError ||
+              !snapshot.hasData ||
+              snapshot.data!.docs.isEmpty) {
+            return const EmptyStateWidget(
+                icon: Icons.bar_chart_rounded,
+                title: 'Sem Dados',
+                message: 'Complete alguns treinos para ver suas estatísticas.');
+          }
+
+          final logs = snapshot.data!.docs
+              .map((doc) => WorkoutLog.fromFirestore(doc))
+              .toList();
+
+          double totalVolume = 0;
+          Map<String, int> exerciseFrequency = {};
+          Map<String, double> exercisePRs = {};
+
+          for (var log in logs) {
+            for (var exercise in log.exercises) {
+              exerciseFrequency.update(
+                exercise.exerciseName,
+                (value) => value + 1,
+                ifAbsent: () => 1,
+              );
+              for (var set in exercise.sets) {
+                totalVolume += set.weight * set.repetitions;
+                final currentPR = exercisePRs[exercise.exerciseName] ?? 0.0;
+                if (set.weight > currentPR) {
+                  exercisePRs[exercise.exerciseName] = set.weight;
+                }
+              }
+            }
+          }
+          final totalWorkouts = logs.length;
+          final avgVolume =
+              totalWorkouts > 0 ? totalVolume / totalWorkouts : 0.0;
+          final formatter = NumberFormat.compact(locale: 'pt_BR');
+
+          final mostFrequentExercise = exerciseFrequency.entries
+              .toList()
+              .sorted((a, b) => b.value.compareTo(a.value))
+              .firstOrNull;
+
+          final prEntries = exercisePRs.entries.where((entry) {
+            final name = entry.key.toLowerCase();
+            return name.contains('supino') ||
+                name.contains('agachamento') ||
+                name.contains('levantamento terra');
+          }).toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text('Métricas Gerais',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: 12,
+                mainAxisSpacing: 12,
+                childAspectRatio: 1.5,
+                children: [
+                  _buildMetricCard(
+                      'Volume Total',
+                      '${formatter.format(totalVolume)} kg',
+                      Icons.line_weight,
+                      primaryAccent),
+                  _buildMetricCard('Total de Treinos', totalWorkouts.toString(),
+                      Icons.calendar_today, infoColor),
+                  _buildMetricCard(
+                      'Média de Volume',
+                      '${formatter.format(avgVolume)} kg',
+                      Icons.show_chart,
+                      successColor),
+                  if (mostFrequentExercise != null)
+                    _buildMetricCard('Exercício Frequente',
+                        mostFrequentExercise.key, Icons.star, warningColor),
+                ],
+              ),
+              const SizedBox(height: 24),
+              if (prEntries.isNotEmpty) ...[
+                Text('🔥 Meus Recordes (PRs)',
+                    style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 12),
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      children: prEntries
+                          .map((pr) => Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 8.0),
+                                child: Row(
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(pr.key,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleSmall),
+                                    Text('${pr.value} kg',
+                                        style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            color: primaryAccent,
+                                            fontSize: 16)),
+                                  ],
+                                ),
+                              ))
+                          .toList(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
+              Text('Frequência', style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 12),
+              _CalendarHeatmap(logs: logs),
+            ],
+          );
+        });
   }
 
   Widget _buildMetricCard(
@@ -1462,25 +1884,28 @@ class _StrengthStatsPageState extends State<StrengthStatsPage> {
     return Card(
       elevation: 2,
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(12.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                    child: Text(title,
-                        style: Theme.of(context).textTheme.bodyLarge)),
-                Icon(icon, color: color),
+                Icon(icon, color: color, size: 24),
+                Text(title,
+                    style: const TextStyle(
+                        fontSize: 14,
+                        color: textHint,
+                        fontWeight: FontWeight.bold)),
               ],
             ),
-            const SizedBox(height: 8),
-            Text(value,
-                style: Theme.of(context)
-                    .textTheme
-                    .headlineSmall
-                    ?.copyWith(color: color, fontWeight: FontWeight.bold)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(value,
+                  style: TextStyle(
+                      color: color, fontSize: 22, fontWeight: FontWeight.bold)),
+            ),
           ],
         ),
       ),
@@ -1488,6 +1913,181 @@ class _StrengthStatsPageState extends State<StrengthStatsPage> {
   }
 }
 
+// ABA "HISTÓRICO DE TREINOS"
+class _HistoryTab extends StatelessWidget {
+  final UserModel user;
+  const _HistoryTab({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('workout_logs')
+          .orderBy('createdAt', descending: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError ||
+            !snapshot.hasData ||
+            snapshot.data!.docs.isEmpty) {
+          return const EmptyStateWidget(
+              icon: Icons.history,
+              title: 'Nenhum Treino Registrado',
+              message: 'Seus treinos salvos aparecerão aqui.');
+        }
+
+        final logs = snapshot.data!.docs
+            .map((doc) => WorkoutLog.fromFirestore(doc))
+            .toList();
+
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
+          itemCount: logs.length,
+          itemBuilder: (context, index) {
+            final log = logs[index];
+            return _WorkoutLogCard(log: log, user: user);
+          },
+        );
+      },
+    );
+  }
+}
+
+class _WorkoutLogCard extends StatelessWidget {
+  final WorkoutLog log;
+  final UserModel user;
+
+  const _WorkoutLogCard({required this.log, required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    double totalVolume = 0;
+    for (var exercise in log.exercises) {
+      for (var set in exercise.sets) {
+        totalVolume += set.weight * set.repetitions;
+      }
+    }
+    final formatter = NumberFormat.compact(locale: 'pt_BR');
+
+    String subtitle =
+        DateFormat('dd/MM/yyyy HH:mm').format(log.createdAt.toDate());
+    if (log.durationInMinutes != null && log.durationInMinutes! > 0) {
+      subtitle += ' • Duração: ${log.durationInMinutes} min';
+    }
+
+    return Card(
+      child: ListTile(
+        title: Text(log.routineName),
+        subtitle: Text(subtitle),
+        leading: const Icon(Icons.fitness_center, color: primaryAccent),
+        trailing: Text(
+          '${formatter.format(totalVolume)} kg',
+          style: const TextStyle(
+              color: textHint, fontWeight: FontWeight.bold, fontSize: 14),
+        ),
+        onTap: () {
+          Navigator.of(context).push(MaterialPageRoute(
+            builder: (_) => WorkoutLogDetailPage(log: log, user: user),
+          ));
+        },
+      ),
+    );
+  }
+}
+
+class WorkoutLogDetailPage extends StatelessWidget {
+  final WorkoutLog log;
+  final UserModel user;
+
+  const WorkoutLogDetailPage(
+      {super.key, required this.log, required this.user});
+
+  Future<void> _deleteLog(BuildContext context) async {
+    final confirm = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+              title: const Text('Excluir Treino?'),
+              content: const Text(
+                  'Tem certeza que deseja excluir este registro de treino?'),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('Cancelar')),
+                ElevatedButton(
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                  style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+                  child: const Text('Excluir'),
+                )
+              ],
+            ));
+
+    if (confirm == true) {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('workout_logs')
+          .doc(log.id)
+          .delete();
+      if (context.mounted) Navigator.of(context).pop();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(
+        title: Text(log.routineName),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: errorColor),
+            onPressed: () => _deleteLog(context),
+          ),
+        ],
+      ),
+      body: AppBackground(
+        child: SafeArea(
+          child: ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: log.exercises.length,
+            itemBuilder: (context, index) {
+              final exercise = log.exercises[index];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(exercise.exerciseName,
+                          style: Theme.of(context).textTheme.titleMedium),
+                      const Divider(),
+                      ...exercise.sets.asMap().entries.map((entry) {
+                        final setIndex = entry.key + 1;
+                        final set = entry.value;
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 4.0),
+                          child: Text(
+                              'Série $setIndex: ${set.weight} kg x ${set.repetitions} reps'),
+                        );
+                      })
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// O restante do arquivo (CalendarHeatmap, etc) permanece o mesmo
 class _CalendarHeatmap extends StatefulWidget {
   final List<WorkoutLog> logs;
   const _CalendarHeatmap({required this.logs});
