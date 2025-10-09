@@ -1,7 +1,8 @@
 // lib/strength_training_module.dart
+// ignore_for_file: library_private_types_in_public_api, use_build_context_synchronously
+
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
@@ -9,6 +10,7 @@ import 'package:table_calendar/table_calendar.dart';
 import 'models.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
+import 'strength_stats_page.dart';
 
 // -----------------------------------------------------------------------------
 // TELA PRINCIPAL DO MÓDULO (LISTA DE FICHAS)
@@ -31,7 +33,6 @@ class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
   }
 
   Future<void> _navigateToWorkoutSession(WorkoutRoutine? routine) async {
-    // A seleção de data foi movida para dentro da WorkoutSessionPage
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => WorkoutSessionPage(
         user: widget.user,
@@ -49,7 +50,6 @@ class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
       ),
     ))
         .then((_) {
-      // Atualiza a tela após voltar da edição/criação
       setState(() {});
     });
   }
@@ -97,7 +97,7 @@ class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
 
   void _navigateToStats() {
     Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => StrengthStatsPage(user: widget.user),
+      builder: (_) => StrengthProgressPage(user: widget.user),
     ));
   }
 
@@ -117,11 +117,21 @@ class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
                   children: [
                     Text('Minhas Fichas',
                         style: Theme.of(context).textTheme.headlineSmall),
-                    IconButton(
-                      icon: const Icon(Icons.bar_chart_rounded,
-                          color: primaryAccent),
-                      onPressed: _navigateToStats,
-                      tooltip: 'Ver Meu Progresso',
+                    Row(
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.bar_chart_rounded,
+                              color: primaryAccent),
+                          onPressed: _navigateToStats,
+                          tooltip: 'Ver Meu Progresso',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.add_circle_outline,
+                              color: primaryAccent),
+                          onPressed: () => _navigateToEditRoutine(),
+                          tooltip: 'Nova Ficha',
+                        ),
+                      ],
                     ),
                   ],
                 ),
@@ -142,7 +152,7 @@ class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
                         icon: Icons.fitness_center,
                         title: 'Nenhuma Ficha de Treino',
                         message:
-                            'Clique em "Nova Ficha" para criar sua primeira rotina de musculação.',
+                            'Clique no botão "+" no canto superior para criar sua primeira rotina.',
                       );
                     }
 
@@ -170,24 +180,11 @@ class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
           ),
         ),
       ),
-      floatingActionButton: Column(
-        mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          FloatingActionButton.extended(
-            onPressed: () => _navigateToWorkoutSession(null),
-            label: const Text('Treino Livre'),
-            icon: const Icon(Icons.directions_run),
-            heroTag: 'fab_free_workout',
-          ),
-          const SizedBox(height: 12),
-          FloatingActionButton.extended(
-            onPressed: () => _navigateToEditRoutine(),
-            label: const Text('Nova Ficha'),
-            icon: const Icon(Icons.add),
-            heroTag: 'fab_new_routine',
-          ),
-        ],
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _navigateToWorkoutSession(null),
+        label: const Text('Treino Livre'),
+        icon: const Icon(Icons.directions_run),
+        heroTag: 'fab_free_workout',
       ),
     );
   }
@@ -209,7 +206,6 @@ class _WorkoutRoutineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Ordena os dias da semana para exibição consistente
     final sortedDays = routine.daysOfWeek
       ..sort((a, b) {
         const order = {
@@ -1002,7 +998,7 @@ class __ExerciseExecutionCardState extends State<_ExerciseExecutionCard> {
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min, // Importante para o ListView
+          mainAxisSize: MainAxisSize.min,
           children: [
             Row(
               children: [
@@ -1032,6 +1028,8 @@ class __ExerciseExecutionCardState extends State<_ExerciseExecutionCard> {
                 return _SetInputRow(
                   setNumber: index + 1,
                   loggedSet: widget.loggedExercise.sets[index],
+                  previousSet:
+                      index > 0 ? widget.loggedExercise.sets[index - 1] : null,
                   onSetCompleted: (weight, reps) {
                     setState(() {
                       widget.loggedExercise.sets[index] =
@@ -1065,7 +1063,9 @@ class __ExerciseExecutionCardState extends State<_ExerciseExecutionCard> {
   }
 }
 
-// --- WIDGET DO DIÁLOGO DE HISTÓRICO ---
+// ... (Restante do arquivo)
+
+// --- ADICIONE ESTE WIDGET NO FINAL DO ARQUIVO ---
 class _ExerciseHistoryDialog extends StatelessWidget {
   final String exerciseName;
   final List<Map<String, dynamic>> history;
@@ -1129,12 +1129,14 @@ class _ExerciseHistoryDialog extends StatelessWidget {
 class _SetInputRow extends StatefulWidget {
   final int setNumber;
   final LoggedSet loggedSet;
+  final LoggedSet? previousSet;
   final Function(double weight, int reps) onSetCompleted;
   final VoidCallback? onRemove;
 
   const _SetInputRow({
     required this.setNumber,
     required this.loggedSet,
+    this.previousSet,
     required this.onSetCompleted,
     this.onRemove,
   });
@@ -1160,6 +1162,18 @@ class __SetInputRowState extends State<_SetInputRow> {
   }
 
   @override
+  void didUpdateWidget(covariant _SetInputRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Atualiza os controladores se o objeto LoggedSet mudar externamente
+    if (widget.loggedSet != oldWidget.loggedSet) {
+      _weightController.text = widget.loggedSet.weight.toString();
+      _repsController.text = widget.loggedSet.repetitions.toString();
+      _isCompleted =
+          widget.loggedSet.weight > 0 || widget.loggedSet.repetitions > 0;
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0),
@@ -1180,7 +1194,25 @@ class __SetInputRowState extends State<_SetInputRow> {
                         fontWeight: FontWeight.bold),
                   ),
                 ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 8),
+          if (widget.setNumber > 1 && widget.previousSet != null)
+            IconButton(
+              icon: const Icon(Icons.content_copy, color: textHint),
+              tooltip: 'Copiar série anterior',
+              onPressed: () {
+                setState(() {
+                  _weightController.text =
+                      widget.previousSet!.weight.toString();
+                  _repsController.text =
+                      widget.previousSet!.repetitions.toString();
+                  _isCompleted = true;
+                });
+                widget.onSetCompleted(widget.previousSet!.weight,
+                    widget.previousSet!.repetitions);
+                FocusScope.of(context).unfocus();
+              },
+            ),
+          const SizedBox(width: 8),
           Expanded(
             child: TextFormField(
               controller: _weightController,
@@ -1683,15 +1715,15 @@ class ExerciseDetailPage extends StatelessWidget {
 // -----------------------------------------------------------------------------
 // TELA DE ESTATÍSTICAS DE FORÇA (COM ABAS)
 // -----------------------------------------------------------------------------
-class StrengthStatsPage extends StatefulWidget {
+class StrengthProgressPage extends StatefulWidget {
   final UserModel user;
-  const StrengthStatsPage({super.key, required this.user});
+  const StrengthProgressPage({super.key, required this.user});
 
   @override
-  State<StrengthStatsPage> createState() => _StrengthStatsPageState();
+  State<StrengthProgressPage> createState() => _StrengthProgressPageState();
 }
 
-class _StrengthStatsPageState extends State<StrengthStatsPage>
+class _StrengthProgressPageState extends State<StrengthProgressPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
 
@@ -1716,7 +1748,7 @@ class _StrengthStatsPageState extends State<StrengthStatsPage>
         bottom: TabBar(
           controller: _tabController,
           tabs: const [
-            Tab(text: 'Visão Geral'),
+            Tab(text: 'Estatísticas'),
             Tab(text: 'Histórico de Treinos'),
           ],
         ),
@@ -1726,187 +1758,10 @@ class _StrengthStatsPageState extends State<StrengthStatsPage>
           child: TabBarView(
             controller: _tabController,
             children: [
-              _OverviewTab(user: widget.user),
+              StrengthStatisticsPage(user: widget.user),
               _HistoryTab(user: widget.user),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-// ABA "VISÃO GERAL"
-class _OverviewTab extends StatelessWidget {
-  final UserModel user;
-  const _OverviewTab({required this.user});
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .collection('workout_logs')
-            .orderBy('date', descending: true)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          if (snapshot.hasError ||
-              !snapshot.hasData ||
-              snapshot.data!.docs.isEmpty) {
-            return const EmptyStateWidget(
-                icon: Icons.bar_chart_rounded,
-                title: 'Sem Dados',
-                message: 'Complete alguns treinos para ver suas estatísticas.');
-          }
-
-          final logs = snapshot.data!.docs
-              .map((doc) => WorkoutLog.fromFirestore(doc))
-              .toList();
-
-          double totalVolume = 0;
-          Map<String, int> exerciseFrequency = {};
-          Map<String, double> exercisePRs = {};
-
-          for (var log in logs) {
-            for (var exercise in log.exercises) {
-              exerciseFrequency.update(
-                exercise.exerciseName,
-                (value) => value + 1,
-                ifAbsent: () => 1,
-              );
-              for (var set in exercise.sets) {
-                totalVolume += set.weight * set.repetitions;
-                final currentPR = exercisePRs[exercise.exerciseName] ?? 0.0;
-                if (set.weight > currentPR) {
-                  exercisePRs[exercise.exerciseName] = set.weight;
-                }
-              }
-            }
-          }
-          final totalWorkouts = logs.length;
-          final avgVolume =
-              totalWorkouts > 0 ? totalVolume / totalWorkouts : 0.0;
-          final formatter = NumberFormat.compact(locale: 'pt_BR');
-
-          final mostFrequentExercise = exerciseFrequency.entries
-              .toList()
-              .sorted((a, b) => b.value.compareTo(a.value))
-              .firstOrNull;
-
-          final prEntries = exercisePRs.entries.where((entry) {
-            final name = entry.key.toLowerCase();
-            return name.contains('supino') ||
-                name.contains('agachamento') ||
-                name.contains('levantamento terra');
-          }).toList()
-            ..sort((a, b) => b.value.compareTo(a.value));
-
-          return ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              Text('Métricas Gerais',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 1.5,
-                children: [
-                  _buildMetricCard(
-                      'Volume Total',
-                      '${formatter.format(totalVolume)} kg',
-                      Icons.line_weight,
-                      primaryAccent),
-                  _buildMetricCard('Total de Treinos', totalWorkouts.toString(),
-                      Icons.calendar_today, infoColor),
-                  _buildMetricCard(
-                      'Média de Volume',
-                      '${formatter.format(avgVolume)} kg',
-                      Icons.show_chart,
-                      successColor),
-                  if (mostFrequentExercise != null)
-                    _buildMetricCard('Exercício Frequente',
-                        mostFrequentExercise.key, Icons.star, warningColor),
-                ],
-              ),
-              const SizedBox(height: 24),
-              if (prEntries.isNotEmpty) ...[
-                Text('🔥 Meus Recordes (PRs)',
-                    style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 12),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      children: prEntries
-                          .map((pr) => Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 8.0),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(pr.key,
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleSmall),
-                                    Text('${pr.value} kg',
-                                        style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            color: primaryAccent,
-                                            fontSize: 16)),
-                                  ],
-                                ),
-                              ))
-                          .toList(),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
-              Text('Frequência', style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 12),
-              _CalendarHeatmap(logs: logs),
-            ],
-          );
-        });
-  }
-
-  Widget _buildMetricCard(
-      String title, String value, IconData icon, Color color) {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Icon(icon, color: color, size: 24),
-                Text(title,
-                    style: const TextStyle(
-                        fontSize: 14,
-                        color: textHint,
-                        fontWeight: FontWeight.bold)),
-              ],
-            ),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(value,
-                  style: TextStyle(
-                      color: color, fontSize: 22, fontWeight: FontWeight.bold)),
-            ),
-          ],
         ),
       ),
     );

@@ -1,10 +1,11 @@
 // lib/app_drawer.dart
-// ignore_for_file: unused_import, unnecessary_to_list_in_spreads
+// ignore_for_file: unused_import, unnecessary_to_list_in_spreads, use_build_context_synchronously
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart'; // IMPORTAÇÃO NECESSÁRIA
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'models.dart';
@@ -12,11 +13,12 @@ import 'navigation_service.dart';
 import 'customize_tabs_page.dart';
 import 'app_theme.dart';
 import 'auth_gate.dart';
+import 'common_widgets.dart';
 import 'tutorials_module.dart';
 
 class AppDrawer extends StatefulWidget {
   final UserModel user;
-  final SubscriptionPlan? currentPlan; // NOVO PARÂMETRO
+  final SubscriptionPlan? currentPlan;
   final List<AppModule> drawerModules;
   final List<AppModule> allPageModules;
   final Function(String) onSelectItem;
@@ -24,7 +26,7 @@ class AppDrawer extends StatefulWidget {
   const AppDrawer({
     super.key,
     required this.user,
-    this.currentPlan, // ADICIONADO AO CONSTRUTOR
+    this.currentPlan,
     required this.drawerModules,
     required this.allPageModules,
     required this.onSelectItem,
@@ -70,6 +72,15 @@ class _AppDrawerState extends State<AppDrawer> {
         debugPrint("Error fetching academy logo: $e");
       }
     }
+  }
+
+  // --- NOVA FUNÇÃO PARA COPIAR O ID ---
+  void _copyUserIdToClipboard() {
+    Clipboard.setData(ClipboardData(text: widget.user.uid)).then((_) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ID de Usuário copiado!')),
+      );
+    });
   }
 
   @override
@@ -137,14 +148,12 @@ class _AppDrawerState extends State<AppDrawer> {
                       style: TextStyle(color: primaryAccent)),
                   onTap: () {
                     Navigator.pop(context);
-                    // --- CORREÇÃO APLICADA AQUI ---
                     Navigator.of(context).push(MaterialPageRoute(
                       builder: (_) => CustomizeTabsPage(
                         user: widget.user,
                         currentPlan: widget.currentPlan,
                       ),
                     ));
-                    // --- FIM DA CORREÇÃO ---
                   },
                 ),
               ],
@@ -190,12 +199,33 @@ class _AppDrawerState extends State<AppDrawer> {
     return sortedList;
   }
 
+  // --- HEADER DO MENU ATUALIZADO ---
   Widget _buildDrawerHeader(BuildContext context) {
     return UserAccountsDrawerHeader(
       accountName: Text(widget.user.name,
           style: Theme.of(context).textTheme.titleMedium),
-      accountEmail:
+      accountEmail: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(widget.user.email, style: const TextStyle(color: textHint)),
+          const SizedBox(height: 4),
+          InkWell(
+            onTap: _copyUserIdToClipboard,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'ID: ${widget.user.uid}',
+                  style: const TextStyle(color: textHint, fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(width: 4),
+                const Icon(Icons.copy, size: 12, color: textHint),
+              ],
+            ),
+          ),
+        ],
+      ),
       currentAccountPicture: CircleAvatar(
         radius: 30,
         backgroundColor: Colors.white,
