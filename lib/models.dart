@@ -1,6 +1,7 @@
 // lib/models.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:uuid/uuid.dart'; // Importe o pacote uuid
 
 // --- INÍCIO DA ALTERAÇÃO ---
 // Novo modelo para os Currículos
@@ -1715,41 +1716,49 @@ class Exercise {
 
 /// Representa um item de exercício dentro de uma ficha de treino.
 class RoutineItem {
+  final String id;
   final String exerciseId;
   final String exerciseName;
   final int series;
   final String repetitions; // Ex: "8-12"
   final int restTimeInSeconds;
   final String? notes;
+  String? groupId;
 
   RoutineItem({
+    required this.id,
     required this.exerciseId,
     required this.exerciseName,
     required this.series,
     required this.repetitions,
     required this.restTimeInSeconds,
     this.notes,
+    this.groupId,
   });
 
   factory RoutineItem.fromMap(Map<String, dynamic> map) {
     return RoutineItem(
+      id: map['id'] ?? const Uuid().v4(),
       exerciseId: map['exerciseId'] ?? '',
       exerciseName: map['exerciseName'] ?? '',
       series: map['series'] ?? 3,
       repetitions: map['repetitions'] ?? '10',
       restTimeInSeconds: map['restTimeInSeconds'] ?? 60,
       notes: map['notes'],
+      groupId: map['groupId'],
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
+      'id': id,
       'exerciseId': exerciseId,
       'exerciseName': exerciseName,
       'series': series,
       'repetitions': repetitions,
       'restTimeInSeconds': restTimeInSeconds,
       'notes': notes,
+      'groupId': groupId,
     };
   }
 }
@@ -1879,6 +1888,21 @@ class WorkoutLog {
     );
   }
 
+  factory WorkoutLog.fromDraft(Map<String, dynamic> data) {
+    return WorkoutLog(
+      id: '', // Drafts don't have a Firestore ID
+      routineName: data['routineName'] ?? '',
+      date: DateTime.fromMillisecondsSinceEpoch(data['date']),
+      exercises: (data['exercises'] as List<dynamic>? ?? [])
+          .map((exerciseData) => LoggedExercise.fromMap(exerciseData))
+          .toList(),
+      performanceRating: data['performanceRating'] ?? 3,
+      physicalCondition: physicalConditionFromString(data['physicalCondition']),
+      durationInMinutes: data['durationInMinutes'],
+      createdAt: Timestamp.fromMillisecondsSinceEpoch(data['createdAt']),
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'routineName': routineName,
@@ -1890,6 +1914,20 @@ class WorkoutLog {
           : null,
       'durationInMinutes': durationInMinutes,
       'createdAt': createdAt,
+    };
+  }
+
+  Map<String, dynamic> toDraftMap() {
+    return {
+      'routineName': routineName,
+      'date': date.millisecondsSinceEpoch,
+      'exercises': exercises.map((e) => e.toMap()).toList(),
+      'performanceRating': performanceRating,
+      'physicalCondition': physicalCondition != null
+          ? physicalConditionToString(physicalCondition!)
+          : null,
+      'durationInMinutes': durationInMinutes,
+      'createdAt': createdAt.millisecondsSinceEpoch,
     };
   }
 }

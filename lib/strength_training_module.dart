@@ -1,12 +1,14 @@
 // lib/strength_training_module.dart
-// ignore_for_file: library_private_types_in_public_api, use_build_context_synchronously
+// ignore_for_file: library_private_types_in_public_api, use_build_context_synchronously, deprecated_member_use
 
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
+import 'package:uuid/uuid.dart';
 import 'models.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
@@ -292,6 +294,7 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
   List<RoutineItem> _items = [];
   bool _isLoading = false;
   List<String> _selectedDays = [];
+  final Set<String> _selectedItemIds = {}; // Para controlar a seleção múltipla
 
   final List<String> _daysOfWeek = [
     'Segunda-feira',
@@ -304,6 +307,7 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
   ];
 
   bool get _isEditing => widget.routine != null;
+  bool get _isSelectionMode => _selectedItemIds.isNotEmpty;
 
   @override
   void initState() {
@@ -332,6 +336,59 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
         _items.add(newRoutineItem);
       });
     }
+  }
+
+  void _groupSelectedItems() {
+    if (_selectedItemIds.length < 2) return;
+
+    final newGroupId = const Uuid().v4();
+    setState(() {
+      for (var item in _items) {
+        if (_selectedItemIds.contains(item.id)) {
+          item.groupId = newGroupId;
+        }
+      }
+      _selectedItemIds.clear();
+    });
+  }
+
+  void _ungroupSelectedItems() {
+    final Set<String> groupIdsToClear = {};
+    for (var itemId in _selectedItemIds) {
+      final item = _items.firstWhereOrNull((it) => it.id == itemId);
+      if (item?.groupId != null) {
+        groupIdsToClear.add(item!.groupId!);
+      }
+    }
+
+    setState(() {
+      for (var item in _items) {
+        if (groupIdsToClear.contains(item.groupId)) {
+          item.groupId = null;
+        }
+      }
+      _selectedItemIds.clear();
+    });
+  }
+
+  void _handleItemTap(RoutineItem item) {
+    setState(() {
+      if (_isSelectionMode) {
+        if (_selectedItemIds.contains(item.id)) {
+          _selectedItemIds.remove(item.id);
+        } else {
+          _selectedItemIds.add(item.id);
+        }
+      }
+    });
+  }
+
+  void _handleItemLongPress(RoutineItem item) {
+    setState(() {
+      if (!_selectedItemIds.contains(item.id)) {
+        _selectedItemIds.add(item.id);
+      }
+    });
   }
 
   Future<void> _saveRoutine() async {
@@ -373,16 +430,44 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
 
   @override
   Widget build(BuildContext context) {
+    bool canGroup = _selectedItemIds.length > 1 &&
+        _selectedItemIds.every(
+            (id) => _items.firstWhere((item) => item.id == id).groupId == null);
+    bool canUngroup = _selectedItemIds.isNotEmpty &&
+        _selectedItemIds.any(
+            (id) => _items.firstWhere((item) => item.id == id).groupId != null);
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
+        leading: _isSelectionMode
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                onPressed: () => setState(() => _selectedItemIds.clear()),
+              )
+            : null,
         title: Text(_isEditing ? 'Editar Ficha' : 'Nova Ficha de Treino'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.save_outlined),
-            onPressed: _isLoading ? null : _saveRoutine,
-          )
-        ],
+        actions: _isSelectionMode
+            ? [
+                if (canGroup)
+                  IconButton(
+                    icon: const Icon(Icons.link),
+                    onPressed: _groupSelectedItems,
+                    tooltip: 'Agrupar (Superset)',
+                  ),
+                if (canUngroup)
+                  IconButton(
+                    icon: const Icon(Icons.link_off),
+                    onPressed: _ungroupSelectedItems,
+                    tooltip: 'Desagrupar',
+                  ),
+              ]
+            : [
+                IconButton(
+                  icon: const Icon(Icons.save_outlined),
+                  onPressed: _isLoading ? null : _saveRoutine,
+                )
+              ],
       ),
       body: AppBackground(
         child: SafeArea(
@@ -430,58 +515,175 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
                   ),
                 ),
                 const Divider(),
-                Expanded(
-                  child: ReorderableListView.builder(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
-                    itemCount: _items.length + 1, // +1 para o botão
-                    itemBuilder: (context, index) {
-                      if (index == _items.length) {
-                        return Padding(
-                          key: const ValueKey('add_button'),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 16.0, vertical: 8.0),
-                          child: OutlinedButton.icon(
-                            onPressed: _addExercise,
-                            icon: const Icon(Icons.add),
-                            label: const Text('Adicionar Exercício'),
-                          ),
-                        );
-                      }
-                      final item = _items[index];
-                      final subtitle =
-                          '${item.series}x ${item.repetitions} reps - ${item.restTimeInSeconds}s rest';
-
-                      return Card(
-                        key: ValueKey(item.exerciseId + index.toString()),
-                        child: ListTile(
-                          leading: const Icon(Icons.fitness_center),
-                          title: Text(item.exerciseName),
-                          subtitle: Text(subtitle),
-                          trailing: IconButton(
-                            icon: const Icon(Icons.delete_outline,
-                                color: errorColor),
-                            onPressed: () =>
-                                setState(() => _items.removeAt(index)),
-                          ),
-                        ),
-                      );
-                    },
-                    onReorder: (oldIndex, newIndex) {
-                      setState(() {
-                        if (oldIndex < newIndex) newIndex -= 1;
-                        if (newIndex >= _items.length) {
-                          newIndex = _items.length - 1;
-                        }
-                        final item = _items.removeAt(oldIndex);
-                        _items.insert(newIndex, item);
-                      });
-                    },
-                  ),
-                ),
+                Expanded(child: _buildItemList()),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildItemList() {
+    final List<dynamic> groupedItems = [];
+    final Set<String> processedGroupIds = {};
+
+    for (var item in _items) {
+      if (item.groupId != null) {
+        if (!processedGroupIds.contains(item.groupId!)) {
+          final group = _items.where((i) => i.groupId == item.groupId).toList();
+          groupedItems.add(group);
+          processedGroupIds.add(item.groupId!);
+        }
+      } else {
+        groupedItems.add(item);
+      }
+    }
+
+    return ReorderableListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+      itemCount: groupedItems.length + 1, // +1 para o botão
+      itemBuilder: (context, index) {
+        if (index == groupedItems.length) {
+          return Padding(
+            key: const ValueKey('add_button'),
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: OutlinedButton.icon(
+              onPressed: _addExercise,
+              icon: const Icon(Icons.add),
+              label: const Text('Adicionar Exercício'),
+            ),
+          );
+        }
+
+        final item = groupedItems[index];
+
+        if (item is List<RoutineItem>) {
+          // É um superset
+          return Container(
+            key: ValueKey(item.first.groupId),
+            margin: const EdgeInsets.symmetric(vertical: 6.0),
+            decoration: BoxDecoration(
+              border: Border.all(color: primaryAccent.withOpacity(0.5)),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(11),
+              child: Column(
+                children: item.mapIndexed((i, subItem) {
+                  return _buildItemCard(
+                    subItem,
+                    isFirstInGroup: i == 0,
+                    isLastInGroup: i == item.length - 1,
+                  );
+                }).toList(),
+              ),
+            ),
+          );
+        } else {
+          // É um item individual
+          return _buildItemCard(item);
+        }
+      },
+      onReorder: (oldIndex, newIndex) {
+        setState(() {
+          if (oldIndex < newIndex) newIndex -= 1;
+          if (newIndex >= groupedItems.length) {
+            newIndex = groupedItems.length - 1;
+          }
+
+          final movedItem = groupedItems.removeAt(oldIndex);
+          groupedItems.insert(newIndex, movedItem);
+
+          _items = groupedItems.expand((item) {
+            if (item is List<RoutineItem>) {
+              return item;
+            } else {
+              return [item as RoutineItem];
+            }
+          }).toList();
+        });
+      },
+    );
+  }
+
+  Widget _buildItemCard(RoutineItem item,
+      {bool isFirstInGroup = false, bool isLastInGroup = false}) {
+    final isSelected = _selectedItemIds.contains(item.id);
+
+    return Material(
+      color: isSelected
+          ? primaryAccent.withOpacity(0.2)
+          : darkSurface.withOpacity(0.8),
+      child: InkWell(
+        onTap: () => _handleItemTap(item),
+        onLongPress: () => _handleItemLongPress(item),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          child: Row(
+            children: [
+              if (_isSelectionMode)
+                Checkbox(
+                  value: isSelected,
+                  onChanged: (value) => _handleItemTap(item),
+                )
+              else
+                ReorderableDragStartListener(
+                  index: _items.indexOf(item),
+                  child: const Icon(Icons.drag_handle_rounded, color: textHint),
+                ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(item.exerciseName,
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _InfoChip(
+                            icon: Icons.repeat,
+                            text: '${item.series}x ${item.repetitions}'),
+                        const SizedBox(width: 8),
+                        _InfoChip(
+                            icon: Icons.timer_outlined,
+                            text: '${item.restTimeInSeconds}s'),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (item.groupId != null)
+                const Icon(Icons.link, color: primaryAccent, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  const _InfoChip({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: darkScaffoldBackground.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: textHint, size: 14),
+          const SizedBox(width: 6),
+          Text(text, style: const TextStyle(color: textHint, fontSize: 12)),
+        ],
       ),
     );
   }
@@ -551,6 +753,7 @@ class __RoutineItemDialogState extends State<_RoutineItemDialog> {
           onPressed: () {
             if (_formKey.currentState!.validate()) {
               final item = RoutineItem(
+                id: const Uuid().v4(),
                 exerciseId: widget.exercise.id,
                 exerciseName: widget.exercise.name,
                 series: int.parse(_seriesController.text),
@@ -746,8 +949,27 @@ class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
   }
 
   Widget _buildBody() {
-    final List<dynamic> items =
-        isFreeWorkout ? _loggedExercises : widget.routine!.items;
+    final List<dynamic> items;
+
+    if (isFreeWorkout) {
+      items = _loggedExercises;
+    } else {
+      items = [];
+      final Set<String> processedGroupIds = {};
+      for (var item in widget.routine!.items) {
+        if (item.groupId != null) {
+          if (!processedGroupIds.contains(item.groupId!)) {
+            final group = widget.routine!.items
+                .where((i) => i.groupId == item.groupId)
+                .toList();
+            items.add(group);
+            processedGroupIds.add(item.groupId!);
+          }
+        } else {
+          items.add(item);
+        }
+      }
+    }
 
     if (items.isEmpty && isFreeWorkout) {
       return Column(
@@ -798,14 +1020,43 @@ class _WorkoutSessionPageState extends State<WorkoutSessionPage> {
             isFreeWorkout: true,
           );
         } else {
-          final routineItem = items[index] as RoutineItem;
-          return _ExerciseExecutionCard(
-            key: ValueKey(routineItem.exerciseId + index.toString()),
-            routineItem: routineItem,
-            loggedExercise: _loggedExercises[index],
-            user: widget.user,
-            isFreeWorkout: false,
-          );
+          final itemOrGroup = items[index];
+
+          if (itemOrGroup is List<RoutineItem>) {
+            return Card(
+              margin:
+                  const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
+              shape: RoundedRectangleBorder(
+                side: const BorderSide(color: primaryAccent, width: 1.5),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: itemOrGroup.map((routineItem) {
+                  final loggedExercise = _loggedExercises.firstWhere(
+                      (le) => le.exerciseId == routineItem.exerciseId);
+                  return _ExerciseExecutionCard(
+                    key: ValueKey(routineItem.id),
+                    routineItem: routineItem,
+                    loggedExercise: loggedExercise,
+                    user: widget.user,
+                    isFreeWorkout: false,
+                    isSuperset: true,
+                  );
+                }).toList(),
+              ),
+            );
+          } else {
+            final routineItem = itemOrGroup as RoutineItem;
+            final loggedExercise = _loggedExercises
+                .firstWhere((le) => le.exerciseId == routineItem.exerciseId);
+            return _ExerciseExecutionCard(
+              key: ValueKey(routineItem.id),
+              routineItem: routineItem,
+              loggedExercise: loggedExercise,
+              user: widget.user,
+              isFreeWorkout: false,
+            );
+          }
         }
       },
     );
@@ -937,6 +1188,7 @@ class _ExerciseExecutionCard extends StatefulWidget {
   final LoggedExercise loggedExercise;
   final UserModel user;
   final bool isFreeWorkout;
+  final bool isSuperset;
 
   const _ExerciseExecutionCard({
     super.key,
@@ -944,6 +1196,7 @@ class _ExerciseExecutionCard extends StatefulWidget {
     required this.loggedExercise,
     required this.user,
     this.isFreeWorkout = false,
+    this.isSuperset = false,
   });
 
   @override
@@ -992,73 +1245,79 @@ class __ExerciseExecutionCardState extends State<_ExerciseExecutionCard> {
 
   @override
   Widget build(BuildContext context) {
+    final cardContent = Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(widget.loggedExercise.exerciseName,
+                    style: Theme.of(context).textTheme.headlineSmall),
+              ),
+              IconButton(
+                icon: const Icon(Icons.history, color: textHint),
+                onPressed: _showHistoryDialog,
+                tooltip: 'Ver Histórico de Carga',
+              )
+            ],
+          ),
+          const SizedBox(height: 8),
+          if (!widget.isFreeWorkout && widget.routineItem != null)
+            Text(
+              'Meta: ${widget.routineItem!.series}x ${widget.routineItem!.repetitions} reps',
+              style: const TextStyle(color: textHint, fontSize: 16),
+            ),
+          const Divider(height: 24),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: widget.loggedExercise.sets.length,
+            itemBuilder: (context, index) {
+              return _SetInputRow(
+                setNumber: index + 1,
+                loggedSet: widget.loggedExercise.sets[index],
+                previousSet:
+                    index > 0 ? widget.loggedExercise.sets[index - 1] : null,
+                onSetCompleted: (weight, reps) {
+                  setState(() {
+                    widget.loggedExercise.sets[index] =
+                        LoggedSet(weight: weight, repetitions: reps);
+                  });
+                },
+                onRemove: widget.isFreeWorkout
+                    ? () {
+                        setState(() {
+                          widget.loggedExercise.sets.removeAt(index);
+                        });
+                      }
+                    : null,
+              );
+            },
+          ),
+          if (widget.isFreeWorkout) ...[
+            const SizedBox(height: 16),
+            Center(
+              child: OutlinedButton.icon(
+                onPressed: _addSet,
+                icon: const Icon(Icons.add),
+                label: const Text('Adicionar Série'),
+              ),
+            )
+          ]
+        ],
+      ),
+    );
+
+    if (widget.isSuperset) {
+      return cardContent;
+    }
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(widget.loggedExercise.exerciseName,
-                      style: Theme.of(context).textTheme.headlineSmall),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.history, color: textHint),
-                  onPressed: _showHistoryDialog,
-                  tooltip: 'Ver Histórico de Carga',
-                )
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (!widget.isFreeWorkout && widget.routineItem != null)
-              Text(
-                'Meta: ${widget.routineItem!.series}x ${widget.routineItem!.repetitions} reps',
-                style: const TextStyle(color: textHint, fontSize: 16),
-              ),
-            const Divider(height: 24),
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: widget.loggedExercise.sets.length,
-              itemBuilder: (context, index) {
-                return _SetInputRow(
-                  setNumber: index + 1,
-                  loggedSet: widget.loggedExercise.sets[index],
-                  previousSet:
-                      index > 0 ? widget.loggedExercise.sets[index - 1] : null,
-                  onSetCompleted: (weight, reps) {
-                    setState(() {
-                      widget.loggedExercise.sets[index] =
-                          LoggedSet(weight: weight, repetitions: reps);
-                    });
-                  },
-                  onRemove: widget.isFreeWorkout
-                      ? () {
-                          setState(() {
-                            widget.loggedExercise.sets.removeAt(index);
-                          });
-                        }
-                      : null,
-                );
-              },
-            ),
-            if (widget.isFreeWorkout) ...[
-              const SizedBox(height: 16),
-              Center(
-                child: OutlinedButton.icon(
-                  onPressed: _addSet,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Adicionar Série'),
-                ),
-              )
-            ]
-          ],
-        ),
-      ),
+      child: cardContent,
     );
   }
 }
