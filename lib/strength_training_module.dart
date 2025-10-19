@@ -6,16 +6,18 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:uuid/uuid.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'models.dart';
 import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'strength_stats_page.dart';
 
 // -----------------------------------------------------------------------------
-// TELA PRINCIPAL DO MÓDULO (LISTA DE FICHAS)
+// TELA PRINCIPAL DO MÓDULO (PAINEL DE FORÇA)
 // -----------------------------------------------------------------------------
 class StrengthTrainingPage extends StatefulWidget {
   final UserModel user;
@@ -26,15 +28,9 @@ class StrengthTrainingPage extends StatefulWidget {
 }
 
 class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
-  Stream<QuerySnapshot> _getRoutinesStream() {
-    return FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.user.uid)
-        .collection('workout_routines')
-        .snapshots();
-  }
+  // --- FUNÇÕES DE NAVEGAÇÃO ---
 
-  Future<void> _navigateToWorkoutSession(WorkoutRoutine? routine) async {
+  void _navigateToWorkoutSession(WorkoutRoutine? routine) {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => WorkoutSessionPage(
         user: widget.user,
@@ -52,8 +48,26 @@ class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
       ),
     ))
         .then((_) {
-      setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
     });
+  }
+
+  void _navigateToStats() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => StrengthProgressPage(user: widget.user),
+    ));
+  }
+
+  // --- FUNÇÕES DE DADOS ---
+
+  Stream<QuerySnapshot> _getRoutinesStream() {
+    return FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.user.uid)
+        .collection('workout_routines')
+        .snapshots();
   }
 
   Future<void> _deleteRoutine(WorkoutRoutine routine) async {
@@ -97,88 +111,101 @@ class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
     }
   }
 
-  void _navigateToStats() {
-    Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => StrengthProgressPage(user: widget.user),
-    ));
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: AppBackground(
         child: SafeArea(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: StreamBuilder<QuerySnapshot>(
+            stream: _getRoutinesStream(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return const EmptyStateWidget(
+                    icon: Icons.error, title: 'Erro ao Carregar Fichas');
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return Column(
                   children: [
-                    Text('Minhas Fichas',
-                        style: Theme.of(context).textTheme.headlineSmall),
-                    Row(
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.bar_chart_rounded,
-                              color: primaryAccent),
-                          onPressed: _navigateToStats,
-                          tooltip: 'Ver Meu Progresso',
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.add_circle_outline,
-                              color: primaryAccent),
-                          onPressed: () => _navigateToEditRoutine(),
-                          tooltip: 'Nova Ficha',
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: _getRoutinesStream(),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (snapshot.hasError) {
-                      return const EmptyStateWidget(
-                          icon: Icons.error, title: 'Erro ao Carregar Fichas');
-                    }
-                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                      return const EmptyStateWidget(
+                    _buildHeader(context, hasContent: false),
+                    const Expanded(
+                      child: EmptyStateWidget(
                         icon: Icons.fitness_center,
                         title: 'Nenhuma Ficha de Treino',
                         message:
                             'Clique no botão "+" no canto superior para criar sua primeira rotina.',
-                      );
-                    }
+                      ),
+                    ),
+                  ],
+                );
+              }
 
-                    final routines = snapshot.data!.docs
-                        .map((doc) => WorkoutRoutine.fromFirestore(doc))
-                        .toList();
+              final routines = snapshot.data!.docs
+                  .map((doc) => WorkoutRoutine.fromFirestore(doc))
+                  .toList();
 
-                    return ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(8, 8, 8, 80),
-                      itemCount: routines.length,
-                      itemBuilder: (context, index) {
-                        final routine = routines[index];
-                        return _WorkoutRoutineCard(
-                          routine: routine,
-                          onStart: () => _navigateToWorkoutSession(routine),
-                          onEdit: () => _navigateToEditRoutine(routine),
-                          onDelete: () => _deleteRoutine(routine),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
+              // Lógica para o Treino do Dia
+              final today = DateFormat('EEEE', 'pt_BR').format(DateTime.now());
+              final todayRoutine = routines.firstWhereOrNull(
+                  (r) => r.daysOfWeek.any((day) => day == today));
+
+              return CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _buildHeader(context)),
+                  if (todayRoutine != null)
+                    SliverToBoxAdapter(
+                      child: _TodayWorkoutCard(
+                        routine: todayRoutine,
+                        onStart: () => _navigateToWorkoutSession(todayRoutine),
+                      ),
+                    ),
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                      child: Text(
+                          todayRoutine != null
+                              ? 'Outras Fichas'
+                              : 'Minhas Fichas',
+                          style: Theme.of(context).textTheme.titleMedium),
+                    ),
+                  ),
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 80),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          final routine = routines[index];
+                          // Não exibe a ficha do dia novamente na lista principal
+                          if (routine.id == todayRoutine?.id) {
+                            return const SizedBox.shrink();
+                          }
+                          return AnimationConfiguration.staggeredList(
+                            position: index,
+                            duration: const Duration(milliseconds: 375),
+                            child: SlideAnimation(
+                              verticalOffset: 50.0,
+                              child: FadeInAnimation(
+                                child: _WorkoutRoutineCard(
+                                  routine: routine,
+                                  onStart: () =>
+                                      _navigateToWorkoutSession(routine),
+                                  onEdit: () => _navigateToEditRoutine(routine),
+                                  onDelete: () => _deleteRoutine(routine),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                        childCount: routines.length,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -186,13 +213,108 @@ class _StrengthTrainingPageState extends State<StrengthTrainingPage> {
         onPressed: () => _navigateToWorkoutSession(null),
         label: const Text('Treino Livre'),
         icon: const Icon(Icons.directions_run),
-        heroTag: 'fab_free_workout',
+        heroTag: 'fab_free_workout_${widget.user.uid}',
+      ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context, {bool hasContent = true}) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Painel de Força',
+              style: Theme.of(context).textTheme.headlineSmall),
+          Row(
+            children: [
+              if (hasContent)
+                IconButton(
+                  icon:
+                      const Icon(Icons.bar_chart_rounded, color: primaryAccent),
+                  onPressed: _navigateToStats,
+                  tooltip: 'Ver Meu Progresso',
+                ),
+              IconButton(
+                icon:
+                    const Icon(Icons.add_circle_outline, color: primaryAccent),
+                onPressed: () => _navigateToEditRoutine(),
+                tooltip: 'Nova Ficha',
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-// Card para exibir uma ficha de treino
+// Card de destaque para o treino do dia
+class _TodayWorkoutCard extends StatelessWidget {
+  final WorkoutRoutine routine;
+  final VoidCallback onStart;
+
+  const _TodayWorkoutCard({required this.routine, required this.onStart});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Card(
+        elevation: 4,
+        shape: RoundedRectangleBorder(
+          side: const BorderSide(color: primaryAccent, width: 1.5),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                "TREINO DE HOJE",
+                style: TextStyle(
+                    color: primaryAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 1.1),
+              ),
+              const SizedBox(height: 8),
+              Text(routine.name,
+                  style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _InfoChip(
+                          icon: Icons.fitness_center,
+                          text: '${routine.items.length} exercícios'),
+                    ],
+                  ),
+                  ElevatedButton(
+                    onPressed: onStart,
+                    style: ElevatedButton.styleFrom(
+                      shape: const CircleBorder(),
+                      padding: const EdgeInsets.all(16),
+                      backgroundColor: successColor,
+                    ),
+                    child: const Icon(Icons.play_arrow_rounded,
+                        color: Colors.white),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Card minimalista para a lista de fichas de treino
 class _WorkoutRoutineCard extends StatelessWidget {
   final WorkoutRoutine routine;
   final VoidCallback onStart;
@@ -208,51 +330,27 @@ class _WorkoutRoutineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sortedDays = routine.daysOfWeek
-      ..sort((a, b) {
-        const order = {
-          'Segunda-feira': 1,
-          'Terça-feira': 2,
-          'Quarta-feira': 3,
-          'Quinta-feira': 4,
-          'Sexta-feira': 5,
-          'Sábado': 6,
-          'Domingo': 7
-        };
-        return (order[a] ?? 8).compareTo(order[b] ?? 8);
-      });
+    String subtitle = '${routine.items.length} exercícios';
+    if (routine.daysOfWeek.isNotEmpty) {
+      subtitle +=
+          '  •  ${routine.daysOfWeek.map((d) => d.substring(0, 3)).join(', ')}';
+    }
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-        child: Row(
+      child: ListTile(
+        leading:
+            const Icon(Icons.fitness_center_outlined, color: primaryAccent),
+        title:
+            Text(routine.name, style: Theme.of(context).textTheme.titleMedium),
+        subtitle: Text(subtitle, style: const TextStyle(color: textHint)),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(routine.name,
-                      style: Theme.of(context).textTheme.titleLarge),
-                  const SizedBox(height: 4),
-                  if (sortedDays.isNotEmpty)
-                    Text(sortedDays.join(', '),
-                        style: const TextStyle(
-                            color: textHint,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold)),
-                  Text('${routine.items.length} exercícios',
-                      style: const TextStyle(color: textHint)),
-                ],
-              ),
-            ),
-            ElevatedButton(
+            IconButton(
+              icon: const Icon(Icons.play_circle_fill_rounded,
+                  color: successColor),
               onPressed: onStart,
-              style: ElevatedButton.styleFrom(
-                shape: const CircleBorder(),
-                padding: const EdgeInsets.all(12),
-                backgroundColor: successColor,
-              ),
-              child: const Icon(Icons.play_arrow_rounded, color: Colors.white),
+              tooltip: 'Iniciar Treino',
             ),
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert, color: textHint),
@@ -270,6 +368,7 @@ class _WorkoutRoutineCard extends StatelessWidget {
             ),
           ],
         ),
+        onTap: onStart,
       ),
     );
   }
@@ -428,6 +527,57 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
     }
   }
 
+  Future<void> _showDaysSelectionDialog() async {
+    final List<String> tempSelectedDays = List.from(_selectedDays);
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Selecione os dias'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: _daysOfWeek
+                      .map((day) => CheckboxListTile(
+                            title: Text(day),
+                            value: tempSelectedDays.contains(day),
+                            onChanged: (bool? value) {
+                              setDialogState(() {
+                                if (value == true) {
+                                  tempSelectedDays.add(day);
+                                } else {
+                                  tempSelectedDays.remove(day);
+                                }
+                              });
+                            },
+                          ))
+                      .toList(),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  child: const Text('Cancelar'),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                ElevatedButton(
+                  child: const Text('OK'),
+                  onPressed: () {
+                    setState(() {
+                      _selectedDays = tempSelectedDays;
+                    });
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     bool canGroup = _selectedItemIds.length > 1 &&
@@ -488,28 +638,21 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
                             v!.trim().isEmpty ? 'O nome é obrigatório' : null,
                       ),
                       const SizedBox(height: 16),
-                      const Text('Dias da Semana (Opcional)',
-                          style: TextStyle(color: textHint)),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8.0,
-                        runSpacing: 4.0,
-                        children: _daysOfWeek.map((day) {
-                          final isSelected = _selectedDays.contains(day);
-                          return FilterChip(
-                            label: Text(day),
-                            selected: isSelected,
-                            onSelected: (selected) {
-                              setState(() {
-                                if (selected) {
-                                  _selectedDays.add(day);
-                                } else {
-                                  _selectedDays.remove(day);
-                                }
-                              });
-                            },
-                          );
-                        }).toList(),
+                      InkWell(
+                        onTap: _showDaysSelectionDialog,
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Dias da Semana (Opcional)',
+                            prefixIcon: Icon(Icons.calendar_today_outlined),
+                          ),
+                          child: Text(
+                            _selectedDays.isEmpty
+                                ? 'Clique para selecionar'
+                                : _selectedDays
+                                    .map((d) => d.substring(0, 3))
+                                    .join(', '),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -542,11 +685,12 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
 
     return ReorderableListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-      itemCount: groupedItems.length + 1, // +1 para o botão
+      itemCount: groupedItems.length + 1,
+      buildDefaultDragHandles: false,
       itemBuilder: (context, index) {
         if (index == groupedItems.length) {
           return Padding(
-            key: const ValueKey('add_button'),
+            key: const ValueKey('add_button_non_reorderable'),
             padding: const EdgeInsets.symmetric(vertical: 8.0),
             child: OutlinedButton.icon(
               onPressed: _addExercise,
@@ -575,6 +719,7 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
                     subItem,
                     isFirstInGroup: i == 0,
                     isLastInGroup: i == item.length - 1,
+                    reorderIndex: _items.indexOf(subItem),
                   );
                 }).toList(),
               ),
@@ -582,10 +727,19 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
           );
         } else {
           // É um item individual
-          return _buildItemCard(item);
+          final singleItem = item as RoutineItem;
+          return Container(
+            key: ValueKey(singleItem.id),
+            child: _buildItemCard(
+              singleItem,
+              reorderIndex: _items.indexOf(singleItem),
+            ),
+          );
         }
       },
       onReorder: (oldIndex, newIndex) {
+        if (oldIndex >= groupedItems.length) return;
+
         setState(() {
           if (oldIndex < newIndex) newIndex -= 1;
           if (newIndex >= groupedItems.length) {
@@ -607,8 +761,12 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
     );
   }
 
-  Widget _buildItemCard(RoutineItem item,
-      {bool isFirstInGroup = false, bool isLastInGroup = false}) {
+  Widget _buildItemCard(
+    RoutineItem item, {
+    required int reorderIndex,
+    bool isFirstInGroup = false,
+    bool isLastInGroup = false,
+  }) {
     final isSelected = _selectedItemIds.contains(item.id);
 
     return Material(
@@ -629,7 +787,7 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
                 )
               else
                 ReorderableDragStartListener(
-                  index: _items.indexOf(item),
+                  index: reorderIndex,
                   child: const Icon(Icons.drag_handle_rounded, color: textHint),
                 ),
               const SizedBox(width: 16),
@@ -656,6 +814,16 @@ class _EditWorkoutRoutinePageState extends State<EditWorkoutRoutinePage> {
               ),
               if (item.groupId != null)
                 const Icon(Icons.link, color: primaryAccent, size: 20),
+              if (!_isSelectionMode)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: errorColor),
+                  tooltip: 'Excluir Exercício',
+                  onPressed: () {
+                    setState(() {
+                      _items.remove(item);
+                    });
+                  },
+                ),
             ],
           ),
         ),
@@ -1322,9 +1490,6 @@ class __ExerciseExecutionCardState extends State<_ExerciseExecutionCard> {
   }
 }
 
-// ... (Restante do arquivo)
-
-// --- ADICIONE ESTE WIDGET NO FINAL DO ARQUIVO ---
 class _ExerciseHistoryDialog extends StatelessWidget {
   final String exerciseName;
   final List<Map<String, dynamic>> history;
@@ -1526,45 +1691,7 @@ class _ExerciseLibraryPageState extends State<ExerciseLibraryPage> {
   final _searchController = TextEditingController();
   String _selectedMuscleGroup = 'Todos';
 
-  static final List<Exercise> _predefinedExercises = [
-    Exercise(id: 'predef_1', name: 'Supino Reto (Barra)', muscleGroup: 'Peito'),
-    Exercise(
-        id: 'predef_2',
-        name: 'Agachamento Livre (Barra)',
-        muscleGroup: 'Pernas'),
-    Exercise(id: 'predef_3', name: 'Levantamento Terra', muscleGroup: 'Costas'),
-    Exercise(
-        id: 'predef_4',
-        name: 'Desenvolvimento (Halteres)',
-        muscleGroup: 'Ombros'),
-    Exercise(
-        id: 'predef_5', name: 'Puxada Frontal (Pulley)', muscleGroup: 'Costas'),
-    Exercise(
-        id: 'predef_6', name: 'Rosca Direta (Barra)', muscleGroup: 'Bíceps'),
-    Exercise(
-        id: 'predef_7',
-        name: 'Tríceps Testa (Barra W)',
-        muscleGroup: 'Tríceps'),
-    Exercise(id: 'predef_8', name: 'Leg Press 45', muscleGroup: 'Pernas'),
-    Exercise(
-        id: 'predef_9',
-        name: 'Elevação Lateral (Halteres)',
-        muscleGroup: 'Ombros'),
-    Exercise(
-        id: 'predef_10', name: 'Remada Curvada (Barra)', muscleGroup: 'Costas'),
-    Exercise(
-        id: 'predef_11',
-        name: 'Flexão de Braço',
-        muscleGroup: 'Peito',
-        equipment: 'Peso do Corpo'),
-    Exercise(
-        id: 'predef_12',
-        name: 'Barra Fixa',
-        muscleGroup: 'Costas',
-        equipment: 'Peso do Corpo'),
-  ];
-
-  static final List<String> _muscleGroups = [
+  static final List<String> _allMuscleGroups = [
     'Todos',
     'Peito',
     'Costas',
@@ -1573,8 +1700,25 @@ class _ExerciseLibraryPageState extends State<ExerciseLibraryPage> {
     'Bíceps',
     'Tríceps',
     'Abdômen',
+    'Aeróbico',
     'Outro',
   ];
+
+  List<String> _sortedMuscleGroups = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _sortedMuscleGroups = List.from(_allMuscleGroups);
+    _sortedMuscleGroups.sort((a, b) {
+      if (a == 'Todos') return -1;
+      if (b == 'Todos') return 1;
+      return a.compareTo(b);
+    });
+    _searchController.addListener(() {
+      setState(() {});
+    });
+  }
 
   @override
   void dispose() {
@@ -1588,18 +1732,12 @@ class _ExerciseLibraryPageState extends State<ExerciseLibraryPage> {
       builder: (_) => _AddEditExerciseDialog(
         user: widget.user,
         exercise: exercise,
-        muscleGroups: _muscleGroups.where((g) => g != 'Todos').toList(),
+        muscleGroups: _sortedMuscleGroups.where((g) => g != 'Todos').toList(),
       ),
     ).then((_) => setState(() {}));
   }
 
   void _deleteExercise(Exercise exercise) {
-    if (exercise.id.startsWith('predef_')) {
-      showBjjSnackBar(context, 'Você não pode excluir os exercícios padrão.',
-          type: 'info');
-      return;
-    }
-
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1639,37 +1777,40 @@ class _ExerciseLibraryPageState extends State<ExerciseLibraryPage> {
             children: [
               Padding(
                 padding: const EdgeInsets.all(16.0),
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    labelText: 'Buscar exercício...',
-                    prefixIcon: const Icon(Icons.search),
-                  ),
-                  onChanged: (value) => setState(() {}),
-                ),
-              ),
-              SizedBox(
-                height: 50,
-                child: ListView.builder(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _muscleGroups.length,
-                  itemBuilder: (context, index) {
-                    final group = _muscleGroups[index];
-                    final isSelected = _selectedMuscleGroup == group;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8.0),
-                      child: ChoiceChip(
-                        label: Text(group),
-                        selected: isSelected,
-                        onSelected: (selected) {
-                          if (selected) {
-                            setState(() => _selectedMuscleGroup = group);
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          labelText: 'Buscar exercício...',
+                          prefixIcon: const Icon(Icons.search),
+                        ),
+                        onChanged: (value) => setState(() {}),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 2,
+                      child: DropdownButtonFormField<String>(
+                        value: _selectedMuscleGroup,
+                        decoration: const InputDecoration(labelText: 'Grupo'),
+                        items: _sortedMuscleGroups.map((group) {
+                          return DropdownMenuItem(
+                            value: group,
+                            child: Text(group),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() => _selectedMuscleGroup = value);
                           }
                         },
                       ),
-                    );
-                  },
+                    ),
+                  ],
                 ),
               ),
               Expanded(
@@ -1691,15 +1832,7 @@ class _ExerciseLibraryPageState extends State<ExerciseLibraryPage> {
                             .toList()
                         : <Exercise>[];
 
-                    final allExercises = [
-                      ..._predefinedExercises,
-                      ...userExercises
-                    ];
-                    final uniqueExercises =
-                        {for (var e in allExercises) e.name: e}.values.toList();
-                    uniqueExercises.sort((a, b) => a.name.compareTo(b.name));
-
-                    if (uniqueExercises.isEmpty) {
+                    if (userExercises.isEmpty) {
                       return const EmptyStateWidget(
                         icon: Icons.fitness_center,
                         title: 'Nenhum Exercício Criado',
@@ -1709,7 +1842,7 @@ class _ExerciseLibraryPageState extends State<ExerciseLibraryPage> {
                     }
 
                     final searchQuery = _searchController.text.toLowerCase();
-                    final filteredExercises = uniqueExercises.where((ex) {
+                    final filteredExercises = userExercises.where((ex) {
                       final nameMatches =
                           ex.name.toLowerCase().contains(searchQuery);
                       final groupMatches = _selectedMuscleGroup == 'Todos' ||
@@ -1722,7 +1855,6 @@ class _ExerciseLibraryPageState extends State<ExerciseLibraryPage> {
                       itemCount: filteredExercises.length,
                       itemBuilder: (context, index) {
                         final exercise = filteredExercises[index];
-                        final isPredefined = exercise.id.startsWith('predef_');
 
                         return Card(
                           child: ListTile(
@@ -1740,9 +1872,8 @@ class _ExerciseLibraryPageState extends State<ExerciseLibraryPage> {
                               itemBuilder: (context) => [
                                 const PopupMenuItem(
                                     value: 'edit', child: Text('Editar')),
-                                if (!isPredefined)
-                                  const PopupMenuItem(
-                                      value: 'delete', child: Text('Excluir')),
+                                const PopupMenuItem(
+                                    value: 'delete', child: Text('Excluir')),
                               ],
                             ),
                             onTap: () {
@@ -1775,16 +1906,16 @@ class _ExerciseLibraryPageState extends State<ExerciseLibraryPage> {
   }
 }
 
-// -----------------------------------------------------------------------------
-// NOVO DIÁLOGO PARA ADICIONAR/EDITAR EXERCÍCIO
-// -----------------------------------------------------------------------------
 class _AddEditExerciseDialog extends StatefulWidget {
   final UserModel user;
   final Exercise? exercise;
   final List<String> muscleGroups;
 
-  const _AddEditExerciseDialog(
-      {required this.user, this.exercise, required this.muscleGroups});
+  const _AddEditExerciseDialog({
+    required this.user,
+    this.exercise,
+    required this.muscleGroups,
+  });
 
   @override
   State<_AddEditExerciseDialog> createState() => _AddEditExerciseDialogState();
@@ -1793,22 +1924,52 @@ class _AddEditExerciseDialog extends StatefulWidget {
 class _AddEditExerciseDialogState extends State<_AddEditExerciseDialog> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _equipmentController = TextEditingController();
   final _instructionsController = TextEditingController();
+  final _videoUrlController = TextEditingController();
   String? _selectedMuscleGroup;
+  String? _selectedEquipment;
   bool _isLoading = false;
+  List<String> _equipmentList = ['Peso do Corpo'];
 
   bool get _isEditing => widget.exercise != null;
 
   @override
   void initState() {
     super.initState();
+    _loadEquipment();
     if (_isEditing) {
       final ex = widget.exercise!;
       _nameController.text = ex.name;
-      _equipmentController.text = ex.equipment ?? '';
       _instructionsController.text = ex.instructions ?? '';
+      _videoUrlController.text = ex.videoUrl ?? '';
       _selectedMuscleGroup = ex.muscleGroup;
+      _selectedEquipment = ex.equipment;
+    }
+  }
+
+  Future<void> _loadEquipment() async {
+    final snapshot = await FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.user.uid)
+        .collection('user_equipment')
+        .orderBy('name')
+        .get();
+
+    if (mounted) {
+      final userEquipment =
+          snapshot.docs.map((doc) => doc['name'] as String).toList();
+
+      final String? exerciseEquipment =
+          _isEditing ? widget.exercise!.equipment : null;
+      if (exerciseEquipment != null &&
+          exerciseEquipment != 'Peso do Corpo' &&
+          !userEquipment.contains(exerciseEquipment)) {
+        userEquipment.insert(0, exerciseEquipment);
+      }
+
+      setState(() {
+        _equipmentList = ['Peso do Corpo', ...userEquipment];
+      });
     }
   }
 
@@ -1819,8 +1980,9 @@ class _AddEditExerciseDialogState extends State<_AddEditExerciseDialog> {
     final exerciseData = {
       'name': _nameController.text.trim(),
       'muscleGroup': _selectedMuscleGroup,
-      'equipment': _equipmentController.text.trim(),
+      'equipment': _selectedEquipment,
       'instructions': _instructionsController.text.trim(),
+      'videoUrl': _videoUrlController.text.trim(),
     };
 
     final collection = FirebaseFirestore.instance
@@ -1829,7 +1991,7 @@ class _AddEditExerciseDialogState extends State<_AddEditExerciseDialog> {
         .collection('exercises');
 
     try {
-      if (_isEditing && !widget.exercise!.id.startsWith('predef_')) {
+      if (_isEditing) {
         await collection.doc(widget.exercise!.id).update(exerciseData);
       } else {
         await collection.add(exerciseData);
@@ -1844,8 +2006,78 @@ class _AddEditExerciseDialogState extends State<_AddEditExerciseDialog> {
     }
   }
 
+  void _showManageEquipmentDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => _ManageEquipmentDialog(user: widget.user),
+    ).then((_) => _loadEquipment());
+  }
+
+  void _showAddEquipmentDialog() async {
+    final controller = TextEditingController();
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Novo Equipamento'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: 'Ex: Halteres'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancelar')),
+          ElevatedButton(
+            onPressed: () async {
+              final newName = controller.text.trim();
+              if (newName.isNotEmpty) {
+                await FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(widget.user.uid)
+                    .collection('user_equipment')
+                    .add({'name': newName});
+                Navigator.pop(context, newName); // Retorna o novo nome
+              }
+            },
+            child: const Text('Adicionar'),
+          ),
+        ],
+      ),
+    ).then((newName) async {
+      if (newName != null && newName is String) {
+        await _loadEquipment(); // Espera a lista ser atualizada
+        setState(() => _selectedEquipment = newName);
+      }
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
+    final List<String> groupsWithoutOther =
+        widget.muscleGroups.where((g) => g != 'Outro').toList();
+    groupsWithoutOther.sort();
+
+    final List<DropdownMenuItem<String>> dropdownItems =
+        groupsWithoutOther.map((group) {
+      return DropdownMenuItem<String>(
+        value: group,
+        child: Text(group),
+      );
+    }).toList();
+
+    if (groupsWithoutOther.isNotEmpty) {
+      dropdownItems.add(
+        const DropdownMenuItem<String>(
+          enabled: false,
+          child: Divider(height: 0, thickness: 1, color: borderNormal),
+        ),
+      );
+    }
+    dropdownItems.add(
+      const DropdownMenuItem<String>(value: 'Outro', child: Text('Outro')),
+    );
+
     return AlertDialog(
       title: Text(_isEditing ? 'Editar Exercício' : 'Novo Exercício'),
       content: Form(
@@ -1863,26 +2095,50 @@ class _AddEditExerciseDialogState extends State<_AddEditExerciseDialog> {
               DropdownButtonFormField<String>(
                 value: _selectedMuscleGroup,
                 decoration: const InputDecoration(labelText: 'Grupo Muscular'),
-                items: widget.muscleGroups
-                    .map((group) =>
-                        DropdownMenuItem(value: group, child: Text(group)))
-                    .toList(),
-                onChanged: (value) =>
-                    setState(() => _selectedMuscleGroup = value),
+                items: dropdownItems,
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() => _selectedMuscleGroup = value);
+                  }
+                },
                 validator: (v) => v == null ? 'Campo obrigatório' : null,
               ),
               const SizedBox(height: 16),
-              TextFormField(
-                controller: _equipmentController,
+              DropdownButtonFormField<String>(
+                value: _selectedEquipment,
                 decoration:
                     const InputDecoration(labelText: 'Equipamento (opcional)'),
+                items: _equipmentList
+                    .map((eq) => DropdownMenuItem(value: eq, child: Text(eq)))
+                    .toList(),
+                onChanged: (value) =>
+                    setState(() => _selectedEquipment = value),
               ),
-              const SizedBox(height: 16),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                      icon: const Icon(Icons.settings, size: 16),
+                      label: const Text('Gerenciar'),
+                      onPressed: _showManageEquipmentDialog),
+                  TextButton.icon(
+                      icon: const Icon(Icons.add_circle_outline, size: 16),
+                      label: const Text('Adicionar'),
+                      onPressed: _showAddEquipmentDialog),
+                ],
+              ),
+              const SizedBox(height: 8),
               TextFormField(
                 controller: _instructionsController,
                 decoration:
                     const InputDecoration(labelText: 'Instruções (opcional)'),
                 maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _videoUrlController,
+                decoration: const InputDecoration(
+                    labelText: 'Link do Vídeo (opcional)'),
               ),
             ],
           ),
@@ -1901,15 +2157,80 @@ class _AddEditExerciseDialogState extends State<_AddEditExerciseDialog> {
   }
 }
 
-// -----------------------------------------------------------------------------
-// TELA DE DETALHES DO EXERCÍCIO
-// -----------------------------------------------------------------------------
+class _ManageEquipmentDialog extends StatelessWidget {
+  final UserModel user;
+  const _ManageEquipmentDialog({required this.user});
+
+  @override
+  Widget build(BuildContext context) {
+    final collection = FirebaseFirestore.instance
+        .collection('users')
+        .doc(user.uid)
+        .collection('user_equipment');
+
+    return AlertDialog(
+      title: const Text('Gerenciar Equipamentos'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: StreamBuilder<QuerySnapshot>(
+          stream: collection.orderBy('name').snapshots(),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            if (snapshot.data!.docs.isEmpty) {
+              return const Center(
+                  child: Text('Nenhum equipamento personalizado.'));
+            }
+            return ListView.builder(
+              shrinkWrap: true,
+              itemCount: snapshot.data!.docs.length,
+              itemBuilder: (context, index) {
+                final doc = snapshot.data!.docs[index];
+                final name = doc['name'] as String;
+                return ListTile(
+                  title: Text(name),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, color: errorColor),
+                    onPressed: () => doc.reference.delete(),
+                  ),
+                );
+              },
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Fechar'),
+        ),
+      ],
+    );
+  }
+}
+
 class ExerciseDetailPage extends StatelessWidget {
   final Exercise exercise;
   const ExerciseDetailPage({super.key, required this.exercise});
 
+  Future<void> _launchUrl(BuildContext context) async {
+    if (exercise.videoUrl == null || exercise.videoUrl!.isEmpty) return;
+
+    final uri = Uri.parse(exercise.videoUrl!);
+    if (!await canLaunchUrl(uri)) {
+      showBjjSnackBar(
+          context, 'Não foi possível abrir o link: ${exercise.videoUrl}',
+          type: 'error');
+    } else {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final hasVideo = exercise.videoUrl != null && exercise.videoUrl!.isNotEmpty;
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: Text(exercise.name)),
@@ -1918,26 +2239,36 @@ class ExerciseDetailPage extends StatelessWidget {
           child: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              // Placeholder para a animação/vídeo
-              Container(
-                height: 200,
-                decoration: BoxDecoration(
-                  color: darkSurface,
-                  borderRadius: BorderRadius.circular(12),
+              GestureDetector(
+                onTap: hasVideo ? () => _launchUrl(context) : null,
+                child: Container(
+                  height: 200,
+                  decoration: BoxDecoration(
+                    color: darkSurface,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(
+                      child: Icon(
+                    hasVideo
+                        ? Icons.play_circle_fill_rounded
+                        : Icons.videocam_off_outlined,
+                    size: 60,
+                    color: textHint,
+                  )),
                 ),
-                child: const Center(
-                    child: Icon(Icons.videocam_outlined,
-                        size: 60, color: textHint)),
               ),
               const SizedBox(height: 24),
               _buildInfoRow(context, 'Grupo Muscular', exercise.muscleGroup),
-              if (exercise.equipment != null)
+              if (exercise.equipment != null && exercise.equipment!.isNotEmpty)
                 _buildInfoRow(context, 'Equipamento', exercise.equipment!),
               const Divider(height: 32),
               Text('Instruções', style: Theme.of(context).textTheme.titleLarge),
               const SizedBox(height: 8),
               Text(
-                exercise.instructions ?? 'Instruções não disponíveis.',
+                exercise.instructions != null &&
+                        exercise.instructions!.isNotEmpty
+                    ? exercise.instructions!
+                    : 'Instruções não disponíveis.',
                 style: const TextStyle(
                     fontSize: 16, height: 1.5, color: textSecondary),
               ),
@@ -1971,9 +2302,6 @@ class ExerciseDetailPage extends StatelessWidget {
   }
 }
 
-// -----------------------------------------------------------------------------
-// TELA DE ESTATÍSTICAS DE FORÇA (COM ABAS)
-// -----------------------------------------------------------------------------
 class StrengthProgressPage extends StatefulWidget {
   final UserModel user;
   const StrengthProgressPage({super.key, required this.user});
@@ -2095,9 +2423,9 @@ class _WorkoutLogCard extends StatelessWidget {
 
     return Card(
       child: ListTile(
+        leading: const Icon(Icons.fitness_center, color: primaryAccent),
         title: Text(log.routineName),
         subtitle: Text(subtitle),
-        leading: const Icon(Icons.fitness_center, color: primaryAccent),
         trailing: Text(
           '${formatter.format(totalVolume)} kg',
           style: const TextStyle(
@@ -2201,7 +2529,6 @@ class WorkoutLogDetailPage extends StatelessWidget {
   }
 }
 
-// O restante do arquivo (CalendarHeatmap, etc) permanece o mesmo
 class _CalendarHeatmap extends StatefulWidget {
   final List<WorkoutLog> logs;
   const _CalendarHeatmap({required this.logs});
