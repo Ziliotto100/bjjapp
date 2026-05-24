@@ -99,7 +99,8 @@ class _FinancialStudentListPageState extends State<FinancialStudentListPage> {
       body: AppBackground(
         child: SafeArea(
           child: _studentsList.isEmpty
-              ? EmptyStateWidget(
+              ? const EmptyStateWidget(
+                  // Conteúdo inalterado
                   icon: Icons.check_circle_outline,
                   title: 'Nenhum Aluno',
                   message: 'Não há mais alunos nesta categoria.',
@@ -119,6 +120,7 @@ class _FinancialStudentListPageState extends State<FinancialStudentListPage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
+                              // Conteúdo inalterado
                               children: [
                                 Expanded(
                                   child: Text(student.nome,
@@ -127,44 +129,57 @@ class _FinancialStudentListPageState extends State<FinancialStudentListPage> {
                                           .titleMedium),
                                 ),
                                 if (!hasPhone)
-                                  Tooltip(
+                                  const Tooltip(
+                                    // Conteúdo inalterado
                                     message: 'Telefone não cadastrado',
                                     child: Icon(Icons.warning_amber_rounded,
                                         color: warningColor, size: 20),
                                   ),
                               ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(student.faixa,
+                            const SizedBox(height: 4), // Conteúdo inalterado
+                            Text(student.faixa, // Conteúdo inalterado
                                 style: const TextStyle(color: textHint)),
                             const Divider(height: 16),
+                            // --- INÍCIO DA CORREÇÃO ---
                             Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
-                                OutlinedButton.icon(
-                                  icon: const Icon(Icons.message_outlined,
-                                      size: 18),
-                                  label: const Text('Lembrar'),
-                                  onPressed: hasPhone
-                                      ? () => _sendWhatsAppReminder(student)
-                                      : null,
-                                  style: OutlinedButton.styleFrom(
-                                    foregroundColor: textHint,
-                                    side: const BorderSide(color: borderNormal),
+                                // Botão Lembrar dentro de Expanded
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    icon: const Icon(Icons.message_outlined,
+                                        size: 18),
+                                    label: const Text('Lembrar'),
+                                    onPressed: hasPhone
+                                        ? () => _sendWhatsAppReminder(student)
+                                        : null,
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: textHint,
+                                      side:
+                                          const BorderSide(color: borderNormal),
+                                    ),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                ElevatedButton.icon(
-                                  icon: const Icon(Icons.payment_rounded,
-                                      size: 18),
-                                  label: const Text('Registrar'),
-                                  onPressed: () => _registerPayment(student),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: successColor,
+                                const SizedBox(width: 8), // Espaço entre botões
+                                // Botão Registrar dentro de Expanded
+                                Expanded(
+                                  child: ElevatedButton.icon(
+                                    icon: const Icon(Icons.payment_rounded,
+                                        size: 18),
+                                    label: const Text('Registrar'),
+                                    onPressed: () => _registerPayment(student),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: successColor,
+                                      // Garante que o texto não quebre linha facilmente
+                                      textStyle: const TextStyle(
+                                          overflow: TextOverflow.ellipsis),
+                                    ),
                                   ),
                                 ),
                               ],
                             )
+                            // --- FIM DA CORREÇÃO ---
                           ],
                         ),
                       ),

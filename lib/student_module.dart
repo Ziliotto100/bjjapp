@@ -23,6 +23,7 @@ import 'auth_gate.dart';
 import 'navigation_service.dart';
 import 'app_drawer.dart';
 import 'graduation_timeline_page.dart';
+import 'teacher_class_log_module.dart';
 
 // --- TELAS DO ALUNO ---
 class StudentHomePage extends StatefulWidget {
@@ -65,6 +66,15 @@ class _StudentHomePageState extends State<StudentHomePage> {
       currentPlan: widget.currentPlan, // Passando o plano
     );
     _loadInitialData();
+  }
+
+  @override
+  void didUpdateWidget(covariant StudentHomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.user.name != widget.user.name ||
+        oldWidget.user.profileImagePath != widget.user.profileImagePath) {
+      setState(() {});
+    }
   }
 
   @override
@@ -569,7 +579,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                     color: textHint),
                                 title: const Text("Sua Faixa Atual"),
                                 subtitle: Text(
-                                  '${_currentAlunoData!.faixa}${_currentAlunoData!.graus != null && _currentAlunoData!.graus! > 0 ? " - ${_currentAlunoData!.graus}º Grau" : ""}',
+                                  '${_currentAlunoData!.faixa}${_currentAlunoData!.graus != null && _currentAlunoData!.graus! > 0 ? " - ${_currentAlunoData!.graus}Âº Grau" : ""}',
                                   style: Theme.of(context)
                                       .textTheme
                                       .titleSmall
@@ -734,6 +744,30 @@ class MyCheckinsPage extends StatefulWidget {
 
 class _MyCheckinsPageState extends State<MyCheckinsPage> {
   DateTime _focusedDay = DateTime.now();
+  DateTime? _systemStartDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSystemStartDate();
+  }
+
+  Future<void> _loadSystemStartDate() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .get();
+      final data = doc.data();
+      if (data != null && data['systemStartDate'] != null) {
+        final ts = data['systemStartDate'] as Timestamp;
+        final d = ts.toDate();
+        if (mounted) {
+          setState(() => _systemStartDate = DateTime(d.year, d.month, d.day));
+        }
+      }
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -761,11 +795,18 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final allCheckins = snapshot.data?.docs
+        final rawCheckins = snapshot.data?.docs
                 .map((doc) => CheckinEntry.fromJson(
                     doc.id, doc.data() as Map<String, dynamic>))
                 .toList() ??
             [];
+
+        // Filtrar pela data de início do sistema, se definida
+        final allCheckins = _systemStartDate == null
+            ? rawCheckins
+            : rawCheckins
+                .where((c) => !c.date.isBefore(_systemStartDate!))
+                .toList();
 
         final eventosAgrupados = <DateTime, List<CheckinEntry>>{};
         for (var checkin in allCheckins) {
@@ -872,6 +913,28 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
                 ),
               ),
             ),
+            if (widget.user.role == UserRole.teacher)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                child: Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.calendar_month_rounded,
+                        color: primaryAccent),
+                    title: const Text('Histórico de Aulas Ministradas'),
+                    trailing:
+                        const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+                    onTap: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => TeacherClassLogPage(
+                          professor: widget.user,
+                          academyId: widget.user.academyId,
+                          canEdit: true,
+                        ),
+                      ));
+                    },
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -1467,7 +1530,7 @@ class _UserProfilePageState extends State<UserProfilePage> {
       belt = user.faixa ?? "Não informada";
       degrees = user.graus;
     }
-    if (degrees != null && degrees > 0) return '$belt - $degreesº Grau';
+    if (degrees != null && degrees > 0) return '$belt - $degreesÂº Grau';
     return belt;
   }
 }
@@ -1804,7 +1867,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                               color: textHint),
                           title: const Text("Sua Faixa Atual"),
                           subtitle: Text(
-                            '${widget.user.faixa}${widget.user.graus != null && widget.user.graus! > 0 ? " - ${widget.user.graus}º Grau" : ""}',
+                            '${widget.user.faixa}${widget.user.graus != null && widget.user.graus! > 0 ? " - ${widget.user.graus}Âº Grau" : ""}',
                             style: Theme.of(context)
                                 .textTheme
                                 .titleMedium

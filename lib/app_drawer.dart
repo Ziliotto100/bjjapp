@@ -1,11 +1,11 @@
 // lib/app_drawer.dart
 // ignore_for_file: unused_import, unnecessary_to_list_in_spreads, use_build_context_synchronously
 
-import 'package:cached_network_image/cached_network_image.dart';
+import 'package:cached_network_image/cached_network_image.dart'; // <<< GARANTIR ESTE IMPORT
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/services.dart'; // IMPORTAÇÃO NECESSÁRIA
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 import 'models.dart';
@@ -39,12 +39,18 @@ class AppDrawer extends StatefulWidget {
 class _AppDrawerState extends State<AppDrawer> {
   String? _academyLogoUrl;
   String _appVersion = '';
+  // --- NOVA VARIÁVEL DE ESTADO ---
+  String? _academyName;
+  // --- FIM DA NOVA VARIÁVEL ---
 
   @override
   void initState() {
     super.initState();
     _fetchAcademyLogo();
     _loadVersionInfo();
+    // --- CHAMADA PARA BUSCAR NOME DA ACADEMIA ---
+    _fetchAcademyName();
+    // --- FIM DA CHAMADA ---
   }
 
   Future<void> _loadVersionInfo() async {
@@ -74,7 +80,31 @@ class _AppDrawerState extends State<AppDrawer> {
     }
   }
 
-  // --- NOVA FUNÇÃO PARA COPIAR O ID ---
+  // --- NOVA FUNÇÃO PARA BUSCAR NOME DA ACADEMIA ---
+  Future<void> _fetchAcademyName() async {
+    // Não busca se for Super Admin (não tem academia associada)
+    if (widget.user.role == UserRole.superAdmin ||
+        widget.user.academyId.isEmpty) {
+      return;
+    }
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .get();
+      if (doc.exists && mounted) {
+        setState(() {
+          _academyName = doc.data()?['name'];
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching academy name: $e");
+      // Opcional: definir um nome padrão em caso de erro
+      // if (mounted) setState(() => _academyName = "Academia");
+    }
+  }
+  // --- FIM DA NOVA FUNÇÃO ---
+
   void _copyUserIdToClipboard() {
     Clipboard.setData(ClipboardData(text: widget.user.uid)).then((_) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -92,12 +122,18 @@ class _AppDrawerState extends State<AppDrawer> {
       backgroundColor: darkScaffoldBackground,
       child: Column(
         children: [
+          // --- HEADER CUSTOMIZADO CHAMADO AQUI ---
+          _buildDrawerHeader(context),
+          // --- FIM DA CHAMADA ---
+          const Divider(color: borderNormal, height: 1), // Linha divisória
           Expanded(
             child: ListView(
-              padding: EdgeInsets.zero,
+              padding: EdgeInsets.zero, // Remove padding padrão do ListView
               children: [
-                _buildDrawerHeader(context),
-                const Divider(color: borderNormal),
+                // Não precisa mais do _buildDrawerHeader aqui dentro
+                // A linha divisória já foi adicionada acima
+
+                // ... (Restante dos itens do menu como antes) ...
                 ...sortedDrawerModules.map((module) {
                   if (module.subModules != null &&
                       module.subModules!.isNotEmpty) {
@@ -172,6 +208,7 @@ class _AppDrawerState extends State<AppDrawer> {
   }
 
   List<AppModule> _getSortedModules(List<AppModule> modules) {
+    // ...(lógica de ordenação inalterada)...
     AppModule? inicioModule;
     AppModule? financeiroModule;
 
@@ -201,45 +238,84 @@ class _AppDrawerState extends State<AppDrawer> {
 
   // --- HEADER DO MENU ATUALIZADO ---
   Widget _buildDrawerHeader(BuildContext context) {
-    return UserAccountsDrawerHeader(
-      accountName: Text(widget.user.name,
-          style: Theme.of(context).textTheme.titleMedium),
-      accountEmail: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    // Usar DrawerHeader para melhor adaptação à área do cabeçalho
+    return DrawerHeader(
+      decoration: const BoxDecoration(color: darkSurface),
+      padding:
+          const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0), // Padding ajustado
+      margin: EdgeInsets.zero, // Remove margem padrão
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center, // Alinha verticalmente
         children: [
-          Text(widget.user.email, style: const TextStyle(color: textHint)),
-          const SizedBox(height: 4),
-          InkWell(
-            onTap: _copyUserIdToClipboard,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          // Logo
+          CircleAvatar(
+            radius: 30, // Raio do círculo do logo
+            backgroundColor: Colors.white.withOpacity(0.1), // Fundo suave
+            backgroundImage:
+                (_academyLogoUrl != null && _academyLogoUrl!.isNotEmpty)
+                    ? CachedNetworkImageProvider(_academyLogoUrl!)
+                    : null,
+            child: (_academyLogoUrl == null || _academyLogoUrl!.isEmpty)
+                ? Icon(
+                    // Ícone fallback (ajustar se necessário)
+                    widget.user.role == UserRole.superAdmin
+                        ? Icons.shield_outlined
+                        : Icons.business,
+                    color: textHint,
+                    size: 30)
+                : null,
+          ),
+          const SizedBox(width: 16), // Espaçamento entre logo e texto
+          // Coluna com Nome do Usuário e Nome da Academia
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment:
+                  MainAxisAlignment.center, // Centraliza textos na coluna
               children: [
+                // Nome do Usuário
                 Text(
-                  'ID: ${widget.user.uid}',
-                  style: const TextStyle(color: textHint, fontSize: 12),
-                  overflow: TextOverflow.ellipsis,
+                  widget.user.name,
+                  style: Theme.of(context).textTheme.titleMedium,
+                  overflow: TextOverflow.ellipsis, // Evita quebra de linha
                 ),
-                const SizedBox(width: 4),
-                const Icon(Icons.copy, size: 12, color: textHint),
+                const SizedBox(height: 4), // Espaço entre os nomes
+                // Nome da Academia (se existir)
+                if (_academyName != null)
+                  Text(
+                    _academyName!,
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodySmall
+                        ?.copyWith(color: textHint),
+                    overflow: TextOverflow.ellipsis, // Evita quebra de linha
+                  ),
+                const SizedBox(height: 8), // Espaço antes do ID
+                // ID do Usuário (com cópia) - Menor e mais discreto
+                InkWell(
+                  onTap: _copyUserIdToClipboard,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Flexible(
+                        // Para evitar overflow do ID
+                        child: Text(
+                          'ID: ${widget.user.uid}',
+                          style: const TextStyle(color: textHint, fontSize: 10),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      const Icon(Icons.copy, size: 10, color: textHint),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
         ],
       ),
-      currentAccountPicture: CircleAvatar(
-        radius: 30,
-        backgroundColor: Colors.white,
-        backgroundImage:
-            (_academyLogoUrl != null && _academyLogoUrl!.isNotEmpty)
-                ? CachedNetworkImageProvider(_academyLogoUrl!)
-                : null,
-        child: (_academyLogoUrl == null || _academyLogoUrl!.isEmpty)
-            ? const Icon(Icons.business, color: textHint, size: 30)
-            : null,
-      ),
-      decoration: const BoxDecoration(
-        color: darkSurface,
-      ),
     );
   }
+  // --- FIM DA ATUALIZAÇÃO DO HEADER ---
 }

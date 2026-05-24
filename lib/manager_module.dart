@@ -29,6 +29,7 @@ import 'academy_profile_page.dart';
 import 'manager_reports_page.dart';
 import 'financial_student_list_page.dart';
 import 'tutorials_module.dart';
+import 'teacher_class_log_module.dart';
 
 // --- FUNÇÃO DE LOG DE AUDITORIA ---
 Future<void> _createAuditLog({
@@ -84,7 +85,7 @@ int _getBeltIndex(String faixa) {
   return index == -1 ? 99 : index;
 }
 
-// --- LÓGICA DE GERENCIAMENTO DE USUÁRIOS ---
+// --- LÃ“GICA DE GERENCIAMENTO DE USUÃRIOS ---
 class UserManagementService {
   static Future<void> promoteToTeacher(BuildContext context,
       {required String academyId,
@@ -251,6 +252,16 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     );
     _loadInitialData();
     _listenToSparringState();
+  }
+
+  @override
+  void didUpdateWidget(covariant ManagerHomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.user.name != widget.user.name ||
+        oldWidget.user.profileImagePath != widget.user.profileImagePath) {
+      setState(() => _currentUser = widget.user);
+      if (!_isLoading) _rebuildScreens();
+    }
   }
 
   @override
@@ -1128,7 +1139,7 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
     super.dispose();
   }
 
-  // --- INÍCIO DA OTIMIZAÇÃO ---
+  // --- INÃCIO DA OTIMIZAÇÃO ---
   Stream<QuerySnapshot> _buildStudentQuery() {
     Query query = FirebaseFirestore.instance
         .collection('academies')
@@ -1327,7 +1338,7 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
               final usersMap = usersSnapshot.data ?? {};
 
               return StreamBuilder<QuerySnapshot>(
-                // --- INÍCIO DA OTIMIZAÇÃO ---
+                // --- INÃCIO DA OTIMIZAÇÃO ---
                 stream: _buildStudentQuery(),
                 // --- FIM DA OTIMIZAÇÃO ---
                 builder: (context, snapshot) {
@@ -1469,7 +1480,7 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
     super.dispose();
   }
 
-  // --- INÍCIO DA OTIMIZAÇÃO ---
+  // --- INÃCIO DA OTIMIZAÇÃO ---
   Stream<QuerySnapshot> _buildTeacherQuery() {
     Query query = FirebaseFirestore.instance
         .collection('users')
@@ -1647,7 +1658,7 @@ class _ProfessoresManagerPageState extends State<ProfessoresManagerPage> {
         ),
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
-            // --- INÍCIO DA OTIMIZAÇÃO ---
+            // --- INÃCIO DA OTIMIZAÇÃO ---
             stream: _buildTeacherQuery(),
             // --- FIM DA OTIMIZAÇÃO ---
             builder: (context, snapshot) {
@@ -2288,7 +2299,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                                 value: null, child: Text("Nenhum")),
                             ...grausList.map((v) => DropdownMenuItem<int>(
                                 value: v,
-                                child: Text('$vº Grau',
+                                child: Text('$vÂº Grau',
                                     overflow: TextOverflow.ellipsis)))
                           ].toList())
                     ],
@@ -2975,7 +2986,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                                 value: null, child: Text("Nenhum")),
                             ..._grausList.map((g) => DropdownMenuItem(
                                 value: g,
-                                child: Text("$gº Grau",
+                                child: Text("$gÂº Grau",
                                     overflow: TextOverflow.ellipsis))),
                           ],
                           onChanged: (value) => setState(() => _graus = value),
@@ -3440,8 +3451,8 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                         value: null, child: Text("Nenhum")),
                     ..._grausList.map((g) => DropdownMenuItem(
                         value: g,
-                        child:
-                            Text("$gº Grau", overflow: TextOverflow.ellipsis))),
+                        child: Text("$gÂº Grau",
+                            overflow: TextOverflow.ellipsis))),
                   ],
                   onChanged: (value) => setState(() => _graus = value),
                 ),
@@ -3712,7 +3723,7 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
                               icon: Icons.person_search,
                               title: "Nenhum Aluno Encontrado",
                               message:
-                                  "Nenhum aluno corresponde à sua busca '$_searchQuery'.",
+                                  "Nenhum aluno corresponde Ã  sua busca '$_searchQuery'.",
                             )
                           : ListView.builder(
                               padding: const EdgeInsets.fromLTRB(
@@ -4092,7 +4103,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     _detailsFuture = _fetchAllDetails();
   }
 
-  // --- INÍCIO DA CORREÇÃO ---
+  // --- INÃCIO DA CORREÇÃO ---
   Future<Map<String, dynamic>> _fetchAllDetails() async {
     // A consulta agora busca na coleção principal de checkins da academia,
     // filtrando pelo ID do aluno, que é o correto.
@@ -4216,7 +4227,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                           if (widget.student.graus != null &&
                               widget.student.graus! > 0)
                             _buildInfoRow(context, Icons.star_outline_rounded,
-                                "Graus", '${widget.student.graus}º Grau'),
+                                "Graus", '${widget.student.graus}Âº Grau'),
                           _buildInfoRow(context, Icons.fitness_center_rounded,
                               "Peso", '${widget.student.peso} kg'),
                           const Divider(height: 20),
@@ -4232,7 +4243,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                             _buildInfoRow(
                                 context,
                                 Icons.edit_note_rounded,
-                                "Última Edição",
+                                "Ãšltima Edição",
                                 '${widget.student.lastUpdatedByName} em ${DateFormat.yMd('pt_BR').format(updatedAt)}'),
                         ],
                       ),
@@ -4341,6 +4352,19 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
         title: Text(widget.professor.name),
         actions: [
           IconButton(
+            icon: const Icon(Icons.calendar_month_rounded),
+            tooltip: 'Registro de Aulas',
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => TeacherClassLogPage(
+                  professor: widget.professor,
+                  academyId: widget.academyId,
+                  canEdit: false,
+                ),
+              ));
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.military_tech_rounded),
             tooltip: 'Histórico de Graduações',
             onPressed: () {
@@ -4384,7 +4408,7 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
                         if (widget.professor.graus != null &&
                             widget.professor.graus! > 0)
                           _buildInfoRow(context, Icons.star_outline_rounded,
-                              "Graus", '${widget.professor.graus}º Grau'),
+                              "Graus", '${widget.professor.graus}Âº Grau'),
                         if (widget.professor.peso != null)
                           _buildInfoRow(context, Icons.fitness_center_rounded,
                               "Peso", '${widget.professor.peso} kg'),
@@ -4406,7 +4430,7 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
                         _buildInfoRow(
                             context,
                             Icons.edit_note_rounded,
-                            "Última Edição",
+                            "Ãšltima Edição",
                             '${widget.professor.lastUpdatedByName} em ${DateFormat.yMd('pt_BR').format(updatedAt)}'),
                     ],
                   ),
@@ -4445,12 +4469,12 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
 
 class ManagerSettingsPage extends StatefulWidget {
   final UserModel user;
-  final SubscriptionPlan? currentPlan; // PARÂMETRO ADICIONADO
+  final SubscriptionPlan? currentPlan; // PARÃ‚METRO ADICIONADO
 
   const ManagerSettingsPage({
     super.key,
     required this.user,
-    this.currentPlan, // PARÂMETRO ADICIONADO
+    this.currentPlan, // PARÃ‚METRO ADICIONADO
   });
 
   @override
@@ -4577,6 +4601,25 @@ class _ManagerSettingsPageState extends State<ManagerSettingsPage> {
                         onTap: () {
                           Navigator.of(context).push(MaterialPageRoute(
                             builder: (_) => const ChangeEmailPage(),
+                          ));
+                        },
+                      ),
+                    ),
+                    const Divider(),
+                    Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.restart_alt_rounded,
+                            color: warningColor),
+                        title: const Text("Data de Início do Sistema"),
+                        subtitle: const Text(
+                            "Define a partir de quando as presenças são contadas"),
+                        trailing: const Icon(Icons.arrow_forward_ios_rounded,
+                            size: 16),
+                        onTap: () {
+                          Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => SystemStartDatePage(
+                              academyId: widget.user.academyId,
+                            ),
                           ));
                         },
                       ),
@@ -4819,7 +4862,7 @@ class _GraduationDialogState extends State<GraduationDialog> {
                   ..._grausList.map((g) => DropdownMenuItem(
                       value: g,
                       child:
-                          Text("$gº Grau", overflow: TextOverflow.ellipsis))),
+                          Text("$gÂº Grau", overflow: TextOverflow.ellipsis))),
                 ],
                 onChanged: (value) {
                   setState(() {
@@ -5062,7 +5105,7 @@ class _EditGraduationDialogState extends State<EditGraduationDialog> {
                   ..._grausList.map((g) => DropdownMenuItem(
                       value: g,
                       child:
-                          Text("$gº Grau", overflow: TextOverflow.ellipsis))),
+                          Text("$gÂº Grau", overflow: TextOverflow.ellipsis))),
                 ],
                 onChanged: (value) => setState(() => _selectedGrau = value),
               ),
@@ -5103,6 +5146,338 @@ class _EditGraduationDialogState extends State<EditGraduationDialog> {
               : const Text('Salvar'),
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Página: Data de Início do Sistema
+// ─────────────────────────────────────────────────────────────
+class SystemStartDatePage extends StatefulWidget {
+  final String academyId;
+  const SystemStartDatePage({super.key, required this.academyId});
+
+  @override
+  State<SystemStartDatePage> createState() => _SystemStartDatePageState();
+}
+
+class _SystemStartDatePageState extends State<SystemStartDatePage> {
+  DateTime? _currentStartDate;
+  bool _isLoading = true;
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentDate();
+  }
+
+  Future<void> _loadCurrentDate() async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .get();
+      final data = doc.data();
+      if (data != null && data['systemStartDate'] != null) {
+        final ts = data['systemStartDate'] as Timestamp;
+        final d = ts.toDate();
+        setState(() => _currentStartDate = DateTime(d.year, d.month, d.day));
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao carregar configuração.',
+            type: 'error');
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _currentStartDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now(),
+      locale: const Locale('pt', 'BR'),
+      helpText: 'Selecione a data de início',
+      confirmText: 'Confirmar',
+      cancelText: 'Cancelar',
+    );
+    if (picked != null) {
+      setState(() => _currentStartDate = picked);
+    }
+  }
+
+  Future<void> _save() async {
+    if (_currentStartDate == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmar Data de Início'),
+        content: Text(
+          'As presenças anteriores a ${DateFormat('dd/MM/yyyy').format(_currentStartDate!)} '
+          'ficarão ocultas em todo o app.\n\n'
+          'Os dados NÃO serão apagados do sistema — você pode alterar isso a qualquer momento.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Confirmar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isSaving = true);
+    try {
+      await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .update({'systemStartDate': Timestamp.fromDate(_currentStartDate!)});
+      if (mounted) {
+        showBjjSnackBar(context, 'Data de início salva com sucesso!',
+            type: 'success');
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao salvar. Tente novamente.',
+            type: 'error');
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _remove() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remover Data de Início?'),
+        content: const Text(
+          'Todas as presenças voltarão a ser exibidas, inclusive as antigas.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: ElevatedButton.styleFrom(backgroundColor: errorColor),
+            child: const Text('Remover'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isSaving = true);
+    try {
+      await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(widget.academyId)
+          .update({'systemStartDate': FieldValue.delete()});
+      if (mounted) {
+        setState(() => _currentStartDate = null);
+        showBjjSnackBar(context, 'Data de início removida.', type: 'info');
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      if (mounted) {
+        showBjjSnackBar(context, 'Erro ao remover.', type: 'error');
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      appBar: AppBar(title: const Text('Data de Início do Sistema')),
+      body: AppBackground(
+        child: SafeArea(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    // Explicação
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              const Icon(Icons.info_outline, color: infoColor),
+                              const SizedBox(width: 8),
+                              Text('Como funciona',
+                                  style:
+                                      Theme.of(context).textTheme.titleMedium),
+                            ]),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Ao definir uma data de início, o app passa a '
+                              'considerar apenas as presenças a partir dessa data em:\n\n'
+                              '• Calendário de check-ins dos alunos\n'
+                              '• Ranking de presença\n'
+                              '• Relatórios de alunos inativos\n\n'
+                              'Os dados antigos não são apagados — ficam apenas ocultos. '
+                              'Você pode alterar ou remover esta data quando quiser.',
+                              style:
+                                  TextStyle(color: textSecondary, height: 1.5),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Status atual
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Configuração atual',
+                                style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 12),
+                              decoration: BoxDecoration(
+                                color: _currentStartDate != null
+                                    ? warningColor.withOpacity(0.1)
+                                    : successColor.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: _currentStartDate != null
+                                      ? warningColor.withOpacity(0.4)
+                                      : successColor.withOpacity(0.4),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    _currentStartDate != null
+                                        ? Icons.event_busy_rounded
+                                        : Icons.event_available_rounded,
+                                    color: _currentStartDate != null
+                                        ? warningColor
+                                        : successColor,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      _currentStartDate != null
+                                          ? 'Exibindo presenças a partir de ${DateFormat('dd/MM/yyyy').format(_currentStartDate!)}'
+                                          : 'Exibindo todo o histórico de presenças',
+                                      style: const TextStyle(
+                                          color: textPrimary,
+                                          fontWeight: FontWeight.w500),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Ação: selecionar data
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Definir nova data de início',
+                                style: Theme.of(context).textTheme.titleMedium),
+                            const SizedBox(height: 12),
+                            InkWell(
+                              onTap: _isSaving ? null : _pickDate,
+                              borderRadius: BorderRadius.circular(8),
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  labelText: 'Data de início',
+                                  prefixIcon: Icon(Icons.calendar_today,
+                                      color: primaryAccent),
+                                  border: OutlineInputBorder(),
+                                ),
+                                child: Text(
+                                  _currentStartDate != null
+                                      ? DateFormat('dd/MM/yyyy')
+                                          .format(_currentStartDate!)
+                                      : 'Toque para selecionar',
+                                  style: TextStyle(
+                                    color: _currentStartDate != null
+                                        ? textPrimary
+                                        : textHint,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton.icon(
+                                onPressed:
+                                    (_isSaving || _currentStartDate == null)
+                                        ? null
+                                        : _save,
+                                icon: _isSaving
+                                    ? const SizedBox(
+                                        width: 18,
+                                        height: 18,
+                                        child: CircularProgressIndicator(
+                                            strokeWidth: 2))
+                                    : const Icon(Icons.save_rounded),
+                                label: const Text('Salvar Data de Início'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+
+                    // Botão remover (só aparece se houver data definida)
+                    if (_currentStartDate != null) ...[
+                      const SizedBox(height: 8),
+                      Card(
+                        child: ListTile(
+                          leading: const Icon(Icons.delete_outline,
+                              color: errorColor),
+                          title: const Text('Remover Data de Início',
+                              style: TextStyle(color: errorColor)),
+                          subtitle: const Text(
+                              'Volta a exibir todo o histórico de presenças'),
+                          onTap: _isSaving ? null : _remove,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+        ),
+      ),
     );
   }
 }

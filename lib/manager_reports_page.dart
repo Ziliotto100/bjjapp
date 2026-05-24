@@ -49,7 +49,28 @@ class _ManagerReportsPageState extends State<ManagerReportsPage> {
     final firestore = FirebaseFirestore.instance;
     final now = DateTime.now();
     final startOfMonth = DateTime(now.year, now.month, 1);
+
+    // Buscar data de início do sistema para filtrar checkins
+    DateTime? systemStartDate;
+    try {
+      final academyDoc = await firestore
+          .collection('academies')
+          .doc(widget.user.academyId)
+          .get();
+      final data = academyDoc.data();
+      if (data != null && data['systemStartDate'] != null) {
+        final ts = data['systemStartDate'] as Timestamp;
+        final d = ts.toDate();
+        systemStartDate = DateTime(d.year, d.month, d.day);
+      }
+    } catch (_) {}
+
+    // Data base para alunos inativos: 30 dias atrás ou systemStartDate, o que for mais recente
     final thirtyDaysAgo = now.subtract(const Duration(days: 30));
+    final inactiveCutoff =
+        systemStartDate != null && systemStartDate.isAfter(thirtyDaysAgo)
+            ? systemStartDate
+            : thirtyDaysAgo;
 
     // 1. Buscar todos os alunos ativos
     final studentsSnapshot = await firestore
@@ -112,7 +133,7 @@ class _ManagerReportsPageState extends State<ManagerReportsPage> {
         .collection('academies')
         .doc(widget.user.academyId)
         .collection('checkins')
-        .where('date', isGreaterThanOrEqualTo: thirtyDaysAgo)
+        .where('date', isGreaterThanOrEqualTo: inactiveCutoff)
         .get();
 
     Set<String> studentsWithRecentCheckin = {
@@ -280,7 +301,7 @@ class _ManagerReportsPageState extends State<ManagerReportsPage> {
     );
   }
 
-  // --- NOVO WIDGET CLICÁVEL ---
+  // --- NOVO WIDGET CLICÃVEL ---
   Widget _buildClickableMetricCard(BuildContext context, String title,
       String value, IconData icon, Color color,
       {required VoidCallback onTap}) {

@@ -237,29 +237,48 @@ class _UserFlowLoaderState extends State<UserFlowLoader> {
           return ChangePasswordPage(isFirstLogin: true, user: userModel);
         }
 
-        // DIRECIONAMENTO FINAL
-        // O `activePlan` agora é passado para a página inicial correspondente.
-        // O `NavigationService` também é instanciado com o plano.
-        switch (userModel.role) {
-          case UserRole.manager:
-            return ManagerHomePage(
-                user: userModel,
-                isImpersonating: widget.isImpersonating,
-                currentPlan: activePlan); // Passa o plano
-          case UserRole.teacher:
-            return TeacherHomePage(
-                user: userModel,
-                isImpersonating: widget.isImpersonating,
-                currentPlan: activePlan); // Passa o plano
-          case UserRole.student:
-            return StudentHomePage(
-                user: userModel,
-                isImpersonating: widget.isImpersonating,
-                currentPlan: activePlan); // Passa o plano
-          default:
-            FirebaseAuth.instance.signOut();
-            return const LoginPage();
-        }
+        // DIRECIONAMENTO FINAL com atualização em tempo real do perfil
+        // StreamBuilder ouve o documento do usuário — qualquer alteração
+        // (nome, foto, faixa, etc.) é refletida automaticamente no app.
+        return StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('users')
+              .doc(widget.uid)
+              .snapshots(),
+          builder: (context, userSnapshot) {
+            if (!userSnapshot.hasData) {
+              return loadingScaffold;
+            }
+            if (!userSnapshot.data!.exists) {
+              FirebaseAuth.instance.signOut();
+              return const LoginPage();
+            }
+
+            // Reconstrói o UserModel sempre que o doc mudar
+            final liveUserModel = UserModel.fromFirestore(userSnapshot.data!);
+
+            switch (liveUserModel.role) {
+              case UserRole.manager:
+                return ManagerHomePage(
+                    user: liveUserModel,
+                    isImpersonating: widget.isImpersonating,
+                    currentPlan: activePlan);
+              case UserRole.teacher:
+                return TeacherHomePage(
+                    user: liveUserModel,
+                    isImpersonating: widget.isImpersonating,
+                    currentPlan: activePlan);
+              case UserRole.student:
+                return StudentHomePage(
+                    user: liveUserModel,
+                    isImpersonating: widget.isImpersonating,
+                    currentPlan: activePlan);
+              default:
+                FirebaseAuth.instance.signOut();
+                return const LoginPage();
+            }
+          },
+        );
       },
     );
   }
@@ -274,7 +293,7 @@ class _UserFlowLoaderState extends State<UserFlowLoader> {
             content: const SingleChildScrollView(
               child: ListBody(
                 children: <Widget>[
-                  Text('É um prazer ter você conosco no Match BJJ.'),
+                  Text('Ã‰ um prazer ter você conosco no Match BJJ.'),
                   SizedBox(height: 16),
                   Text(
                       'Para aprender a usar todas as funcionalidades do aplicativo, preparamos vídeos tutoriais para você.'),
@@ -571,8 +590,8 @@ class _LoginPageState extends State<LoginPage> {
       builder: (context) => AlertDialog(
         title: const Text("Instalar Aplicativo"),
         content: const Text(
-          "Para uma melhor experiência, você pode adicionar este aplicativo à sua tela inicial.\n\n"
-          "No seu navegador, procure pelo botão de menu (geralmente três pontos ou uma seta) e selecione a opção 'Instalar aplicativo' ou 'Adicionar à tela inicial'.",
+          "Para uma melhor experiência, você pode adicionar este aplicativo Ã  sua tela inicial.\n\n"
+          "No seu navegador, procure pelo botão de menu (geralmente três pontos ou uma seta) e selecione a opção 'Instalar aplicativo' ou 'Adicionar Ã  tela inicial'.",
         ),
         actions: [
           TextButton(
@@ -821,7 +840,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
             Timestamp.fromDate(DateTime.now().add(const Duration(days: 30))),
       });
 
-      // --- INÍCIO DA ALTERAÇÃO ---
+      // --- INÃCIO DA ALTERAÇÃO ---
       // Cria a unidade "Matriz" padrão para a nova academia.
       final defaultUnitRef = academyRef.collection('units').doc();
       batch.set(defaultUnitRef, {'name': 'Matriz'});
@@ -939,7 +958,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                         flex: 2,
                         child: TextFormField(
                           controller: _numeroController,
-                          decoration: const InputDecoration(labelText: 'Nº'),
+                          decoration: const InputDecoration(labelText: 'NÂº'),
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -1087,7 +1106,7 @@ class _RegisterAcademyPageState extends State<RegisterAcademyPage> {
                         const DropdownMenuItem<int>(
                             value: null, child: Text("Nenhum")),
                         ..._grausList.map((g) => DropdownMenuItem(
-                            value: g, child: Text("$gº Grau"))),
+                            value: g, child: Text("$gÂº Grau"))),
                       ],
                       onChanged: (value) => setState(() => _graus = value),
                     ),

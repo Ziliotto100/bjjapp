@@ -33,7 +33,6 @@ class AppModule {
   final String title;
   final IconData icon;
   final List<UserRole>? requiredRoles;
-  // --- ASSINATURA DA FUNÇÃO CORRIGIDA ---
   final Widget Function(
       UserModel, List<UserModel>, List<Aluno>, SubscriptionPlan?)? pageBuilder;
   final List<AppModule>? subModules;
@@ -67,19 +66,64 @@ class NavigationService {
       .doc(userId)
       .collection('tab_settings');
 
+  // Função de filtro permanece a mesma, mas com adição de lógica anti-superadmin
   List<AppModule> _filterModules(List<AppModule> allModules) {
     List<AppModule> filtered = [];
     for (var module in allModules) {
       bool canViewByRole = module.requiredRoles == null ||
           module.requiredRoles!.contains(userRole);
 
+      // --- Adicionada lógica específica para Manager/Teacher/Student não verem SuperAdmin ---
+      if (userRole != UserRole.superAdmin &&
+          (module.requiredRoles?.contains(UserRole.superAdmin) ?? false)) {
+        canViewByRole = false;
+      }
+      // --- Fim da adição ---
+
       if (userRole == UserRole.manager) {
         const hiddenForManager = [
-          'student_profile',
+          'student_profile', // Item dentro de Painel Pessoal
           'teacher_dashboard',
-          'teacher_students',
+          'teacher_students', // Alunos (Prof)
         ];
         if (hiddenForManager.contains(module.id)) {
+          canViewByRole = false;
+        }
+      }
+
+      if (userRole == UserRole.teacher) {
+        const hiddenForTeacher = [
+          'manager_dashboard',
+          'manager_financial_group', // Grupo Financeiro
+          'manager_fees', // Subitem Financeiro
+          'manager_reports', // Subitem Financeiro
+          'manager_students', // Alunos (Ger)
+          'manager_teachers', // Professores
+          'manager_units', // Unidades
+          'student_profile', // Item dentro de Painel Pessoal
+        ];
+        if (hiddenForTeacher.contains(module.id)) {
+          canViewByRole = false;
+        }
+      }
+
+      if (userRole == UserRole.student) {
+        const hiddenForStudent = [
+          'manager_dashboard',
+          'teacher_dashboard',
+          'manager_financial_group', // Grupo Financeiro
+          'manager_fees', // Subitem Financeiro
+          'manager_reports', // Subitem Financeiro
+          'teacher_checkin', // Check-in
+          'academy_notifications', // Comunicados
+          'academy_class_plan', // Plano de Aulas
+          'teacher_students', // Alunos (Prof)
+          'manager_students', // Alunos (Ger)
+          'manager_teachers', // Professores
+          'manager_units', // Unidades
+          'teacher_sparring', // Sorteio
+        ];
+        if (hiddenForStudent.contains(module.id)) {
           canViewByRole = false;
         }
       }
@@ -101,19 +145,27 @@ class NavigationService {
         AppModule newModule = module;
         if (module.subModules != null) {
           final filteredSubModules = _filterModules(module.subModules!);
+          // Só adiciona o módulo pai (mesmo sem pageBuilder) se ele tiver submódulos VÃLIDOS
+          // Isso é importante para a estrutura do Drawer
           if (filteredSubModules.isNotEmpty) {
             newModule = AppModule(
               id: module.id,
               title: module.title,
               icon: module.icon,
               requiredRoles: module.requiredRoles,
-              pageBuilder: module.pageBuilder,
+              pageBuilder: module.pageBuilder, // Mantém nulo se for o caso
               subModules: filteredSubModules,
               requiredFeature: module.requiredFeature,
             );
             filtered.add(newModule);
           }
-        } else {
+          // Adiciona o módulo pai mesmo sem submódulos VÃLIDOS, SE ele tiver um pageBuilder próprio
+          else if (module.pageBuilder != null) {
+            filtered.add(newModule);
+          }
+        }
+        // Adiciona se não tiver submódulos E tiver pageBuilder
+        else if (module.pageBuilder != null) {
           filtered.add(newModule);
         }
       }
@@ -122,56 +174,143 @@ class NavigationService {
   }
 
   List<AppModule> getDrawerModulesForCurrentUser() {
-    final all = _getAllPossibleModules();
-    List<AppModule> filtered = _filterModules(all);
+    // Usa a função de filtro diretamente
+    List<AppModule> filtered = _filterModules(_getAllPossibleModules());
 
+    // A lógica de ordenação específica do Drawer permanece
     AppModule? inicioModule;
     try {
       if (userRole == UserRole.student) {
-        inicioModule = filtered.firstWhere((m) => m.id == 'student_profile');
+        // Procura pelo ID específico do perfil do aluno dentro do Painel Pessoal
+        inicioModule = filtered
+            .firstWhere((m) => m.id == 'personal_panel_group')
+            .subModules
+            ?.firstWhere((sub) => sub.id == 'student_profile');
       } else if (userRole == UserRole.teacher) {
-        inicioModule = filtered.firstWhere((m) => m.id == 'teacher_dashboard');
+        inicioModule = filtered.firstWhere((m) => m.id == 'teacher_dashboard',
+            orElse: () => throw Exception());
       } else if (userRole == UserRole.manager) {
-        inicioModule = filtered.firstWhere((m) => m.id == 'manager_dashboard');
+        inicioModule = filtered.firstWhere((m) => m.id == 'manager_dashboard',
+            orElse: () => throw Exception());
+      } else if (userRole == UserRole.superAdmin) {
+        inicioModule = filtered.firstWhere(
+            (m) => m.id == 'superadmin_dashboard',
+            orElse: () => throw Exception());
       }
     } catch (e) {
-      inicioModule = null;
+      // Fallback mais robusto: Pega o primeiro módulo com pageBuilder
+      try {
+        inicioModule = filtered.firstWhere((m) => m.pageBuilder != null);
+      } catch (e) {
+        inicioModule =
+            filtered.isNotEmpty ? filtered.first : null; // Ãšltimo caso
+      }
     }
 
     final otherModules =
         filtered.where((m) => m.id != inicioModule?.id).toList();
+    // Remove explicitamente o grupo 'Painel Pessoal' da ordenação principal do drawer se o 'Meu Perfil' do aluno foi movido para o início
+    if (userRole == UserRole.student && inicioModule?.id == 'student_profile') {
+      otherModules.removeWhere((m) => m.id == 'personal_panel_group');
+    }
+
     otherModules.sort((a, b) => a.title.compareTo(b.title));
 
     final List<AppModule> sortedList = [];
     if (inicioModule != null) sortedList.add(inicioModule);
     sortedList.addAll(otherModules);
 
-    return sortedList;
+    return sortedList; // Retorna a lista hierárquica e ordenada para o Drawer
   }
 
+  // --- FUNÇÃO CORRIGIDA NOVAMENTE ---
   List<AppModule> getFlatPageModulesForCurrentUser() {
     final List<AppModule> flatList = [];
-    final hierarchicalList = getDrawerModulesForCurrentUser();
+    // 1. Pega TODOS os módulos possíveis
+    final List<AppModule> allPossibleModules = _getAllPossibleModules();
+    // 2. Filtra hierarquicamente baseado em role e plano
+    final List<AppModule> filteredHierarchicalList =
+        _filterModules(allPossibleModules);
 
-    for (final module in hierarchicalList) {
-      if (module.pageBuilder != null) {
-        flatList.add(module);
-      }
-      if (module.subModules != null) {
-        for (final subModule in module.subModules!) {
-          if (subModule.pageBuilder != null) {
-            flatList.add(subModule);
+    // 3. Função recursiva para achatar a lista filtrada, pegando apenas itens com pageBuilder
+    void flatten(List<AppModule> modules) {
+      for (final module in modules) {
+        // Adiciona Ã  lista plana APENAS se tiver uma tela associada
+        if (module.pageBuilder != null) {
+          // Evita adicionar módulos 'placeholder' de início que não são o do usuário atual
+          if (!(['manager_dashboard', 'teacher_dashboard', 'student_profile']
+                  .contains(module.id) &&
+              module.id != _getHomeModuleIdForCurrentUser())) {
+            flatList.add(module);
+          } else if (module.id == _getHomeModuleIdForCurrentUser()) {
+            flatList.add(module); // Adiciona o módulo de início correto
           }
+        }
+        // Se tiver submódulos, chama a função recursivamente para eles
+        if (module.subModules != null) {
+          flatten(module.subModules!);
         }
       }
     }
+
+    // 4. Inicia o processo de achatamento
+    flatten(filteredHierarchicalList);
+
+    // 5. Retorna a lista plana final
     return flatList;
   }
 
-  // --- CHAMADAS DO PAGEBUILDER CORRIGIDAS ---
+  // Helper para obter o ID do módulo de início correto
+  String _getHomeModuleIdForCurrentUser() {
+    switch (userRole) {
+      case UserRole.manager:
+        return 'manager_dashboard';
+      case UserRole.teacher:
+        return 'teacher_dashboard';
+      case UserRole.student:
+        return 'student_profile';
+      case UserRole.superAdmin:
+        return 'superadmin_dashboard';
+      default:
+        return ''; // Ou um fallback razoável
+    }
+  }
+
+  // --- _getAllPossibleModules() com IDs de grupo distintos ---
   List<AppModule> _getAllPossibleModules() {
+    // Os módulos de Início agora ficam fora dos grupos para facilitar a lógica
+    final managerHome = AppModule(
+      id: 'manager_dashboard',
+      title: 'Início', // Título genérico para aba/drawer
+      icon: Icons.dashboard_rounded,
+      requiredRoles: [UserRole.manager],
+      pageBuilder: (user, teachers, students, plan) =>
+          ManagerDashboardPage(user: user),
+    );
+    final teacherHome = AppModule(
+      id: 'teacher_dashboard',
+      title: 'Início', // Título genérico para aba/drawer
+      icon: Icons.dashboard_rounded,
+      requiredRoles: [UserRole.teacher],
+      pageBuilder: (user, teachers, students, plan) => TeacherDashboardPage(
+        user: user,
+        isSparringMode: false, // Será atualizado pelo listener
+        onNavigateToSparring: () {}, // Será passado corretamente na HomePage
+        todosParticipantesDaAcademia: students,
+      ),
+    );
+    final studentHome = AppModule(
+      // Módulo do aluno movido para cá
+      id: 'student_profile',
+      title: 'Meu Perfil', // Renomeado para clareza no Drawer/Tabs
+      icon: Icons.account_circle_rounded,
+      requiredRoles: [UserRole.student],
+      pageBuilder: (user, teachers, students, plan) =>
+          UserProfilePage(user: user, hasScaffold: false),
+    );
+
     return [
-      // Módulos do Super Admin
+      // Módulos do Super Admin (continuam iguais)
       AppModule(
         id: 'superadmin_dashboard',
         title: 'Dashboard',
@@ -227,46 +366,24 @@ class NavigationService {
             const TutorialsAdminPage(),
       ),
 
-      AppModule(
-        id: 'manager_dashboard',
-        title: 'Início',
-        icon: Icons.dashboard_rounded,
-        requiredRoles: [UserRole.manager],
-        pageBuilder: (user, teachers, students, plan) =>
-            ManagerDashboardPage(user: user),
-      ),
-      AppModule(
-        id: 'teacher_dashboard',
-        title: 'Início',
-        icon: Icons.dashboard_rounded,
-        requiredRoles: [UserRole.teacher],
-        pageBuilder: (user, teachers, students, plan) => TeacherDashboardPage(
-          user: user,
-          isSparringMode: false,
-          onNavigateToSparring: () {},
-          todosParticipantesDaAcademia: students,
-        ),
-      ),
-      AppModule(
-        id: 'student_profile',
-        title: 'Início',
-        icon: Icons.home_rounded,
-        requiredRoles: [UserRole.student],
-        pageBuilder: (user, teachers, students, plan) =>
-            UserProfilePage(user: user, hasScaffold: false),
-      ),
+      // Módulos de Início (separados para clareza)
+      managerHome,
+      teacherHome,
+      studentHome,
 
+      // Módulo Pai Financeiro (Gerente)
       AppModule(
-        id: 'manager_financial',
+        id: 'manager_financial_group', // ID de grupo
         title: 'Financeiro',
         icon: Icons.monetization_on_rounded,
-        requiredRoles: [UserRole.manager],
-        requiredFeature: 'financial_reports',
+        requiredRoles: [UserRole.manager], // Só gerente acessa grupo financeiro
+        requiredFeature: 'financial_reports', // Feature no grupo
         subModules: [
           AppModule(
             id: 'manager_fees',
             title: 'Mensalidades',
             icon: Icons.request_quote_outlined,
+            // Herda requiredRoles e requiredFeature do pai (implicitamente pela filtragem)
             pageBuilder: (user, teachers, students, plan) =>
                 MonthlyFeeManagerPage(academyId: user.academyId),
           ),
@@ -274,21 +391,31 @@ class NavigationService {
             id: 'manager_reports',
             title: 'Relatórios',
             icon: Icons.bar_chart_rounded,
+            // Herda requiredRoles e requiredFeature do pai
             pageBuilder: (user, teachers, students, plan) =>
                 ManagerReportsPage(user: user),
           ),
         ]..sort((a, b) => a.title.compareTo(b.title)),
       ),
 
+      // Módulo Pai Academia (Comum)
       AppModule(
-        id: 'common_academy',
+        id: 'common_academy_group', // ID de grupo
         title: 'Academia',
         icon: Icons.business_rounded,
+        // Roles que podem ver *algum* item dentro de Academia
+        requiredRoles: [UserRole.manager, UserRole.teacher, UserRole.student],
         subModules: [
           AppModule(
             id: 'common_birthdays',
             title: 'Aniversários',
             icon: Icons.cake_rounded,
+            // Todos podem ver aniversários
+            requiredRoles: [
+              UserRole.manager,
+              UserRole.teacher,
+              UserRole.student
+            ],
             pageBuilder: (user, teachers, students, plan) =>
                 BirthdaysPage(academyId: user.academyId, currentUser: user),
           ),
@@ -296,7 +423,10 @@ class NavigationService {
             id: 'teacher_checkin',
             title: 'Check-in',
             icon: Icons.check_circle_outline_rounded,
-            requiredRoles: [UserRole.teacher],
+            requiredRoles: [
+              UserRole.teacher,
+              UserRole.manager,
+            ], // Professor e gerente fazem check-in
             pageBuilder: (user, teachers, students, plan) => CheckinTeacherPage(
                 user: user,
                 academyId: user.academyId,
@@ -306,7 +436,10 @@ class NavigationService {
             id: 'academy_notifications',
             title: 'Comunicados',
             icon: Icons.campaign_outlined,
-            requiredRoles: [UserRole.manager, UserRole.teacher],
+            requiredRoles: [
+              UserRole.manager,
+              UserRole.teacher
+            ], // Manager e Teacher podem enviar
             pageBuilder: (user, teachers, students, plan) =>
                 AcademyNotificationsPage(user: user),
           ),
@@ -314,6 +447,12 @@ class NavigationService {
             id: 'common_schedule',
             title: 'Grade',
             icon: Icons.calendar_month_rounded,
+            // Todos podem ver a grade
+            requiredRoles: [
+              UserRole.manager,
+              UserRole.teacher,
+              UserRole.student
+            ],
             pageBuilder: (user, teachers, students, plan) =>
                 SchedulePage(user: user, teachers: teachers),
           ),
@@ -328,7 +467,9 @@ class NavigationService {
           ),
           AppModule(
             id: 'teacher_students',
+            // --- CORREÇÃO DO TÃTULO ---
             title: 'Alunos',
+            // --- FIM DA CORREÇÃO ---
             icon: Icons.people_alt_rounded,
             requiredRoles: [UserRole.teacher],
             pageBuilder: (user, teachers, students, plan) =>
@@ -336,7 +477,9 @@ class NavigationService {
           ),
           AppModule(
             id: 'manager_students',
+            // --- CORREÇÃO DO TÃTULO ---
             title: 'Alunos',
+            // --- FIM DA CORREÇÃO ---
             icon: Icons.people_alt_rounded,
             requiredRoles: [UserRole.manager],
             pageBuilder: (user, teachers, students, plan) =>
@@ -362,8 +505,9 @@ class NavigationService {
         ]..sort((a, b) => a.title.compareTo(b.title)),
       ),
 
+      // Módulo Pai Painel Pessoal
       AppModule(
-        id: 'personal_panel',
+        id: 'personal_panel_group', // ID de grupo
         title: 'Painel Pessoal',
         icon: Icons.person_rounded,
         requiredRoles: [UserRole.student, UserRole.teacher, UserRole.manager],
@@ -372,6 +516,12 @@ class NavigationService {
             id: 'common_training_log',
             title: 'Diário de Treinos',
             icon: Icons.auto_stories_outlined,
+            // Todos podem ter diário
+            requiredRoles: [
+              UserRole.student,
+              UserRole.teacher,
+              UserRole.manager
+            ],
             pageBuilder: (user, teachers, students, plan) =>
                 TrainingLogPage(user: user),
           ),
@@ -380,30 +530,49 @@ class NavigationService {
             title: 'Caderno de Estudos',
             icon: Icons.book_rounded,
             requiredFeature: 'study_notebook',
+            // Todos podem ter caderno se a feature estiver ativa
+            requiredRoles: [
+              UserRole.student,
+              UserRole.teacher,
+              UserRole.manager
+            ],
             pageBuilder: (user, teachers, students, plan) =>
                 StudyNotebookPage(userId: user.uid, currentPlan: plan),
           ),
           AppModule(
             id: 'common_history',
-            title: 'Histórico',
+            title: 'Meu Histórico', // Histórico de checkins/graduações
             icon: Icons.calendar_today_rounded,
-            requiredRoles: [UserRole.teacher, UserRole.student],
+            requiredRoles: [
+              UserRole.teacher,
+              UserRole.student
+            ], // Só aluno/prof tem checkin/graduação assim
             pageBuilder: (user, teachers, students, plan) =>
                 MyCheckinsPage(user: user),
           ),
+          // O Módulo de Perfil do Aluno foi movido para fora como `studentHome`
         ]..sort((a, b) => a.title.compareTo(b.title)),
       ),
 
+      // Módulo Pai Ferramentas
       AppModule(
-        id: 'common_tools',
+        id: 'common_tools_group', // ID de grupo
         title: 'Ferramentas',
         icon: Icons.construction_rounded,
+        // Roles que podem ver *alguma* ferramenta
+        requiredRoles: [UserRole.manager, UserRole.teacher, UserRole.student],
         subModules: [
           AppModule(
             id: 'common_rules',
             title: 'Livro de Regras',
             icon: Icons.gavel_rounded,
             requiredFeature: 'rules_module',
+            // Todos podem ver regras se a feature estiver ativa
+            requiredRoles: [
+              UserRole.manager,
+              UserRole.teacher,
+              UserRole.student
+            ],
             pageBuilder: (user, teachers, students, plan) =>
                 RulesPage(user: user, currentPlan: plan),
           ),
@@ -412,16 +581,26 @@ class NavigationService {
             title: 'Placar',
             icon: Icons.scoreboard_rounded,
             requiredFeature: 'scoreboard_module',
+            // Todos podem usar placar se a feature estiver ativa
+            requiredRoles: [
+              UserRole.manager,
+              UserRole.teacher,
+              UserRole.student
+            ],
             pageBuilder: (user, teachers, students, plan) => MatchSetupPage(
                 user: user,
                 academyId: user.academyId,
-                todosAlunosDaAcademia: students),
+                todosAlunosDaAcademia: students,
+                currentPlan: plan),
           ),
           AppModule(
             id: 'teacher_sparring',
             title: 'Sorteio de Treinos',
             icon: Icons.shuffle_rounded,
-            requiredRoles: [UserRole.teacher, UserRole.manager],
+            requiredRoles: [
+              UserRole.teacher,
+              UserRole.manager
+            ], // Só prof/gerente sorteia
             requiredFeature: 'sparring_draw',
             pageBuilder: (user, teachers, students, plan) => SorteioTeacherPage(
               user: user,
@@ -432,30 +611,31 @@ class NavigationService {
               onCheckinAlunos: (students) {},
             ),
           ),
-          // --- INÍCIO DA ALTERAÇÃO ---
-          // Módulo movido para dentro de "Ferramentas"
           AppModule(
             id: 'strength_training',
-            title: 'Musculação', // Título alterado para ser mais direto
+            title: 'Musculação',
             icon: Icons.fitness_center,
+            requiredFeature: 'strength_training_module',
+            // Todos podem usar musculação se a feature estiver ativa
             requiredRoles: [
               UserRole.manager,
               UserRole.teacher,
               UserRole.student
             ],
-            requiredFeature: 'strength_training_module',
             pageBuilder: (user, teachers, students, plan) =>
                 StrengthTrainingPage(user: user),
           ),
-          // --- FIM DA ALTERAÇÃO ---
         ]..sort((a, b) => a.title.compareTo(b.title)),
       ),
 
+      // Módulos independentes (sem grupo pai visível no drawer)
       AppModule(
         id: 'common_video_aulas',
         title: 'Videoaulas',
         icon: Icons.video_library_rounded,
         requiredFeature: 'video_library',
+        // Todos podem ver videoaulas se a feature estiver ativa
+        requiredRoles: [UserRole.manager, UserRole.teacher, UserRole.student],
         pageBuilder: (user, teachers, students, plan) =>
             VideoLibraryPage(user: user, currentPlan: plan),
       ),
@@ -464,14 +644,21 @@ class NavigationService {
         title: 'Loja',
         icon: Icons.storefront_rounded,
         requiredFeature: 'shop_module',
+        // Todos podem ver a loja se a feature estiver ativa
+        requiredRoles: [UserRole.manager, UserRole.teacher, UserRole.student],
         pageBuilder: (user, teachers, students, plan) =>
             ShopPage(user: user, currentPlan: plan),
       ),
     ];
   }
 
+  // --- getDefaultTabSettings() ajustado ---
   Map<String, dynamic> getDefaultTabSettings() {
     List<String> defaultVisibleIds;
+    // Pega todos os módulos *já achatados e filtrados* para este usuário
+    final availableFlatModules = getFlatPageModulesForCurrentUser();
+    final allAvailableIds = availableFlatModules.map((m) => m.id).toList();
+
     switch (userRole) {
       case UserRole.superAdmin:
         defaultVisibleIds = [
@@ -482,51 +669,77 @@ class NavigationService {
           'superadmin_tutorials',
         ];
         break;
-      // --- INÍCIO DA ALTERAÇÃO ---
-      // Removido 'strength_training' da lista de abas padrão
       case UserRole.manager:
         defaultVisibleIds = [
-          'manager_dashboard',
-          'common_academy',
-          'common_training_log',
-          'manager_financial',
-          'common_tools',
+          'manager_dashboard', // Início (Gerente)
+          'manager_students', // Alunos
+          'manager_fees', // Mensalidades
+          'teacher_checkin', // Check-in
+          'common_schedule', // Grade
+          'common_training_log', // Diário
         ];
         break;
       case UserRole.teacher:
         defaultVisibleIds = [
-          'teacher_dashboard',
-          'common_academy',
-          'common_training_log',
-          'common_tools',
-          'teacher_checkin',
+          'teacher_dashboard', // Início (Professor)
+          'teacher_checkin', // Check-in
+          'common_schedule', // Grade
+          'academy_class_plan', // Plano de Aulas
+          'common_training_log', // Diário
         ];
         break;
       case UserRole.student:
       default:
         defaultVisibleIds = [
-          'student_profile',
-          'common_schedule',
-          'common_training_log',
-          'common_shop',
-          'common_video_aulas',
+          'student_profile', // Meu Perfil
+          'common_schedule', // Grade
+          'common_training_log', // Diário
+          'common_shop', // Loja
+          'common_video_aulas', // Videoaulas
         ];
         break;
-      // --- FIM DA ALTERAÇÃO ---
     }
 
-    final allModuleIds =
-        getFlatPageModulesForCurrentUser().map((m) => m.id).toList();
+    // Garante que os IDs padrão realmente existam nos módulos disponíveis e limita a 5
+    final validDefaultVisibleIds = defaultVisibleIds
+        .where((id) => allAvailableIds.contains(id))
+        .take(5)
+        .toList();
+
+    // Se, após a validação, a lista ficar vazia, adiciona o primeiro módulo disponível (que é o de Início)
+    if (validDefaultVisibleIds.isEmpty && allAvailableIds.isNotEmpty) {
+      validDefaultVisibleIds.add(allAvailableIds.first);
+    }
+
+    // A ordem inicial ('order') deve conter TODOS os módulos disponíveis para o usuário
+    final initialOrder = allAvailableIds;
+
     return {
-      'order': allModuleIds,
-      'visible': defaultVisibleIds.toSet().toList().take(5).toList(),
+      'order': initialOrder,
+      'visible': validDefaultVisibleIds,
     };
   }
 
+  // --- saveTabSettings() e getTabSettingsStream() com validação ---
   Future<void> saveTabSettings(List<String> newOrder, List<String> newVisible) {
+    // Garante que apenas IDs existentes sejam salvos
+    final allAvailableIds =
+        getFlatPageModulesForCurrentUser().map((m) => m.id).toSet();
+    final validOrder =
+        newOrder.where((id) => allAvailableIds.contains(id)).toList();
+    final validVisible =
+        newVisible.where((id) => allAvailableIds.contains(id)).take(5).toList();
+
+    // Adiciona módulos faltantes ao final da ordem, se necessário
+    for (var id in allAvailableIds) {
+      if (!validOrder.contains(id)) {
+        validOrder.add(id);
+      }
+    }
+
     return _tabSettingsCollection.doc('user_prefs').set({
-      'order': newOrder,
-      'visible': newVisible,
+      'order': validOrder, // Salva a ordem validada e completa
+      'visible': validVisible, // Salva os visíveis validados e limitados
     });
   }
 

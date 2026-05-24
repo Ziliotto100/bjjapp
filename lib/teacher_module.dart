@@ -82,13 +82,13 @@ int _getBeltIndex(String faixa) {
 class TeacherHomePage extends StatefulWidget {
   final UserModel user;
   final bool isImpersonating;
-  final SubscriptionPlan? currentPlan; // NOVO PARÂMETRO
+  final SubscriptionPlan? currentPlan; // NOVO PARÃ‚METRO
 
   const TeacherHomePage({
     super.key,
     required this.user,
     this.isImpersonating = false,
-    this.currentPlan, // NOVO PARÂMETRO
+    this.currentPlan, // NOVO PARÃ‚METRO
   });
 
   @override
@@ -127,6 +127,16 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     );
     _loadInitialData();
     _listenToSparringState();
+  }
+
+  @override
+  void didUpdateWidget(covariant TeacherHomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.user.name != widget.user.name ||
+        oldWidget.user.profileImagePath != widget.user.profileImagePath) {
+      setState(() {});
+      if (!_isLoading) _rebuildScreens();
+    }
   }
 
   @override
@@ -600,7 +610,7 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
     });
   }
 
-  // --- INÍCIO DA OTIMIZAÇÃO ---
+  // --- INÃCIO DA OTIMIZAÇÃO ---
   Stream<QuerySnapshot> _buildStudentQuery() {
     Query query = FirebaseFirestore.instance
         .collection('academies')
@@ -809,7 +819,7 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
               final usersMap = usersSnapshot.data ?? {};
 
               return StreamBuilder<QuerySnapshot>(
-                // --- INÍCIO DA OTIMIZAÇÃO ---
+                // --- INÃCIO DA OTIMIZAÇÃO ---
                 stream: _buildStudentQuery(),
                 // --- FIM DA OTIMIZAÇÃO ---
                 builder: (context, snapshot) {
@@ -1164,7 +1174,7 @@ class _TodayClassesCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              "PRÓXIMAS AULAS",
+              "PRÃ“XIMAS AULAS",
               style: TextStyle(
                 color: textHint,
                 fontSize: 12,
@@ -1285,7 +1295,7 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
     }
   }
 
-  // --- ALTERAÇÃO AQUI: LÓGICA DE SELEÇÃO DE AULA ---
+  // --- ALTERAÇÃO AQUI: LÃ“GICA DE SELEÇÃO DE AULA ---
   Future<void> _selectClassAndStartCheckin() async {
     final TrainingClass? selectedClass = await showDialog<TrainingClass>(
       context: context,
@@ -1315,7 +1325,7 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
     }
   }
 
-  // --- ALTERAÇÃO AQUI: LÓGICA DE SELEÇÃO DE DATA E AULA ---
+  // --- ALTERAÇÃO AQUI: LÃ“GICA DE SELEÇÃO DE DATA E AULA ---
   Future<void> _selectDateAndClassForRetroactiveCheckin() async {
     final DateTime? pickedDate = await showDatePicker(
       context: context,
@@ -1580,7 +1590,7 @@ class _ApproveCheckinsPageState extends State<ApproveCheckinsPage> {
   }
 }
 
-// --- PÁGINA DE HISTÓRICO DE CHECK-IN (COM ALTERAÇÕES) ---
+// --- PÃGINA DE HISTÃ“RICO DE CHECK-IN (COM ALTERAÇÃ•ES) ---
 class CheckinHistoryPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> allParticipants;
@@ -1769,7 +1779,7 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
                                 subtitleText = entry.className!;
                               } else {
                                 subtitleText =
-                                    'Check-in às ${DateFormat.Hm().format(checkinTime)}';
+                                    'Check-in Ã s ${DateFormat.Hm().format(checkinTime)}';
                               }
 
                               return Card(
@@ -2354,7 +2364,16 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
   Map<String, int> _checkinCounts = {};
   List<Aluno> _todosParticipantes = [];
   bool _isLoading = true;
-  String _filter = 'total';
+
+  // 'mes_atual', 'ano', 'total', ou 'mes_YYYY-MM' para mês específico
+  String _filter = 'mes_atual';
+
+  // Para o filtro de mês específico
+  DateTime _mesSelecionado = DateTime.now();
+  bool _showMonthPicker = false;
+
+  // Lista de meses disponíveis (gerada a partir dos checkins)
+  List<DateTime> _mesesDisponiveis = [];
 
   @override
   void initState() {
@@ -2369,6 +2388,19 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
     try {
       final firestore = FirebaseFirestore.instance;
       final academyId = widget.academyId;
+
+      // Buscar data de início do sistema
+      DateTime? systemStartDate;
+      try {
+        final academyDoc =
+            await firestore.collection('academies').doc(academyId).get();
+        final data = academyDoc.data();
+        if (data != null && data['systemStartDate'] != null) {
+          final ts = data['systemStartDate'] as Timestamp;
+          final d = ts.toDate();
+          systemStartDate = DateTime(d.year, d.month, d.day);
+        }
+      } catch (_) {}
 
       final alunosSnapshot = await firestore
           .collection('academies')
@@ -2397,9 +2429,28 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
           .where('status',
               isEqualTo: checkinStatusToString(CheckinStatus.approved))
           .get();
-      final allCheckins = checkinsSnapshot.docs
+      final rawCheckins = checkinsSnapshot.docs
           .map((doc) => CheckinEntry.fromJson(doc.id, doc.data()))
           .toList();
+
+      // Filtrar pela data de início do sistema
+      final allCheckins = systemStartDate == null
+          ? rawCheckins
+          : rawCheckins
+              .where((c) => !c.date.isBefore(systemStartDate!))
+              .toList();
+
+      // Gerar lista de meses disponíveis (únicos, ordenados do mais recente)
+      final mesesSet = <String>{};
+      for (var c in allCheckins) {
+        mesesSet
+            .add('${c.date.year}-${c.date.month.toString().padLeft(2, '0')}');
+      }
+      final mesesDisponiveis = mesesSet.map((s) {
+        final parts = s.split('-');
+        return DateTime(int.parse(parts[0]), int.parse(parts[1]));
+      }).toList()
+        ..sort((a, b) => b.compareTo(a));
 
       final now = DateTime.now();
       final Map<String, int> counts = {
@@ -2412,17 +2463,19 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
           case 'total':
             shouldCount = true;
             break;
-          case 'mes':
-            if (checkin.date.month == now.month &&
-                checkin.date.year == now.year) {
-              shouldCount = true;
-            }
+          case 'mes_atual':
+            shouldCount = checkin.date.month == now.month &&
+                checkin.date.year == now.year;
             break;
           case 'ano':
-            if (checkin.date.year == now.year) {
-              shouldCount = true;
-            }
+            shouldCount = checkin.date.year == now.year;
             break;
+          default:
+            // Mês específico: 'mes_YYYY-MM'
+            if (_filter.startsWith('mes_') && _filter.length > 8) {
+              shouldCount = checkin.date.month == _mesSelecionado.month &&
+                  checkin.date.year == _mesSelecionado.year;
+            }
         }
         if (shouldCount) {
           counts.update(checkin.studentId, (value) => value + 1,
@@ -2434,6 +2487,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
         setState(() {
           _todosParticipantes = allParticipants;
           _checkinCounts = counts;
+          _mesesDisponiveis = mesesDisponiveis;
           _isLoading = false;
         });
       }
@@ -2442,6 +2496,24 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
         showBjjSnackBar(context, "Erro ao carregar o ranking.", type: "error");
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  void _onFilterChanged(String newFilter) {
+    setState(() => _filter = newFilter);
+    _fetchRankingData();
+  }
+
+  String get _filterLabel {
+    switch (_filter) {
+      case 'mes_atual':
+        return 'Mês Atual';
+      case 'ano':
+        return 'Este Ano';
+      case 'total':
+        return 'Total';
+      default:
+        return DateFormat('MMM/yyyy', 'pt_BR').format(_mesSelecionado);
     }
   }
 
@@ -2456,6 +2528,11 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
           : a.nome.compareTo(b.nome);
     });
 
+    final top3 = rankedParticipantes.take(3).toList();
+    final restante = rankedParticipantes.length > 3
+        ? rankedParticipantes.sublist(3)
+        : <Aluno>[];
+
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(title: const Text('Ranking de Presença')),
@@ -2463,74 +2540,301 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
         child: SafeArea(
           child: Column(
             children: [
+              // ── Filtros principais ────────────────────────────
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: SegmentedButton<String>(
-                  segments: const <ButtonSegment<String>>[
-                    ButtonSegment<String>(
-                        value: 'mes', label: Text('Mês Atual')),
-                    ButtonSegment<String>(
-                        value: 'ano', label: Text('Este Ano')),
-                    ButtonSegment<String>(value: 'total', label: Text('Total')),
+                  segments: const [
+                    ButtonSegment(value: 'mes_atual', label: Text('Mês Atual')),
+                    ButtonSegment(value: 'ano', label: Text('Este Ano')),
+                    ButtonSegment(value: 'total', label: Text('Total')),
                   ],
-                  selected: {_filter},
-                  onSelectionChanged: (newSelection) {
-                    setState(() => _filter = newSelection.first);
-                    _fetchRankingData();
+                  selected: {
+                    ['mes_atual', 'ano', 'total'].contains(_filter)
+                        ? _filter
+                        : 'mes_atual'
                   },
+                  onSelectionChanged: (s) => _onFilterChanged(s.first),
                 ),
               ),
+
+              // ── Botão mês específico ──────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() => _showMonthPicker = !_showMonthPicker);
+                  },
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: (!['mes_atual', 'ano', 'total'].contains(_filter))
+                          ? primaryAccent.withOpacity(0.15)
+                          : Colors.transparent,
+                      border: Border.all(
+                        color:
+                            (!['mes_atual', 'ano', 'total'].contains(_filter))
+                                ? primaryAccent
+                                : textHint.withOpacity(0.3),
+                        width: 1,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.calendar_month_rounded,
+                            size: 16, color: primaryAccent),
+                        const SizedBox(width: 6),
+                        Text(
+                          (!['mes_atual', 'ano', 'total'].contains(_filter))
+                              ? _filterLabel
+                              : 'Mês específico',
+                          style: TextStyle(
+                            color: (!['mes_atual', 'ano', 'total']
+                                    .contains(_filter))
+                                ? primaryAccent
+                                : textHint,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          _showMonthPicker
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
+                          size: 16,
+                          color: primaryAccent,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+              // ── Dropdown de meses ─────────────────────────────
+              if (_showMonthPicker && _mesesDisponiveis.isNotEmpty)
+                Container(
+                  margin: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+                  constraints: const BoxConstraints(maxHeight: 180),
+                  decoration: BoxDecoration(
+                    color: darkSurface,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: primaryAccent.withOpacity(0.3), width: 1),
+                  ),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _mesesDisponiveis.length,
+                    itemBuilder: (ctx, i) {
+                      final mes = _mesesDisponiveis[i];
+                      final key =
+                          'mes_${mes.year}-${mes.month.toString().padLeft(2, '0')}';
+                      final isSelected = _filter == key;
+                      final label =
+                          DateFormat('MMMM yyyy', 'pt_BR').format(mes);
+                      final capitalizado =
+                          label[0].toUpperCase() + label.substring(1);
+                      return ListTile(
+                        dense: true,
+                        title: Text(capitalizado,
+                            style: TextStyle(
+                              color: isSelected ? primaryAccent : textSecondary,
+                              fontWeight: isSelected
+                                  ? FontWeight.bold
+                                  : FontWeight.normal,
+                              fontSize: 14,
+                            )),
+                        trailing: isSelected
+                            ? const Icon(Icons.check,
+                                color: primaryAccent, size: 16)
+                            : null,
+                        onTap: () {
+                          setState(() {
+                            _mesSelecionado = mes;
+                            _filter = key;
+                            _showMonthPicker = false;
+                          });
+                          _fetchRankingData();
+                        },
+                      );
+                    },
+                  ),
+                ),
+
+              // ── Conteúdo ──────────────────────────────────────
               Expanded(
                 child: _isLoading
                     ? const Center(child: CircularProgressIndicator())
                     : rankedParticipantes.isEmpty
                         ? const EmptyStateWidget(
                             icon: Icons.group_off_rounded,
-                            title: "Nenhum participante encontrado.")
-                        : ListView.builder(
-                            padding:
-                                const EdgeInsets.fromLTRB(8.0, 0, 8.0, 16.0),
-                            itemCount: rankedParticipantes.length,
-                            itemBuilder: (context, index) {
-                              final aluno = rankedParticipantes[index];
-                              final count = _checkinCounts[aluno.id] ?? 0;
-                              final rank = index + 1;
-                              Widget leadingIcon;
-                              if (rank == 1) {
-                                leadingIcon = const Icon(Icons.emoji_events,
-                                    color: primaryAccent, size: 30);
-                              } else if (rank == 2) {
-                                leadingIcon = const Icon(Icons.emoji_events,
-                                    color: Color(0xFFC0C0C0), size: 28);
-                              } else if (rank == 3) {
-                                leadingIcon = const Icon(Icons.emoji_events,
-                                    color: Color(0xFFCD7F32), size: 26);
-                              } else {
-                                leadingIcon = CircleAvatar(
-                                    radius: 14,
-                                    backgroundColor: darkSurface,
-                                    child: Text('$rank',
-                                        style: const TextStyle(
-                                            color: textHint,
-                                            fontWeight: FontWeight.bold)));
-                              }
+                            title: 'Nenhum participante encontrado.')
+                        : ListView(
+                            padding: const EdgeInsets.fromLTRB(8, 4, 8, 24),
+                            children: [
+                              // ── Pódio ─────────────────────────
+                              if (top3.isNotEmpty) _buildPodium(top3),
 
-                              return Card(
-                                child: ListTile(
-                                  leading: leadingIcon,
-                                  title: Text(aluno.nome,
-                                      style: Theme.of(context)
-                                          .textTheme
-                                          .titleMedium),
-                                  trailing: Text('$count treinos',
-                                      style: const TextStyle(
-                                          color: primaryAccent,
+                              const SizedBox(height: 8),
+
+                              // ── Restante da lista ─────────────
+                              ...restante.asMap().entries.map((entry) {
+                                final index = entry.key;
+                                final aluno = entry.value;
+                                final count = _checkinCounts[aluno.id] ?? 0;
+                                final rank = index + 4;
+                                return Card(
+                                  child: ListTile(
+                                    leading: CircleAvatar(
+                                      radius: 14,
+                                      backgroundColor: darkSurface,
+                                      child: Text(
+                                        '$rank',
+                                        style: const TextStyle(
+                                          color: textHint,
                                           fontWeight: FontWeight.bold,
-                                          fontSize: 16)),
-                                ),
-                              );
-                            },
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                    ),
+                                    title: Text(aluno.nome,
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium),
+                                    subtitle: Text(aluno.faixa ?? '',
+                                        style: const TextStyle(
+                                            color: textHint, fontSize: 12)),
+                                    trailing: Text(
+                                      '$count ${count == 1 ? 'treino' : 'treinos'}',
+                                      style: const TextStyle(
+                                        color: primaryAccent,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ],
                           ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPodium(List<Aluno> top3) {
+    // Ordem visual do pódio: 2º, 1º, 3º
+    final podiumOrder = <int>[];
+    if (top3.length == 1) {
+      podiumOrder.add(0);
+    } else if (top3.length == 2) {
+      podiumOrder.addAll([1, 0]);
+    } else {
+      podiumOrder.addAll([1, 0, 2]);
+    }
+
+    const goldColor = primaryAccent;
+    const silverColor = Color(0xFFC0C0C0);
+    const bronzeColor = Color(0xFFCD7F32);
+    final podiumColors = [goldColor, silverColor, bronzeColor];
+    final podiumHeights = [90.0, 65.0, 50.0];
+    final podiumLabels = ['🥇', '🥈', '🥉'];
+    final podiumSizes = [52.0, 44.0, 40.0];
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 0),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 16, 12, 0),
+          child: Column(
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: podiumOrder.map((i) {
+                  if (i >= top3.length) return const SizedBox.shrink();
+                  final aluno = top3[i];
+                  final count = _checkinCounts[aluno.id] ?? 0;
+                  final color = podiumColors[i];
+                  final height = podiumHeights[i];
+                  final avatarSize = podiumSizes[i];
+                  final label = podiumLabels[i];
+                  final firstName = aluno.nome.split(' ').first;
+
+                  return Expanded(
+                    child: Column(
+                      children: [
+                        // Emoji do lugar
+                        Text(label, style: const TextStyle(fontSize: 20)),
+                        const SizedBox(height: 4),
+                        // Avatar
+                        CircleAvatar(
+                          radius: avatarSize / 2,
+                          backgroundColor: color.withOpacity(0.2),
+                          child: Text(
+                            aluno.nome.isNotEmpty
+                                ? aluno.nome[0].toUpperCase()
+                                : '?',
+                            style: TextStyle(
+                              color: color,
+                              fontWeight: FontWeight.bold,
+                              fontSize: avatarSize * 0.4,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        // Nome
+                        Text(
+                          firstName,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: color,
+                            fontWeight: FontWeight.bold,
+                            fontSize: i == 0 ? 14 : 12,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        // Contagem
+                        Text(
+                          '$count ${count == 1 ? 'treino' : 'treinos'}',
+                          style: const TextStyle(color: textHint, fontSize: 11),
+                        ),
+                        const SizedBox(height: 8),
+                        // Base do pódio
+                        Container(
+                          height: height,
+                          decoration: BoxDecoration(
+                            color: color.withOpacity(0.15),
+                            border: Border(
+                              top: BorderSide(color: color, width: 2),
+                              left: BorderSide(
+                                  color: color.withOpacity(0.3), width: 1),
+                              right: BorderSide(
+                                  color: color.withOpacity(0.3), width: 1),
+                            ),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${i + 1}°',
+                              style: TextStyle(
+                                color: color,
+                                fontWeight: FontWeight.bold,
+                                fontSize: i == 0 ? 22 : 18,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
               ),
             ],
           ),
@@ -2652,7 +2956,7 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
 
     if (ultimosParticipantes.isEmpty && ultimosIds.isNotEmpty) {
       showBjjSnackBar(context,
-          'Os participantes do último treino não pertencem à unidade selecionada.',
+          'Os participantes do último treino não pertencem Ã  unidade selecionada.',
           type: 'warning');
     }
 
@@ -2785,7 +3089,7 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
                       const SizedBox(width: 8),
                       IconButton(
                         icon: const Icon(Icons.replay_rounded),
-                        tooltip: 'Repetir Última Seleção',
+                        tooltip: 'Repetir Ãšltima Seleção',
                         onPressed: widget.isSparringMode
                             ? null
                             : _carregarUltimosParticipantes,
@@ -3023,7 +3327,7 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
       if (_currentRoundIndex > allRounds.length) {
         currentRoundFights = allRounds.last;
         roundTitle =
-            'FIM - Última Rodada (${allRounds.length}/${allRounds.length})';
+            'FIM - Ãšltima Rodada (${allRounds.length}/${allRounds.length})';
       } else {
         currentRoundFights = allRounds[_currentRoundIndex - 1];
         roundTitle = 'Rodada $_currentRoundIndex / ${allRounds.length}';
@@ -3272,7 +3576,7 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
   }
 }
 
-// --- TELA DE LISTA DE HISTÓRICO DE TREINOS ---
+// --- TELA DE LISTA DE HISTÃ“RICO DE TREINOS ---
 class SparringHistoryListPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> allParticipants;
@@ -3332,7 +3636,7 @@ class _SparringHistoryListPageState extends State<SparringHistoryListPage> {
                       leading: const Icon(Icons.event_note_rounded,
                           color: primaryAccent),
                       title: Text(
-                          'Treino de ${DateFormat('dd/MM/yyyy \'às\' HH:mm').format(session.startedAt.toDate())}'),
+                          'Treino de ${DateFormat('dd/MM/yyyy \'Ã s\' HH:mm').format(session.startedAt.toDate())}'),
                       subtitle: Text(
                           '${session.participantIds.length} participantes'),
                       trailing:
@@ -3357,7 +3661,7 @@ class _SparringHistoryListPageState extends State<SparringHistoryListPage> {
   }
 }
 
-// --- TELA DE DETALHES DO HISTÓRICO DE TREINO ---
+// --- TELA DE DETALHES DO HISTÃ“RICO DE TREINO ---
 class SparringHistoryDetailPage extends StatelessWidget {
   final SparringSession session;
   final List<Aluno> allParticipants;
