@@ -1,5 +1,5 @@
 // lib/app_drawer.dart
-// ignore_for_file: unused_import, unnecessary_to_list_in_spreads, use_build_context_synchronously
+// ignore_for_file: unused_import, unnecessary_to_list_in_spreads, use_build_context_synchronously, deprecated_member_use
 
 import 'package:cached_network_image/cached_network_image.dart'; // <<< GARANTIR ESTE IMPORT
 import 'package:cloud_firestore/cloud_firestore.dart';
