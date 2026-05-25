@@ -592,6 +592,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                             controller: _nameController,
                             decoration: const InputDecoration(
                                 labelText: 'Nome Completo'),
+                            textCapitalization: TextCapitalization.words,
                             validator: (v) => v == null || v.trim().isEmpty
                                 ? 'Nome não pode ser vazio'
                                 : null,
@@ -660,6 +661,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                             controller: _logradouroController,
                             decoration: const InputDecoration(
                                 labelText: 'Logradouro (Rua, Av...)'),
+                            textCapitalization: TextCapitalization.words,
                           ),
                           const SizedBox(height: 16),
                           Row(
@@ -679,6 +681,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                   controller: _bairroController,
                                   decoration: const InputDecoration(
                                       labelText: 'Bairro'),
+                                  textCapitalization: TextCapitalization.words,
                                 ),
                               ),
                             ],
@@ -692,6 +695,7 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                   controller: _cidadeController,
                                   decoration: const InputDecoration(
                                       labelText: 'Cidade'),
+                                  textCapitalization: TextCapitalization.words,
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -1880,6 +1884,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                       controller: _nameController,
                       decoration:
                           const InputDecoration(labelText: 'Nome Completo'),
+                      textCapitalization: TextCapitalization.words,
                       validator: (v) => v == null || v.trim().isEmpty
                           ? 'Nome não pode ser vazio'
                           : null,
@@ -1948,6 +1953,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                       controller: _logradouroController,
                       decoration: const InputDecoration(
                           labelText: 'Logradouro (Rua, Av...)'),
+                      textCapitalization: TextCapitalization.words,
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -1966,6 +1972,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                             controller: _bairroController,
                             decoration:
                                 const InputDecoration(labelText: 'Bairro'),
+                            textCapitalization: TextCapitalization.words,
                           ),
                         ),
                       ],
@@ -1979,6 +1986,7 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                             controller: _cidadeController,
                             decoration:
                                 const InputDecoration(labelText: 'Cidade'),
+                            textCapitalization: TextCapitalization.words,
                           ),
                         ),
                         const SizedBox(width: 16),

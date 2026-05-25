@@ -2188,6 +2188,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                         decoration: const InputDecoration(
                             labelText: 'Nome',
                             prefixIcon: Icon(Icons.person_add_alt_1_rounded)),
+                        textCapitalization: TextCapitalization.words,
                         validator: (v) => (v == null || v.trim().isEmpty)
                             ? 'Nome inválido'
                             : null),
@@ -2326,6 +2327,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                       controller: logradouroC,
                       decoration: const InputDecoration(
                           labelText: 'Logradouro (Rua, Av...)'),
+                      textCapitalization: TextCapitalization.words,
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -2344,6 +2346,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                             controller: bairroC,
                             decoration:
                                 const InputDecoration(labelText: 'Bairro'),
+                            textCapitalization: TextCapitalization.words,
                           ),
                         ),
                       ],
@@ -2365,6 +2368,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                           child: TextFormField(
                             controller: cepC,
                             decoration: const InputDecoration(labelText: 'CEP'),
+                            textCapitalization: TextCapitalization.words,
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
@@ -2906,6 +2910,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                         labelText: 'Nome',
                         prefixIcon: Icon(Icons.person_rounded),
                       ),
+                      textCapitalization: TextCapitalization.words,
                       validator: (v) => (v == null || v.trim().isEmpty)
                           ? 'Nome inválido'
                           : null,
@@ -3018,6 +3023,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                       controller: _logradouroController,
                       decoration: const InputDecoration(
                           labelText: 'Logradouro (Rua, Av...)'),
+                      textCapitalization: TextCapitalization.words,
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -3036,6 +3042,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                             controller: _bairroController,
                             decoration:
                                 const InputDecoration(labelText: 'Bairro'),
+                            textCapitalization: TextCapitalization.words,
                           ),
                         ),
                       ],
@@ -3049,6 +3056,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                             controller: _cidadeController,
                             decoration:
                                 const InputDecoration(labelText: 'Cidade'),
+                            textCapitalization: TextCapitalization.words,
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -3374,6 +3382,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                   labelText: 'Nome do Professor',
                   prefixIcon: Icon(Icons.person_add_alt_1_rounded),
                 ),
+                textCapitalization: TextCapitalization.words,
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Nome inválido' : null,
               ),
