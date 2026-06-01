@@ -2113,6 +2113,18 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
       backgroundImage = NetworkImage(_currentProfileImageUrl!);
     }
 
+    // Iniciais para o avatar quando não tem foto
+    String initials = '';
+    final nomeParts = (nC.text.trim().isEmpty
+            ? (widget.alunoParaEditar?.nome ?? '')
+            : nC.text.trim())
+        .split(' ');
+    if (nomeParts.length >= 2) {
+      initials = '${nomeParts.first[0]}${nomeParts.last[0]}'.toUpperCase();
+    } else if (nomeParts.isNotEmpty && nomeParts.first.isNotEmpty) {
+      initials = nomeParts.first[0].toUpperCase();
+    }
+
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
       title: Row(
@@ -2134,65 +2146,141 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    if (isEditing && widget.alunoParaEditar!.userId != null)
-                      Center(
-                        child: Stack(
-                          children: [
-                            CircleAvatar(
-                              radius: 50,
-                              backgroundColor: primaryAccent.withOpacity(0.2),
-                              backgroundImage: backgroundImage,
-                              child: _newProfileImageFile != null && kIsWeb
-                                  ? ClipOval(
-                                      child: FutureBuilder<Uint8List>(
-                                        future:
-                                            _newProfileImageFile!.readAsBytes(),
-                                        builder: (context, snapshot) {
-                                          if (snapshot.hasData) {
-                                            return Image.memory(
-                                              snapshot.data!,
+                    // ── Avatar ─────────────────────────────────────
+                    Center(
+                      child: Stack(
+                        children: [
+                          CircleAvatar(
+                            radius: 44,
+                            backgroundColor: primaryAccent.withOpacity(0.15),
+                            backgroundImage: backgroundImage,
+                            child: _newProfileImageFile != null && kIsWeb
+                                ? ClipOval(
+                                    child: FutureBuilder<Uint8List>(
+                                      future:
+                                          _newProfileImageFile!.readAsBytes(),
+                                      builder: (context, snapshot) {
+                                        if (snapshot.hasData) {
+                                          return Image.memory(snapshot.data!,
                                               fit: BoxFit.cover,
-                                              width: 100,
-                                              height: 100,
-                                            );
-                                          }
-                                          return const CircularProgressIndicator();
-                                        },
-                                      ),
-                                    )
-                                  : backgroundImage == null
-                                      ? const Icon(Icons.person,
-                                          size: 50, color: primaryAccent)
-                                      : null,
-                            ),
+                                              width: 88,
+                                              height: 88);
+                                        }
+                                        return const CircularProgressIndicator();
+                                      },
+                                    ),
+                                  )
+                                : backgroundImage == null
+                                    ? Text(initials,
+                                        style: const TextStyle(
+                                            fontSize: 26,
+                                            fontWeight: FontWeight.bold,
+                                            color: primaryAccent))
+                                    : null,
+                          ),
+                          if (isEditing &&
+                              widget.alunoParaEditar?.userId != null)
                             Positioned(
                               bottom: 0,
                               right: 0,
                               child: CircleAvatar(
-                                radius: 18,
+                                radius: 16,
                                 backgroundColor: Theme.of(context).cardColor,
                                 child: IconButton(
                                   icon: const Icon(Icons.camera_alt_outlined,
-                                      size: 18),
+                                      size: 16),
                                   onPressed: _pickImage,
                                   tooltip: 'Alterar foto',
                                 ),
                               ),
-                            )
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // ── Status de acesso ────────────────────────────
+                    if (isEditing)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: widget.alunoParaEditar?.userId != null
+                              ? successColor.withOpacity(0.08)
+                              : textHint.withOpacity(0.08),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: widget.alunoParaEditar?.userId != null
+                                ? successColor.withOpacity(0.3)
+                                : textHint.withOpacity(0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              widget.alunoParaEditar?.userId != null
+                                  ? Icons.lock_open_rounded
+                                  : Icons.lock_outline_rounded,
+                              color: widget.alunoParaEditar?.userId != null
+                                  ? successColor
+                                  : textHint,
+                              size: 18,
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                widget.alunoParaEditar?.userId != null
+                                    ? 'Acesso ao app ativo'
+                                    : 'Sem acesso ao app',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: widget.alunoParaEditar?.userId != null
+                                      ? successColor
+                                      : textHint,
+                                ),
+                              ),
+                            ),
+                            if (widget.alunoParaEditar?.userId == null)
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    minimumSize: Size.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap),
+                                onPressed: () async {
+                                  // Não fecha o dialog de edição antes —
+                                  // showCreateAccessDialog gerencia os dialogs
+                                  showCreateAccessDialog(
+                                      context,
+                                      widget.alunoParaEditar!,
+                                      widget.academyId!,
+                                      widget.currentUser);
+                                },
+                                child: const Text('Criar acesso',
+                                    style: TextStyle(
+                                        color: infoColor, fontSize: 12)),
+                              ),
                           ],
                         ),
                       ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
+
+                    // ── Nome ────────────────────────────────────────
                     TextFormField(
-                        controller: nC,
-                        decoration: const InputDecoration(
-                            labelText: 'Nome',
-                            prefixIcon: Icon(Icons.person_add_alt_1_rounded)),
-                        textCapitalization: TextCapitalization.words,
-                        validator: (v) => (v == null || v.trim().isEmpty)
-                            ? 'Nome inválido'
-                            : null),
-                    const SizedBox(height: 16),
+                      controller: nC,
+                      decoration: const InputDecoration(
+                          labelText: 'Nome Completo',
+                          prefixIcon: Icon(Icons.person_rounded)),
+                      textCapitalization: TextCapitalization.words,
+                      validator: (v) => (v == null || v.trim().isEmpty)
+                          ? 'Nome inválido'
+                          : null,
+                    ),
+                    const SizedBox(height: 14),
+
+                    // ── Unidade ─────────────────────────────────────
                     if (isLoadingUnits)
                       const Center(child: CircularProgressIndicator())
                     else
@@ -2220,116 +2308,232 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                         validator: (v) =>
                             v == null ? 'Selecione uma unidade' : null,
                       ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: phoneC,
-                      decoration: const InputDecoration(
-                        labelText: 'Telefone',
-                        prefixIcon: Icon(Icons.phone),
-                      ),
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        PhoneInputFormatter(),
+                    const SizedBox(height: 14),
+
+                    // ── Telefone + Nascimento (lado a lado) ─────────
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: phoneC,
+                            decoration: const InputDecoration(
+                              labelText: 'Telefone',
+                              prefixIcon: Icon(Icons.phone_outlined),
+                            ),
+                            keyboardType: TextInputType.phone,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              PhoneInputFormatter(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: dNascC,
+                            decoration: const InputDecoration(
+                              labelText: 'Nascimento',
+                              hintText: 'DD/MM/AAAA',
+                              prefixIcon: Icon(Icons.cake_outlined),
+                              counterText: '',
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              DateInputFormatter(),
+                            ],
+                            maxLength: 10,
+                            validator: (v) {
+                              if (v == null || v.trim().isEmpty) return null;
+                              if (v.length != 10) return 'Data incompleta.';
+                              try {
+                                DateFormat('dd/MM/yyyy').parseStrict(v);
+                                return null;
+                              } catch (e) {
+                                return 'Data inválida.';
+                              }
+                            },
+                          ),
+                        ),
                       ],
                     ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: dNascC,
-                      decoration: const InputDecoration(
-                        labelText: 'Data de Nascimento',
-                        hintText: 'DD/MM/AAAA',
-                        prefixIcon: Icon(Icons.cake_rounded),
-                        counterText: '',
-                      ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        DateInputFormatter(),
+                    const SizedBox(height: 14),
+
+                    // ── Faixa (chips visuais) ───────────────────────
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          const Icon(Icons.shield_outlined,
+                              size: 18, color: textHint),
+                          const SizedBox(width: 8),
+                          Text('Faixa',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(color: textHint)),
+                        ]),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: faixasList.map((faixa) {
+                            final isSelected = fS == faixa;
+                            Color faixaColor;
+                            switch (faixa.toLowerCase()) {
+                              case 'branca':
+                                faixaColor = Colors.white;
+                                break;
+                              case 'azul':
+                                faixaColor = const Color(0xFF1E5AA8);
+                                break;
+                              case 'roxa':
+                                faixaColor = const Color(0xFF7B2FBE);
+                                break;
+                              case 'marrom':
+                                faixaColor = const Color(0xFF6B3A2A);
+                                break;
+                              case 'preta':
+                                faixaColor = const Color(0xFF2C2C2A);
+                                break;
+                              default:
+                                faixaColor = textHint;
+                            }
+                            return GestureDetector(
+                              onTap: () => setState(() {
+                                fS = faixa;
+                                grausList = _getGrausForFaixa(fS);
+                                gS = null;
+                              }),
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 180),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 14, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? faixaColor.withOpacity(0.15)
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: isSelected
+                                        ? faixaColor
+                                        : textHint.withOpacity(0.3),
+                                    width: isSelected ? 1.5 : 0.5,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: faixaColor,
+                                        shape: BoxShape.circle,
+                                        border: faixa.toLowerCase() == 'branca'
+                                            ? Border.all(
+                                                color:
+                                                    textHint.withOpacity(0.4))
+                                            : null,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      faixa,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: isSelected
+                                            ? FontWeight.w600
+                                            : FontWeight.normal,
+                                        color: isSelected
+                                            ? (faixa.toLowerCase() ==
+                                                        'branca' ||
+                                                    faixa.toLowerCase() ==
+                                                        'preta'
+                                                ? textSecondary
+                                                : faixaColor)
+                                            : textHint,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        if (fS == null)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 6, left: 4),
+                            child: Text('Selecione uma faixa',
+                                style: TextStyle(
+                                    color: errorColor.withOpacity(0.8),
+                                    fontSize: 12)),
+                          ),
                       ],
-                      maxLength: 10,
+                    ),
+                    const SizedBox(height: 14),
+
+                    // ── Graus (só aparece se faixa selecionada) ─────
+                    if (mostrarGrausDropdown)
+                      DropdownButtonFormField<int>(
+                        isExpanded: true,
+                        value: gS,
+                        decoration: const InputDecoration(
+                            isDense: true,
+                            labelText: 'Graus',
+                            prefixIcon: Icon(Icons.star_outline_rounded)),
+                        hint: const Text("Graus (opcional)"),
+                        onChanged: (v) => setState(() => gS = v),
+                        items: [
+                          const DropdownMenuItem<int>(
+                              value: null, child: Text("Nenhum")),
+                          ...grausList.map((v) => DropdownMenuItem<int>(
+                              value: v,
+                              child: Text('$vº Grau',
+                                  overflow: TextOverflow.ellipsis)))
+                        ].toList(),
+                      ),
+                    const SizedBox(height: 14),
+
+                    // ── Peso ────────────────────────────────────────
+                    TextFormField(
+                      controller: pC,
+                      decoration: const InputDecoration(
+                          labelText: 'Peso (kg)',
+                          prefixIcon: Icon(Icons.monitor_weight_outlined)),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
                       validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return null;
-                        }
-                        if (v.length != 10) {
-                          return 'Data incompleta.';
-                        }
-                        try {
-                          DateFormat('dd/MM/yyyy').parseStrict(v);
-                          return null;
-                        } catch (e) {
-                          return 'Data inválida.';
-                        }
+                        if (v == null || v.isEmpty) return 'Peso inválido';
+                        final x = double.tryParse(v.replaceAll(',', '.'));
+                        return (x == null || x <= 0)
+                            ? 'Peso inválido (deve ser > 0)'
+                            : null;
                       },
                     ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        value: fS,
-                        decoration: const InputDecoration(
-                            labelText: 'Faixa',
-                            prefixIcon: Icon(Icons.shield_outlined)),
-                        hint: const Text("Selecione a Faixa"),
-                        onChanged: (v) => setState(() {
-                              fS = v;
-                              grausList = _getGrausForFaixa(fS);
-                              gS = null;
-                            }),
-                        items: faixasList
-                            .map((v) => DropdownMenuItem<String>(
-                                value: v,
-                                child:
-                                    Text(v, overflow: TextOverflow.ellipsis)))
-                            .toList(),
-                        validator: (v) =>
-                            v == null ? 'Selecione uma faixa' : null),
-                    if (mostrarGrausDropdown) ...[
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<int>(
-                          isExpanded: true,
-                          value: gS,
-                          decoration: const InputDecoration(
-                              isDense: true,
-                              labelText: 'Graus',
-                              prefixIcon: Icon(Icons.star_outline_rounded)),
-                          hint: const Text("Graus (opcional)"),
-                          onChanged: (v) => setState(() => gS = v),
-                          items: [
-                            const DropdownMenuItem<int>(
-                                value: null, child: Text("Nenhum")),
-                            ...grausList.map((v) => DropdownMenuItem<int>(
-                                value: v,
-                                child: Text('$vÂº Grau',
-                                    overflow: TextOverflow.ellipsis)))
-                          ].toList())
-                    ],
-                    const SizedBox(height: 16),
-                    TextFormField(
-                        controller: pC,
-                        decoration: const InputDecoration(
-                            labelText: 'Peso (kg)',
-                            prefixIcon: Icon(Icons.fitness_center_rounded)),
-                        keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true),
-                        validator: (v) {
-                          if (v == null || v.isEmpty) return 'Peso inválido';
-                          final x = double.tryParse(v.replaceAll(',', '.'));
-                          return (x == null || x <= 0)
-                              ? 'Peso inválido (deve ser > 0)'
-                              : null;
-                        }),
-                    const SizedBox(height: 24),
-                    Text("Endereço",
-                        style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 20),
+
+                    // ── Seção Endereço ──────────────────────────────
+                    Row(children: [
+                      const Icon(Icons.location_on_outlined,
+                          size: 18, color: textHint),
+                      const SizedBox(width: 8),
+                      Text('Endereço',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(color: textHint)),
+                    ]),
+                    const SizedBox(height: 10),
                     TextFormField(
                       controller: logradouroC,
                       decoration: const InputDecoration(
-                          labelText: 'Logradouro (Rua, Av...)'),
+                          labelText: 'Logradouro (Rua, Av...)',
+                          prefixIcon: Icon(Icons.map_outlined)),
                       textCapitalization: TextCapitalization.words,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
@@ -2337,9 +2541,10 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                           child: TextFormField(
                             controller: numeroC,
                             decoration: const InputDecoration(labelText: 'Nº'),
+                            keyboardType: TextInputType.number,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 12),
                         Expanded(
                           flex: 3,
                           child: TextFormField(
@@ -2351,7 +2556,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
@@ -2360,15 +2565,15 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                             controller: cidadeC,
                             decoration:
                                 const InputDecoration(labelText: 'Cidade'),
+                            textCapitalization: TextCapitalization.words,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 12),
                         Expanded(
                           flex: 2,
                           child: TextFormField(
                             controller: cepC,
                             decoration: const InputDecoration(labelText: 'CEP'),
-                            textCapitalization: TextCapitalization.words,
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
@@ -2378,24 +2583,6 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                         ),
                       ],
                     ),
-                    if (isEditing &&
-                        widget.alunoParaEditar?.userId == null) ...[
-                      const SizedBox(height: 24),
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.login_rounded, color: infoColor),
-                        label: const Text("Criar Acesso de Login",
-                            style: TextStyle(color: infoColor)),
-                        onPressed: () async {
-                          final currentContext = context;
-                          Navigator.of(currentContext).pop();
-                          showCreateAccessDialog(
-                              currentContext,
-                              widget.alunoParaEditar!,
-                              widget.academyId!,
-                              widget.currentUser);
-                        },
-                      )
-                    ],
                     if (isEditing) ...[
                       const SizedBox(height: 16),
                       Row(
@@ -2834,6 +3021,14 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
         _currentProfileImageUrl!.isNotEmpty) {
       backgroundImage = NetworkImage(_currentProfileImageUrl!);
     }
+    // Iniciais para o avatar
+    final nameParts = widget.professor.name.trim().split(' ');
+    final initials = nameParts.length >= 2
+        ? '${nameParts.first[0]}${nameParts.last[0]}'.toUpperCase()
+        : nameParts.isNotEmpty && nameParts.first.isNotEmpty
+            ? nameParts.first[0].toUpperCase()
+            : '?';
+
     return AlertDialog(
       titlePadding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
       title: Row(
@@ -2856,12 +3051,13 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // ── Avatar ──────────────────────────────────────
                     Center(
                       child: Stack(
                         children: [
                           CircleAvatar(
-                            radius: 50,
-                            backgroundColor: primaryAccent.withOpacity(0.2),
+                            radius: 44,
+                            backgroundColor: primaryAccent.withOpacity(0.15),
                             backgroundImage: backgroundImage,
                             child: _newProfileImageFile != null && kIsWeb
                                 ? ClipOval(
@@ -2870,44 +3066,47 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                                           _newProfileImageFile!.readAsBytes(),
                                       builder: (context, snapshot) {
                                         if (snapshot.hasData) {
-                                          return Image.memory(
-                                            snapshot.data!,
-                                            fit: BoxFit.cover,
-                                            width: 100,
-                                            height: 100,
-                                          );
+                                          return Image.memory(snapshot.data!,
+                                              fit: BoxFit.cover,
+                                              width: 88,
+                                              height: 88);
                                         }
                                         return const CircularProgressIndicator();
                                       },
                                     ),
                                   )
                                 : backgroundImage == null
-                                    ? const Icon(Icons.person,
-                                        size: 50, color: primaryAccent)
+                                    ? Text(initials,
+                                        style: const TextStyle(
+                                            fontSize: 26,
+                                            fontWeight: FontWeight.bold,
+                                            color: primaryAccent))
                                     : null,
                           ),
                           Positioned(
                             bottom: 0,
                             right: 0,
                             child: CircleAvatar(
-                              radius: 18,
+                              radius: 16,
                               backgroundColor: Theme.of(context).cardColor,
                               child: IconButton(
                                 icon: const Icon(Icons.camera_alt_outlined,
-                                    size: 18),
+                                    size: 16),
                                 onPressed: _pickImage,
                                 tooltip: 'Alterar foto',
                               ),
                             ),
-                          )
+                          ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 16),
+
+                    // ── Nome ────────────────────────────────────────
                     TextFormField(
                       controller: _nameController,
                       decoration: const InputDecoration(
-                        labelText: 'Nome',
+                        labelText: 'Nome Completo',
                         prefixIcon: Icon(Icons.person_rounded),
                       ),
                       textCapitalization: TextCapitalization.words,
@@ -2915,7 +3114,9 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                           ? 'Nome inválido'
                           : null,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
+
+                    // ── Unidade ─────────────────────────────────────
                     DropdownButtonFormField<String>(
                       value: selectedUnitId,
                       decoration: const InputDecoration(
@@ -2940,12 +3141,14 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                       validator: (v) =>
                           v == null ? 'Selecione uma unidade' : null,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
+
+                    // ── Telefone ────────────────────────────────────
                     TextFormField(
                       controller: _phoneController,
                       decoration: const InputDecoration(
                         labelText: 'Telefone',
-                        prefixIcon: Icon(Icons.phone),
+                        prefixIcon: Icon(Icons.phone_outlined),
                       ),
                       keyboardType: TextInputType.phone,
                       inputFormatters: [
@@ -2953,31 +3156,128 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                         PhoneInputFormatter(),
                       ],
                     ),
+
+                    // ── Faixa, Graus e Peso (só se não for self) ────
                     if (!isSelf) ...[
-                      const SizedBox(height: 16),
-                      DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        value: _faixa,
-                        decoration: const InputDecoration(
-                            labelText: 'Faixa',
-                            prefixIcon: Icon(Icons.shield_outlined)),
-                        hint: const Text("Selecione a Faixa"),
-                        items: _faixasList
-                            .map((faixa) => DropdownMenuItem(
-                                value: faixa,
-                                child: Text(faixa,
-                                    overflow: TextOverflow.ellipsis)))
-                            .toList(),
-                        onChanged: (value) => setState(() {
-                          _faixa = value;
-                          _grausList = _getGrausForFaixa(_faixa);
-                          _graus = null;
-                        }),
-                        validator: (value) =>
-                            value == null ? 'Selecione a faixa' : null,
+                      const SizedBox(height: 14),
+
+                      // Faixa — chips visuais
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(children: [
+                            const Icon(Icons.shield_outlined,
+                                size: 18, color: textHint),
+                            const SizedBox(width: 8),
+                            Text('Faixa',
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .bodySmall
+                                    ?.copyWith(color: textHint)),
+                          ]),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: _faixasList.map((faixa) {
+                              final isSelected = _faixa == faixa;
+                              Color faixaColor;
+                              switch (faixa.toLowerCase()) {
+                                case 'branca':
+                                  faixaColor = Colors.white;
+                                  break;
+                                case 'azul':
+                                  faixaColor = const Color(0xFF1E5AA8);
+                                  break;
+                                case 'roxa':
+                                  faixaColor = const Color(0xFF7B2FBE);
+                                  break;
+                                case 'marrom':
+                                  faixaColor = const Color(0xFF6B3A2A);
+                                  break;
+                                case 'preta':
+                                  faixaColor = const Color(0xFF2C2C2A);
+                                  break;
+                                default:
+                                  faixaColor = textHint;
+                              }
+                              return GestureDetector(
+                                onTap: () => setState(() {
+                                  _faixa = faixa;
+                                  _grausList = _getGrausForFaixa(_faixa);
+                                  _graus = null;
+                                }),
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 180),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 7),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? faixaColor.withOpacity(0.15)
+                                        : Colors.transparent,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? faixaColor
+                                          : textHint.withOpacity(0.3),
+                                      width: isSelected ? 1.5 : 0.5,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: BoxDecoration(
+                                          color: faixaColor,
+                                          shape: BoxShape.circle,
+                                          border: faixa.toLowerCase() ==
+                                                  'branca'
+                                              ? Border.all(
+                                                  color:
+                                                      textHint.withOpacity(0.4))
+                                              : null,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      Text(
+                                        faixa,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: isSelected
+                                              ? FontWeight.w600
+                                              : FontWeight.normal,
+                                          color: isSelected
+                                              ? (faixa.toLowerCase() ==
+                                                          'branca' ||
+                                                      faixa.toLowerCase() ==
+                                                          'preta'
+                                                  ? textSecondary
+                                                  : faixaColor)
+                                              : textHint,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                          if (_faixa == null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 6, left: 4),
+                              child: Text('Selecione uma faixa',
+                                  style: TextStyle(
+                                      color: errorColor.withOpacity(0.8),
+                                      fontSize: 12)),
+                            ),
+                        ],
                       ),
-                      if (_faixa != null) ...[
-                        const SizedBox(height: 16),
+                      const SizedBox(height: 14),
+
+                      // ── Graus ───────────────────────────────────
+                      if (_faixa != null)
                         DropdownButtonFormField<int>(
                           isExpanded: true,
                           value: _graus,
@@ -2985,24 +3285,25 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                               isDense: true,
                               labelText: 'Graus',
                               prefixIcon: Icon(Icons.star_outline_rounded)),
-                          hint: const Text("Selecione os Graus"),
+                          hint: const Text("Graus (opcional)"),
                           items: [
                             const DropdownMenuItem<int>(
                                 value: null, child: Text("Nenhum")),
                             ..._grausList.map((g) => DropdownMenuItem(
                                 value: g,
-                                child: Text("$gÂº Grau",
+                                child: Text("$gº Grau",
                                     overflow: TextOverflow.ellipsis))),
                           ],
                           onChanged: (value) => setState(() => _graus = value),
                         ),
-                      ],
-                      const SizedBox(height: 16),
+                      const SizedBox(height: 14),
+
+                      // ── Peso ────────────────────────────────────
                       TextFormField(
                         controller: _pesoController,
                         decoration: const InputDecoration(
                           labelText: 'Peso (kg)',
-                          prefixIcon: Icon(Icons.fitness_center_rounded),
+                          prefixIcon: Icon(Icons.monitor_weight_outlined),
                         ),
                         keyboardType: const TextInputType.numberWithOptions(
                             decimal: true),
@@ -3015,17 +3316,28 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                         },
                       ),
                     ],
-                    const SizedBox(height: 24),
-                    Text("Endereço",
-                        style: Theme.of(context).textTheme.titleLarge),
-                    const SizedBox(height: 16),
+
+                    // ── Seção Endereço ──────────────────────────────
+                    const SizedBox(height: 20),
+                    Row(children: [
+                      const Icon(Icons.location_on_outlined,
+                          size: 18, color: textHint),
+                      const SizedBox(width: 8),
+                      Text('Endereço',
+                          style: Theme.of(context)
+                              .textTheme
+                              .titleSmall
+                              ?.copyWith(color: textHint)),
+                    ]),
+                    const SizedBox(height: 10),
                     TextFormField(
                       controller: _logradouroController,
                       decoration: const InputDecoration(
-                          labelText: 'Logradouro (Rua, Av...)'),
+                          labelText: 'Logradouro (Rua, Av...)',
+                          prefixIcon: Icon(Icons.map_outlined)),
                       textCapitalization: TextCapitalization.words,
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
@@ -3033,9 +3345,10 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                           child: TextFormField(
                             controller: _numeroController,
                             decoration: const InputDecoration(labelText: 'Nº'),
+                            keyboardType: TextInputType.number,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 12),
                         Expanded(
                           flex: 3,
                           child: TextFormField(
@@ -3047,7 +3360,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 12),
                     Row(
                       children: [
                         Expanded(
@@ -3059,7 +3372,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                             textCapitalization: TextCapitalization.words,
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 12),
                         Expanded(
                           flex: 2,
                           child: TextFormField(
@@ -3074,6 +3387,8 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                         ),
                       ],
                     ),
+
+                    // ── Ações (Reverter / Graduar) ──────────────────
                     if (!isSelf) ...[
                       const SizedBox(height: 16),
                       Row(
@@ -3088,8 +3403,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                                   foregroundColor: warningColor,
                                   textStyle: const TextStyle(fontSize: 14)),
                               onPressed: () {
-                                Navigator.of(context)
-                                    .pop(); // Close edit dialog
+                                Navigator.of(context).pop();
                                 showDialog(
                                   context: context,
                                   builder: (ctx) => AlertDialog(
@@ -3105,8 +3419,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                                       ElevatedButton(
                                         child: const Text('Confirmar'),
                                         onPressed: () {
-                                          Navigator.of(ctx)
-                                              .pop(); // Close confirmation
+                                          Navigator.of(ctx).pop();
                                           UserManagementService.demoteToStudent(
                                             context,
                                             academyId: widget.academyId,
@@ -3131,8 +3444,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                                   foregroundColor: successColor,
                                   textStyle: const TextStyle(fontSize: 14)),
                               onPressed: () {
-                                Navigator.of(context)
-                                    .pop(); // Close current dialog
+                                Navigator.of(context).pop();
                                 showDialog(
                                   context: context,
                                   builder: (_) => GraduationDialog(
@@ -3147,7 +3459,9 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                         ],
                       ),
                     ],
-                    const SizedBox(height: 24),
+
+                    // ── Botões Excluir / Salvar ──────────────────────
+                    const SizedBox(height: 20),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -3161,7 +3475,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                                 _confirmDeleteProfessor(widget.professor),
                           )
                         else
-                          const SizedBox(), // Placeholder
+                          const SizedBox(),
                         ElevatedButton(
                           onPressed: _isLoading ? null : _submit,
                           child: _isLoading
@@ -4161,17 +4475,58 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     };
   }
 
+  // Cor da faixa do aluno
+  Color _beltColor(String? faixa) {
+    switch (faixa?.toLowerCase()) {
+      case 'branca':
+        return Colors.white;
+      case 'azul':
+        return const Color(0xFF1E5AA8);
+      case 'roxa':
+        return const Color(0xFF7B2FBE);
+      case 'marrom':
+        return const Color(0xFF6B3A2A);
+      case 'preta':
+        return const Color(0xFF1A1A1A);
+      default:
+        return textHint;
+    }
+  }
+
+  // Iniciais do nome
+  String _initials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2)
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final createdAt = widget.student.createdAt?.toDate();
-    final updatedAt = widget.student.updatedAt?.toDate();
+    final now = DateTime.now();
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(widget.student.nome),
+        title: Text(_capitalize(widget.student.nome)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history_rounded),
+            tooltip: 'Histórico de Edições',
+            onPressed: () => _showEditHistory(context),
+          ),
+          // Botão histórico de treinos — só habilita após carregar os dados
+          IconButton(
+            icon: const Icon(Icons.fitness_center_rounded),
+            tooltip: 'Histórico de Treinos',
+            onPressed: () async {
+              final details = await _detailsFuture;
+              if (!mounted) return;
+              final groupedCheckins =
+                  details['groupedCheckins'] as Map<String, List<CheckinEntry>>;
+              _showTrainingHistory(context, groupedCheckins);
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.military_tech_rounded),
             tooltip: 'Histórico de Graduações',
@@ -4210,95 +4565,172 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                   details['groupedCheckins'] as Map<String, List<CheckinEntry>>;
               _studentUserModel = details['studentUser'] as UserModel?;
 
+              // Treinos do mês atual
+              final mesAtual = DateFormat.yMMMM('pt_BR').format(now);
+              final treinosMes = groupedCheckins[mesAtual]?.length ?? 0;
+              final totalTreinos =
+                  groupedCheckins.values.fold(0, (s, l) => s + l.length);
+
+              final beltColor = _beltColor(widget.student.faixa);
+              final initials = _initials(widget.student.nome);
+              final address = widget.student.address;
+
               return ListView(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                 children: [
+                  // ── Hero: foto + nome + faixa ────────────────────
                   Card(
                     child: Padding(
-                      padding: const EdgeInsets.all(16.0),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 24, horizontal: 16),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text("Informações do Aluno",
-                              style: theme.textTheme.titleLarge),
-                          const Divider(height: 20),
-                          if (_studentUserModel != null)
-                            _buildInfoRow(context, Icons.email_outlined,
-                                "Email", _studentUserModel!.email),
-                          if (widget.student.dataNascimento != null)
-                            _buildInfoRow(
-                                context,
-                                Icons.cake_rounded,
-                                "Aniversário",
-                                '${DateFormat('dd/MM/yyyy').format(widget.student.dataNascimento!)} (${widget.student.idade} anos)'),
-                          _buildInfoRow(context, Icons.shield_outlined, "Faixa",
-                              widget.student.faixa),
-                          if (widget.student.graus != null &&
-                              widget.student.graus! > 0)
-                            _buildInfoRow(context, Icons.star_outline_rounded,
-                                "Graus", '${widget.student.graus}Âº Grau'),
-                          _buildInfoRow(context, Icons.fitness_center_rounded,
-                              "Peso", '${widget.student.peso} kg'),
-                          const Divider(height: 20),
-                          if (widget.student.createdByName != null &&
-                              createdAt != null)
-                            _buildInfoRow(
-                                context,
-                                Icons.person_add_alt_1_outlined,
-                                "Criado por",
-                                '${widget.student.createdByName} em ${DateFormat.yMd('pt_BR').format(createdAt)}'),
-                          if (widget.student.lastUpdatedByName != null &&
-                              updatedAt != null)
-                            _buildInfoRow(
-                                context,
-                                Icons.edit_note_rounded,
-                                "Ãšltima Edição",
-                                '${widget.student.lastUpdatedByName} em ${DateFormat.yMd('pt_BR').format(updatedAt)}'),
+                          CircleAvatar(
+                            radius: 40,
+                            backgroundColor: primaryAccent.withOpacity(0.15),
+                            backgroundImage:
+                                (_studentUserModel?.profileImagePath != null &&
+                                        _studentUserModel!
+                                            .profileImagePath!.isNotEmpty)
+                                    ? NetworkImage(
+                                        _studentUserModel!.profileImagePath!)
+                                    : null,
+                            child:
+                                (_studentUserModel?.profileImagePath == null ||
+                                        _studentUserModel!
+                                            .profileImagePath!.isEmpty)
+                                    ? Text(initials,
+                                        style: const TextStyle(
+                                            fontSize: 28,
+                                            fontWeight: FontWeight.bold,
+                                            color: primaryAccent))
+                                    : null,
+                          ),
+                          const SizedBox(height: 14),
+                          Text(
+                            _capitalize(widget.student.nome),
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleLarge
+                                ?.copyWith(fontWeight: FontWeight.bold),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 14, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: beltColor == const Color(0xFF1A1A1A)
+                                  ? Colors.white.withOpacity(0.08)
+                                  : beltColor.withOpacity(0.12),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: beltColor == const Color(0xFF1A1A1A)
+                                    ? Colors.white.withOpacity(0.3)
+                                    : beltColor.withOpacity(0.4),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 10,
+                                  height: 10,
+                                  decoration: BoxDecoration(
+                                      color: beltColor, shape: BoxShape.circle),
+                                ),
+                                const SizedBox(width: 7),
+                                Text(
+                                  '${widget.student.faixa}'
+                                  '${(widget.student.graus != null && widget.student.graus! > 0) ? ' · ${widget.student.graus}º grau' : ''}',
+                                  style: TextStyle(
+                                      color: (beltColor == Colors.white ||
+                                              beltColor ==
+                                                  const Color(0xFF1A1A1A))
+                                          ? textSecondary
+                                          : beltColor,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  Text("Histórico de Treinos",
-                      style: theme.textTheme.titleLarge),
-                  const SizedBox(height: 8),
-                  if (groupedCheckins.isEmpty)
-                    const EmptyStateWidget(
-                      icon: Icons.calendar_month_outlined,
-                      title: 'Nenhum Treino Registrado',
-                      message: 'Este aluno ainda não possui check-ins.',
-                    )
-                  else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: groupedCheckins.keys.length,
-                      itemBuilder: (context, index) {
-                        final month = groupedCheckins.keys.toList()[index];
-                        final checkinsInMonth = groupedCheckins[month]!;
-                        return Card(
-                          margin: const EdgeInsets.symmetric(vertical: 8.0),
-                          child: ExpansionTile(
-                            title: Text(
-                                "$month (${checkinsInMonth.length} treinos)"),
-                            leading: const Icon(Icons.calendar_today_rounded),
-                            initiallyExpanded: index == 0,
-                            children: checkinsInMonth.map((checkin) {
-                              final titleText =
-                                  checkin.className ?? 'Check-in Aprovado';
 
-                              return ListTile(
-                                title: Text(titleText),
-                                subtitle: Text(DateFormat.yMMMEd('pt_BR')
-                                    .format(checkin.date)),
-                                leading: const Icon(Icons.check,
-                                    color: successColor),
-                              );
-                            }).toList(),
+                  const SizedBox(height: 12),
+
+                  // ── Stats: treinos ──────────────────────────────
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          context,
+                          icon: Icons.calendar_today_rounded,
+                          value: '$treinosMes',
+                          label: 'treinos este mês',
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _buildStatCard(
+                          context,
+                          icon: Icons.fitness_center_rounded,
+                          value: '$totalTreinos',
+                          label: 'treinos no total',
+                        ),
+                      ),
+                      if ((widget.student.peso ?? 0) > 0) ...[
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _buildStatCard(
+                            context,
+                            icon: Icons.monitor_weight_outlined,
+                            value: '${widget.student.peso}',
+                            label: 'kg',
                           ),
-                        );
-                      },
-                    ),
+                        ),
+                      ],
+                    ],
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // ── Seção: Contato ──────────────────────────────
+                  _buildSection(context, 'Contato', [
+                    if (_studentUserModel != null)
+                      _buildInfoRow(context, Icons.email_outlined, 'E-mail',
+                          _studentUserModel!.email),
+                    if (widget.student.phoneNumber!.isNotEmpty) ...[
+                      _buildInfoRow(context, Icons.phone_outlined, 'Telefone',
+                          widget.student.phoneNumber!),
+                      _buildWhatsAppButton(
+                          context, widget.student.phoneNumber!),
+                    ],
+                    if (widget.student.dataNascimento != null)
+                      _buildInfoRow(context, Icons.cake_rounded, 'Nascimento',
+                          '${DateFormat('dd/MM/yyyy').format(widget.student.dataNascimento!)} · ${widget.student.idade} anos'),
+                  ]),
+
+                  // ── Seção: Endereço ─────────────────────────────
+                  if (address != null &&
+                      address.values.any((v) => v.toString().isNotEmpty))
+                    _buildSection(context, 'Endereço', [
+                      if ((address['logradouro'] ?? '').isNotEmpty)
+                        _buildInfoRow(context, Icons.map_outlined, 'Logradouro',
+                            '${address['logradouro']}${(address['numero'] ?? '').isNotEmpty ? ', ${address['numero']}' : ''}'),
+                      if ((address['bairro'] ?? '').isNotEmpty)
+                        _buildInfoRow(context, Icons.location_on_outlined,
+                            'Bairro', _capitalize(address['bairro'] ?? '')),
+                      if ((address['cidade'] ?? '').isNotEmpty)
+                        _buildInfoRow(
+                            context,
+                            Icons.location_city_outlined,
+                            'Cidade',
+                            '${address['cidade']}${(address['cep'] ?? '').isNotEmpty ? '  ·  CEP ${address['cep']}' : ''}'),
+                    ]),
                 ],
               );
             },
@@ -4308,21 +4740,303 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     );
   }
 
-  Widget _buildInfoRow(
-      BuildContext context, IconData icon, String label, String value) {
+  Future<void> _openWhatsApp(BuildContext context, String phone) async {
+    final cleaned = phone.replaceAll(RegExp(r'\D'), '');
+    final number = cleaned.startsWith('55') ? cleaned : '55$cleaned';
+    final url = Uri.parse('https://wa.me/$number');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (context.mounted) {
+        showBjjSnackBar(context, 'Não foi possível abrir o WhatsApp.',
+            type: 'error');
+      }
+    }
+  }
+
+  Widget _buildWhatsAppButton(BuildContext context, String phone) {
+    final cleaned = phone.replaceAll(RegExp(r'\D'), '');
+    final number = cleaned.startsWith('55') ? cleaned : '55$cleaned';
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.chat_outlined,
+              size: 18, color: Color(0xFF25D366)),
+          label: const Text('Abrir no WhatsApp',
+              style: TextStyle(color: Color(0xFF25D366), fontSize: 13)),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Color(0xFF25D366), width: 1),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onPressed: () async {
+            final uri = Uri.parse('https://wa.me/$number');
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            } else {
+              if (context.mounted) {
+                showBjjSnackBar(context, 'Não foi possível abrir o WhatsApp.',
+                    type: 'error');
+              }
+            }
+          },
+        ),
+      ),
+    );
+  }
+
+  String _capitalize(String text) {
+    if (text.isEmpty) return text;
+    return text.split(' ').map((w) {
+      if (w.isEmpty) return w;
+      return w[0].toUpperCase() + w.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
+  void _showTrainingHistory(
+      BuildContext context, Map<String, List<CheckinEntry>> groupedCheckins) {
+    final totalTreinos = groupedCheckins.values.fold(0, (s, l) => s + l.length);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: darkSurface,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        minChildSize: 0.3,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (_, scrollController) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: Row(children: [
+                const Icon(Icons.fitness_center_rounded,
+                    color: primaryAccent, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Histórico de Treinos',
+                      style: Theme.of(context).textTheme.titleMedium),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: primaryAccent.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text('$totalTreinos no total',
+                      style: const TextStyle(
+                          color: primaryAccent,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500)),
+                ),
+              ]),
+            ),
+            const Divider(height: 20),
+            if (groupedCheckins.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Text('Nenhum treino registrado.',
+                    style: TextStyle(color: textHint)),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
+                  itemCount: groupedCheckins.keys.length,
+                  itemBuilder: (context, index) {
+                    final month = groupedCheckins.keys.toList()[index];
+                    final checkinsInMonth = groupedCheckins[month]!;
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ExpansionTile(
+                        title: Text(
+                            '$month  ·  ${checkinsInMonth.length} treinos'),
+                        leading: const Icon(Icons.calendar_today_rounded,
+                            color: primaryAccent),
+                        initiallyExpanded: index == 0,
+                        children: checkinsInMonth.map((checkin) {
+                          return ListTile(
+                            title:
+                                Text(checkin.className ?? 'Check-in Aprovado'),
+                            subtitle: Text(DateFormat.yMMMEd('pt_BR')
+                                .format(checkin.date)),
+                            leading: const Icon(Icons.check_circle_outline,
+                                color: successColor),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditHistory(BuildContext context) {
+    final createdAt = widget.student.createdAt?.toDate();
+    final updatedAt = widget.student.updatedAt?.toDate();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: darkSurface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.history_rounded, color: primaryAccent, size: 20),
+              const SizedBox(width: 8),
+              Text('Histórico de Edições',
+                  style: Theme.of(context).textTheme.titleMedium),
+            ]),
+            const Divider(height: 20),
+            if (widget.student.createdByName != null && createdAt != null)
+              _buildHistoryTile(context,
+                  icon: Icons.person_add_alt_1_outlined,
+                  label: 'Cadastrado por',
+                  value: _capitalize(widget.student.createdByName!),
+                  date: DateFormat('dd/MM/yyyy · HH:mm').format(createdAt)),
+            if (widget.student.lastUpdatedByName != null && updatedAt != null)
+              _buildHistoryTile(context,
+                  icon: Icons.edit_note_rounded,
+                  label: 'Última edição por',
+                  value: _capitalize(widget.student.lastUpdatedByName!),
+                  date: DateFormat('dd/MM/yyyy · HH:mm').format(updatedAt)),
+            if (widget.student.createdByName == null &&
+                widget.student.lastUpdatedByName == null)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text('Nenhum histórico disponível.',
+                      style: TextStyle(color: textHint)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryTile(BuildContext context,
+      {required IconData icon,
+      required String label,
+      required String value,
+      required String date}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: textHint, size: 20),
-          const SizedBox(width: 16),
+          Icon(icon, color: primaryAccent, size: 18),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: const TextStyle(color: textHint, fontSize: 13)),
-                Text(value, style: Theme.of(context).textTheme.titleMedium),
+                    style: const TextStyle(
+                        color: textHint,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Text(value,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500, color: textPrimary)),
+                Text(date,
+                    style: const TextStyle(color: textHint, fontSize: 11)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(BuildContext context,
+      {required IconData icon, required String value, required String label}) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+        child: Column(
+          children: [
+            Icon(icon, color: primaryAccent, size: 20),
+            const SizedBox(height: 6),
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: primaryAccent)),
+            const SizedBox(height: 2),
+            Text(label,
+                style: const TextStyle(color: textHint, fontSize: 11),
+                textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSection(BuildContext context, String title, List<Widget> rows) {
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title.toUpperCase(),
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: primaryAccent,
+                      letterSpacing: 1.0)),
+              const Divider(height: 14, thickness: 0.5),
+              ...rows,
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(
+      BuildContext context, IconData icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: primaryAccent, size: 18),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        color: textHint,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        height: 1.2)),
+                const SizedBox(height: 3),
+                Text(value,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500, color: textPrimary)),
               ],
             ),
           ),
@@ -4348,18 +5062,49 @@ class ProfessorDetailPage extends StatefulWidget {
 }
 
 class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
+  Color _beltColor(String? faixa) {
+    switch (faixa?.toLowerCase()) {
+      case 'branca':
+        return Colors.white;
+      case 'azul':
+        return const Color(0xFF1E5AA8);
+      case 'roxa':
+        return const Color(0xFF7B2FBE);
+      case 'marrom':
+        return const Color(0xFF6B3A2A);
+      case 'preta':
+        return const Color(0xFF1A1A1A);
+      default:
+        return textHint;
+    }
+  }
+
+  String _initials(String name) {
+    final parts = name.trim().split(' ');
+    if (parts.length >= 2)
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    return name.isNotEmpty ? name[0].toUpperCase() : '?';
+  }
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final createdAt = widget.professor.createdAt?.toDate();
-    final updatedAt = widget.professor.updatedAt?.toDate();
     final isManager = widget.professor.role == UserRole.manager;
+    final beltColor = _beltColor(widget.professor.faixa);
+    final initials = _initials(widget.professor.name);
+    final address = widget.professor.address;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(widget.professor.name),
+        title: Text(_capitalize(widget.professor.name)),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.history_rounded),
+            tooltip: 'Histórico de Edições',
+            onPressed: () {
+              _showEditHistory(context);
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.calendar_month_rounded),
             tooltip: 'Registro de Aulas',
@@ -4391,60 +5136,286 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
       body: AppBackground(
         child: SafeArea(
           child: ListView(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
+              // ── Hero: foto + nome + cargo + faixa ───────────────
               Card(
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Foto de perfil ou iniciais
+                      CircleAvatar(
+                        radius: 40,
+                        backgroundColor: primaryAccent.withOpacity(0.15),
+                        backgroundImage: (widget.professor.profileImagePath !=
+                                    null &&
+                                widget.professor.profileImagePath!.isNotEmpty)
+                            ? NetworkImage(widget.professor.profileImagePath!)
+                            : null,
+                        child: (widget.professor.profileImagePath == null ||
+                                widget.professor.profileImagePath!.isEmpty)
+                            ? Text(initials,
+                                style: const TextStyle(
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryAccent))
+                            : null,
+                      ),
+                      const SizedBox(height: 14),
+                      // Nome com capitalização
                       Text(
-                          isManager
-                              ? "Informações do Gerente"
-                              : "Informações do Professor",
-                          style: theme.textTheme.titleLarge),
-                      const Divider(height: 20),
-                      _buildInfoRow(context, Icons.email_outlined,
-                          "E-mail de Login", widget.professor.email),
-                      if (widget.professor.phoneNumber != null &&
-                          widget.professor.phoneNumber!.isNotEmpty)
-                        _buildInfoRow(context, Icons.phone_outlined, "Telefone",
-                            widget.professor.phoneNumber!),
-                      if (!isManager) ...[
-                        _buildInfoRow(context, Icons.shield_outlined, "Faixa",
-                            widget.professor.faixa ?? 'Não informada'),
-                        if (widget.professor.graus != null &&
-                            widget.professor.graus! > 0)
-                          _buildInfoRow(context, Icons.star_outline_rounded,
-                              "Graus", '${widget.professor.graus}Âº Grau'),
-                        if (widget.professor.peso != null)
-                          _buildInfoRow(context, Icons.fitness_center_rounded,
-                              "Peso", '${widget.professor.peso} kg'),
+                        _capitalize(widget.professor.name),
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleLarge
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isManager ? 'Gerente' : 'Professor',
+                        style: const TextStyle(color: textHint, fontSize: 13),
+                      ),
+                      // Badge de faixa (só professor)
+                      if (!isManager &&
+                          widget.professor.faixa != null &&
+                          widget.professor.faixa!.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: beltColor == const Color(0xFF1A1A1A)
+                                ? Colors.white.withOpacity(0.08)
+                                : beltColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: beltColor == const Color(0xFF1A1A1A)
+                                  ? Colors.white.withOpacity(0.3)
+                                  : beltColor.withOpacity(0.5),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                    color: beltColor, shape: BoxShape.circle),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                _capitalize(widget.professor.faixa!) +
+                                    ((widget.professor.graus != null &&
+                                            widget.professor.graus! > 0)
+                                        ? ' · ${widget.professor.graus}º grau'
+                                        : ''),
+                                style: TextStyle(
+                                  color: (beltColor == Colors.white ||
+                                          beltColor == const Color(0xFF1A1A1A))
+                                      ? textSecondary
+                                      : beltColor,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ],
-                      if (widget.professor.dataNascimento != null &&
-                          widget.professor.idade != null)
-                        _buildInfoRow(context, Icons.cake_rounded, "Idade",
-                            '${widget.professor.idade} anos'),
-                      const Divider(height: 20),
-                      if (widget.professor.createdByName != null &&
-                          createdAt != null)
-                        _buildInfoRow(
-                            context,
-                            Icons.person_add_alt_1_outlined,
-                            "Criado por",
-                            '${widget.professor.createdByName} em ${DateFormat.yMd('pt_BR').format(createdAt)}'),
-                      if (widget.professor.lastUpdatedByName != null &&
-                          updatedAt != null)
-                        _buildInfoRow(
-                            context,
-                            Icons.edit_note_rounded,
-                            "Ãšltima Edição",
-                            '${widget.professor.lastUpdatedByName} em ${DateFormat.yMd('pt_BR').format(updatedAt)}'),
                     ],
                   ),
                 ),
               ),
+
+              const SizedBox(height: 12),
+
+              // ── Seção: Contato ───────────────────────────────────
+              _buildSection(context, 'Contato', [
+                _buildInfoRow(context, Icons.email_outlined, 'E-mail de Login',
+                    widget.professor.email),
+                if (widget.professor.phoneNumber != null &&
+                    widget.professor.phoneNumber!.isNotEmpty) ...[
+                  _buildInfoRow(context, Icons.phone_outlined, 'Telefone',
+                      widget.professor.phoneNumber!),
+                  _buildWhatsAppButton(context, widget.professor.phoneNumber!),
+                ],
+                if (widget.professor.dataNascimento != null &&
+                    widget.professor.idade != null)
+                  _buildInfoRow(context, Icons.cake_rounded, 'Nascimento',
+                      '${DateFormat('dd/MM/yyyy').format(widget.professor.dataNascimento!)} · ${widget.professor.idade} anos'),
+                if (widget.professor.peso != null && !isManager)
+                  _buildInfoRow(context, Icons.monitor_weight_outlined, 'Peso',
+                      '${widget.professor.peso} kg'),
+              ]),
+
+              // ── Seção: Endereço ──────────────────────────────────
+              if (address != null &&
+                  address.values
+                      .any((v) => v != null && v.toString().isNotEmpty))
+                _buildSection(context, 'Endereço', [
+                  if ((address['logradouro'] ?? '').isNotEmpty)
+                    _buildInfoRow(
+                        context,
+                        Icons.map_outlined,
+                        'Logradouro',
+                        '${_capitalize(address['logradouro'] ?? '')}'
+                            '${(address['numero'] ?? '').isNotEmpty ? ', ${address['numero']}' : ''}'),
+                  if ((address['bairro'] ?? '').isNotEmpty)
+                    _buildInfoRow(context, Icons.location_on_outlined, 'Bairro',
+                        _capitalize(address['bairro'] ?? '')),
+                  if ((address['cidade'] ?? '').isNotEmpty)
+                    _buildInfoRow(
+                        context,
+                        Icons.location_city_outlined,
+                        'Cidade',
+                        _capitalize(address['cidade'] ?? '') +
+                            (((address['cep'] ?? '').isNotEmpty)
+                                ? '  ·  CEP ${address['cep']}'
+                                : '')),
+                ]),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openWhatsApp(BuildContext context, String phone) async {
+    final cleaned = phone.replaceAll(RegExp(r'\D'), '');
+    final number = cleaned.startsWith('55') ? cleaned : '55$cleaned';
+    final url = Uri.parse('https://wa.me/$number');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (context.mounted) {
+        showBjjSnackBar(context, 'Não foi possível abrir o WhatsApp.',
+            type: 'error');
+      }
+    }
+  }
+
+  // Histórico de edições em bottomSheet
+  void _showEditHistory(BuildContext context) {
+    final createdAt = widget.professor.createdAt?.toDate();
+    final updatedAt = widget.professor.updatedAt?.toDate();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: darkSurface,
+      shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              const Icon(Icons.history_rounded, color: primaryAccent, size: 20),
+              const SizedBox(width: 8),
+              Text('Histórico de Edições',
+                  style: Theme.of(context).textTheme.titleMedium),
+            ]),
+            const Divider(height: 20),
+            if (widget.professor.createdByName != null && createdAt != null)
+              _buildHistoryTile(
+                context,
+                icon: Icons.person_add_alt_1_outlined,
+                label: 'Cadastrado por',
+                value: _capitalize(widget.professor.createdByName!),
+                date: DateFormat('dd/MM/yyyy · HH:mm').format(createdAt),
+              ),
+            if (widget.professor.lastUpdatedByName != null && updatedAt != null)
+              _buildHistoryTile(
+                context,
+                icon: Icons.edit_note_rounded,
+                label: 'Última edição por',
+                value: _capitalize(widget.professor.lastUpdatedByName!),
+                date: DateFormat('dd/MM/yyyy · HH:mm').format(updatedAt),
+              ),
+            if (widget.professor.createdByName == null &&
+                widget.professor.lastUpdatedByName == null)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text('Nenhum histórico disponível.',
+                      style: TextStyle(color: textHint)),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryTile(BuildContext context,
+      {required IconData icon,
+      required String label,
+      required String value,
+      required String date}) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: primaryAccent, size: 18),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label,
+                    style: const TextStyle(
+                        color: textHint,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500)),
+                const SizedBox(height: 2),
+                Text(value,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500, color: textPrimary)),
+                Text(date,
+                    style: const TextStyle(color: textHint, fontSize: 11)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Capitaliza cada palavra
+  String _capitalize(String text) {
+    if (text.isEmpty) return text;
+    return text.split(' ').map((w) {
+      if (w.isEmpty) return w;
+      return w[0].toUpperCase() + w.substring(1).toLowerCase();
+    }).join(' ');
+  }
+
+  Widget _buildSection(BuildContext context, String title, List<Widget> rows) {
+    if (rows.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title.toUpperCase(),
+                style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: primaryAccent,
+                    letterSpacing: 1.0),
+              ),
+              const Divider(height: 14, thickness: 0.5),
+              ...rows,
             ],
           ),
         ),
@@ -4455,18 +5426,26 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
   Widget _buildInfoRow(
       BuildContext context, IconData icon, String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, color: textHint, size: 20),
-          const SizedBox(width: 16),
+          Icon(icon, color: primaryAccent, size: 18),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: const TextStyle(color: textHint, fontSize: 13)),
-                Text(value, style: Theme.of(context).textTheme.titleMedium),
+                    style: const TextStyle(
+                        color: textHint,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        height: 1.2)),
+                const SizedBox(height: 3),
+                Text(value,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500, color: textPrimary)),
               ],
             ),
           ),
@@ -4474,16 +5453,50 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
       ),
     );
   }
+
+  Widget _buildWhatsAppButton(BuildContext context, String phone) {
+    final cleaned = phone.replaceAll(RegExp(r'\D'), '');
+    final number = cleaned.startsWith('55') ? cleaned : '55$cleaned';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          icon: const Icon(Icons.chat_outlined,
+              size: 18, color: Color(0xFF25D366)),
+          label: const Text('Abrir no WhatsApp',
+              style: TextStyle(color: Color(0xFF25D366), fontSize: 13)),
+          style: OutlinedButton.styleFrom(
+            side: const BorderSide(color: Color(0xFF25D366), width: 1),
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+          onPressed: () async {
+            final uri = Uri.parse('https://wa.me/$number');
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            } else {
+              if (context.mounted) {
+                showBjjSnackBar(context, 'Não foi possível abrir o WhatsApp.',
+                    type: 'error');
+              }
+            }
+          },
+        ),
+      ),
+    );
+  }
 }
 
 class ManagerSettingsPage extends StatefulWidget {
   final UserModel user;
-  final SubscriptionPlan? currentPlan; // PARÃ‚METRO ADICIONADO
+  final SubscriptionPlan? currentPlan; // PARÂMETRO ADICIONADO
 
   const ManagerSettingsPage({
     super.key,
     required this.user,
-    this.currentPlan, // PARÃ‚METRO ADICIONADO
+    this.currentPlan, // PARÂMETRO ADICIONADO
   });
 
   @override

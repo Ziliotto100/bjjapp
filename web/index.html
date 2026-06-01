@@ -8,17 +8,17 @@
   <title>Match BJJ</title>
   <meta name="description" content="Seu aplicativo de gerenciamento para academias de Jiu-Jitsu.">
   <meta name="apple-mobile-web-app-title" content="Match BJJ">
-  
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
+
   <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
   <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
   <link rel="manifest" href="manifest.json">
   <link rel="shortcut icon" href="favicon.ico">
-  
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
-  
+
   <style id="splash-screen-style">
      /* SEU CSS DE SPLASH SCREEN VEM AQUI (SEM ALTERAÇÕES) */
   </style>
@@ -28,9 +28,23 @@
 </head>
 <body>
   <picture id="splash">
-      </picture>
-  
-  <script src="flutter_bootstrap.js" async=""></script>
+  </picture>
 
-  </body>
+  <script>
+    // Registro explícito do Service Worker para garantir o prompt de instalação no Android
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('flutter_service_worker.js', {
+          scope: './'
+        }).then(function (registration) {
+          console.log('Service Worker registrado com sucesso:', registration.scope);
+        }).catch(function (error) {
+          console.log('Falha ao registrar Service Worker:', error);
+        });
+      });
+    }
+  </script>
+
+  <script src="flutter_bootstrap.js" async=""></script>
+</body>
 </html>

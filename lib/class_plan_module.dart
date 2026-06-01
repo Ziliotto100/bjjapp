@@ -13,7 +13,7 @@ import 'lesson_planner_module.dart';
 import 'video_library_module.dart';
 import 'video_picker_dialog.dart';
 
-// --- TELA PRINCIPAL QUE LISTA OS PÚBLICOS-ALVO COMO CURRÍCULOS ---
+// --- TELA PRINCIPAL QUE LISTA OS PÃšBLICOS-ALVO COMO CURRÃCULOS ---
 class ClassPlanPage extends StatefulWidget {
   final UserModel user;
   // O plano da academia é recebido para verificar a permissão
@@ -58,7 +58,7 @@ class _ClassPlanPageState extends State<ClassPlanPage> {
 
   @override
   Widget build(BuildContext context) {
-    // --- LÓGICA DE PERMISSÃO CENTRALIZADA AQUI ---
+    // --- LÃ“GICA DE PERMISSÃƒO CENTRALIZADA AQUI ---
     final bool hasAccess =
         widget.currentPlan?.features['class_plan_module'] ?? false;
 
@@ -141,7 +141,7 @@ class _ClassPlanPageState extends State<ClassPlanPage> {
   }
 }
 
-// --- NOVO DIÁLOGO DE GERENCIAMENTO ---
+// --- NOVO DIÃLOGO DE GERENCIAMENTO ---
 class _ManageAudiencesDialog extends StatefulWidget {
   final UserModel user;
   final CollectionReference audiencesCollection;
@@ -317,7 +317,7 @@ class __ManageAudiencesDialogState extends State<_ManageAudiencesDialog> {
   }
 }
 
-// --- TELA DE DETALHE DO CURRÍCULO (COM AS ABAS) ---
+// --- TELA DE DETALHE DO CURRÃCULO (COM AS ABAS) ---
 class CurriculumDetailPage extends StatefulWidget {
   final UserModel user;
   final Curriculum curriculum;
@@ -380,7 +380,7 @@ class _CurriculumDetailPageState extends State<CurriculumDetailPage>
   }
 }
 
-// --- ABA 1: DIÁRIO DE AULAS (REGISTRO DO QUE FOI FEITO) ---
+// --- ABA 1: DIÃRIO DE AULAS (REGISTRO DO QUE FOI FEITO) ---
 class _DailyLogView extends StatefulWidget {
   final UserModel user;
   final Curriculum curriculum;
@@ -415,7 +415,7 @@ class _DailyLogViewState extends State<_DailyLogView> {
 
     return Column(
       children: [
-        // --- INÍCIO DA CORREÇÃO ---
+        // --- INÃCIO DA CORREÇÃƒO ---
         // Removido o Row e o IconButton de histórico.
         Padding(
           padding: const EdgeInsets.all(16.0),
@@ -433,7 +433,7 @@ class _DailyLogViewState extends State<_DailyLogView> {
             ),
           ),
         ),
-        // --- FIM DA CORREÇÃO ---
+        // --- FIM DA CORREÇÃƒO ---
         Expanded(
           child: StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
@@ -506,7 +506,7 @@ class _DailyLogViewState extends State<_DailyLogView> {
   }
 }
 
-// --- ABA 2: PLANO DA SEMANA (RECOMENDAÇÃO DO QUE ENSINAR) ---
+// --- ABA 2: PLANO DA SEMANA (RECOMENDAÇÃƒO DO QUE ENSINAR) ---
 class _WeeklyPlanView extends StatefulWidget {
   final UserModel user;
   final Curriculum curriculum;
@@ -620,7 +620,7 @@ class _WeeklyPlanViewState extends State<_WeeklyPlanView> {
                               style: Theme.of(context).textTheme.titleLarge),
                           const SizedBox(height: 4),
                           Text(
-                            '$startDayName à $endDayName',
+                            '$startDayName Ã  $endDayName',
                             style:
                                 const TextStyle(fontSize: 12, color: textHint),
                           ),
@@ -662,7 +662,7 @@ class _WeeklyPlanViewState extends State<_WeeklyPlanView> {
                             ),
                             const SizedBox(height: 16),
                             Text(
-                              'Última atualização por ${plan.lastUpdatedByName} em ${DateFormat('dd/MM/yy HH:mm').format(plan.lastUpdatedAt.toDate())}',
+                              'Ãšltima atualização por ${plan.lastUpdatedByName} em ${DateFormat('dd/MM/yy HH:mm').format(plan.lastUpdatedAt.toDate())}',
                               style: const TextStyle(
                                   fontSize: 12,
                                   color: textHint,
@@ -850,7 +850,7 @@ class _EditWeeklyPlanDialogState extends State<_EditWeeklyPlanDialog> {
         }
       }
     } catch (e) {
-      debugPrint("Erro ao verificar acesso à videoteca: $e");
+      debugPrint("Erro ao verificar acesso Ã  videoteca: $e");
     }
   }
 
@@ -919,8 +919,11 @@ class _EditWeeklyPlanDialogState extends State<_EditWeeklyPlanDialog> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Técnicas Recomendadas',
-                        style: Theme.of(context).textTheme.titleMedium),
+                    Expanded(
+                      child: Text('Técnicas Recomendadas',
+                          style: Theme.of(context).textTheme.titleMedium,
+                          overflow: TextOverflow.ellipsis),
+                    ),
                     IconButton(
                       icon: const Icon(Icons.add_circle_outline,
                           color: primaryAccent),

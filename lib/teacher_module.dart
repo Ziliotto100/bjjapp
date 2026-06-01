@@ -23,7 +23,7 @@ import 'user_card_widget.dart';
 import 'training_log_module.dart';
 import 'sparring_service.dart';
 
-// --- FUNÇÃO DE LOG DE AUDITORIA ---
+// --- FUNÇÀO DE LOG DE AUDITORIA ---
 /// Função auxiliar para criar uma entrada no log de auditoria.
 Future<void> _createAuditLog({
   required String academyId,
@@ -52,7 +52,7 @@ Future<void> _createAuditLog({
   }
 }
 
-// --- FUNÇÃO AUXILIAR PARA ORDENAÇÃO DE FAIXAS ---
+// --- FUNÇÀO AUXILIAR PARA ORDENAÇÀO DE FAIXAS ---
 int _getBeltIndex(String faixa) {
   const List<String> ordemFaixas = [
     'Branca',
@@ -82,13 +82,13 @@ int _getBeltIndex(String faixa) {
 class TeacherHomePage extends StatefulWidget {
   final UserModel user;
   final bool isImpersonating;
-  final SubscriptionPlan? currentPlan; // NOVO PARÃ‚METRO
+  final SubscriptionPlan? currentPlan; // NOVO PARÀ‚METRO
 
   const TeacherHomePage({
     super.key,
     required this.user,
     this.isImpersonating = false,
-    this.currentPlan, // NOVO PARÃ‚METRO
+    this.currentPlan, // NOVO PARÀ‚METRO
   });
 
   @override
@@ -119,7 +119,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   @override
   void initState() {
     super.initState();
-    // --- ALTERAÇÃO: Passa o plano para o NavigationService ---
+    // --- ALTERAÇÀO: Passa o plano para o NavigationService ---
     _navService = NavigationService(
       userId: widget.user.uid,
       userRole: widget.user.role,
@@ -344,7 +344,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     }
   }
 
-  // --- CORREÇÃO APLICADA AQUI ---
+  // --- CORREÇÀO APLICADA AQUI ---
   void _configureNavigation(DocumentSnapshot? settingsDoc) {
     Map<String, dynamic> settings;
     if (settingsDoc != null && settingsDoc.exists) {
@@ -610,7 +610,7 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
     });
   }
 
-  // --- INÃCIO DA OTIMIZAÇÃO ---
+  // --- INÀCIO DA OTIMIZAÇÀO ---
   Stream<QuerySnapshot> _buildStudentQuery() {
     Query query = FirebaseFirestore.instance
         .collection('academies')
@@ -632,7 +632,7 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
 
     return query.snapshots();
   }
-  // --- FIM DA OTIMIZAÇÃO ---
+  // --- FIM DA OTIMIZAÇÀO ---
 
   Future<Map<String, UserModel>> _fetchUsersMap() async {
     final snapshot = await FirebaseFirestore.instance
@@ -819,9 +819,9 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
               final usersMap = usersSnapshot.data ?? {};
 
               return StreamBuilder<QuerySnapshot>(
-                // --- INÃCIO DA OTIMIZAÇÃO ---
+                // --- INÀCIO DA OTIMIZAÇÀO ---
                 stream: _buildStudentQuery(),
-                // --- FIM DA OTIMIZAÇÃO ---
+                // --- FIM DA OTIMIZAÇÀO ---
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
                     return const Center(child: CircularProgressIndicator());
@@ -999,7 +999,7 @@ class _TeacherDashboardPageState extends State<TeacherDashboardPage> {
     }
   }
 
-  // --- CORREÇÃO: Lógica de seleção movida para cá ---
+  // --- CORREÇÀO: Lógica de seleção movida para cá ---
   Future<void> _selectClassAndStartCheckin() async {
     final TrainingClass? selectedClass = await showDialog<TrainingClass>(
       context: context,
@@ -1174,7 +1174,7 @@ class _TodayClassesCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              "PRÃ“XIMAS AULAS",
+              "PRÓXIMAS AULAS",
               style: TextStyle(
                 color: textHint,
                 fontSize: 12,
@@ -1295,7 +1295,7 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
     }
   }
 
-  // --- ALTERAÇÃO AQUI: LÃ“GICA DE SELEÇÃO DE AULA ---
+  // --- ALTERAÇÀO AQUI: LÀ“GICA DE SELEÇÀO DE AULA ---
   Future<void> _selectClassAndStartCheckin() async {
     final TrainingClass? selectedClass = await showDialog<TrainingClass>(
       context: context,
@@ -1325,7 +1325,7 @@ class _CheckinTeacherPageState extends State<CheckinTeacherPage> {
     }
   }
 
-  // --- ALTERAÇÃO AQUI: LÃ“GICA DE SELEÇÃO DE DATA E AULA ---
+  // --- ALTERAÇÀO AQUI: LÀ“GICA DE SELEÇÀO DE DATA E AULA ---
   Future<void> _selectDateAndClassForRetroactiveCheckin() async {
     final DateTime? pickedDate = await showDatePicker(
       context: context,
@@ -1590,7 +1590,7 @@ class _ApproveCheckinsPageState extends State<ApproveCheckinsPage> {
   }
 }
 
-// --- PÃGINA DE HISTÃ“RICO DE CHECK-IN (COM ALTERAÇÃ•ES) ---
+// --- PÀGINA DE HISTÀ“RICO DE CHECK-IN (COM ALTERAÇÕES) ---
 class CheckinHistoryPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> allParticipants;
@@ -1779,7 +1779,7 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
                                 subtitleText = entry.className!;
                               } else {
                                 subtitleText =
-                                    'Check-in Ã s ${DateFormat.Hm().format(checkinTime)}';
+                                    'Check-in À s ${DateFormat.Hm().format(checkinTime)}';
                               }
 
                               return Card(
@@ -2704,7 +2704,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                                         style: Theme.of(context)
                                             .textTheme
                                             .titleMedium),
-                                    subtitle: Text(aluno.faixa,
+                                    subtitle: Text(aluno.faixa ?? '',
                                         style: const TextStyle(
                                             color: textHint, fontSize: 12)),
                                     trailing: Text(
@@ -2956,7 +2956,7 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
 
     if (ultimosParticipantes.isEmpty && ultimosIds.isNotEmpty) {
       showBjjSnackBar(context,
-          'Os participantes do último treino não pertencem Ã  unidade selecionada.',
+          'Os participantes do último treino não pertencem À  unidade selecionada.',
           type: 'warning');
     }
 
@@ -3089,7 +3089,7 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
                       const SizedBox(width: 8),
                       IconButton(
                         icon: const Icon(Icons.replay_rounded),
-                        tooltip: 'Repetir Ãšltima Seleção',
+                        tooltip: 'Repetir Àšltima Seleção',
                         onPressed: widget.isSparringMode
                             ? null
                             : _carregarUltimosParticipantes,
@@ -3327,7 +3327,7 @@ class _SparringTeacherPageState extends State<SparringTeacherPage> {
       if (_currentRoundIndex > allRounds.length) {
         currentRoundFights = allRounds.last;
         roundTitle =
-            'FIM - Ãšltima Rodada (${allRounds.length}/${allRounds.length})';
+            'FIM - Àšltima Rodada (${allRounds.length}/${allRounds.length})';
       } else {
         currentRoundFights = allRounds[_currentRoundIndex - 1];
         roundTitle = 'Rodada $_currentRoundIndex / ${allRounds.length}';
@@ -3576,7 +3576,7 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
   }
 }
 
-// --- TELA DE LISTA DE HISTÃ“RICO DE TREINOS ---
+// --- TELA DE LISTA DE HISTÀ“RICO DE TREINOS ---
 class SparringHistoryListPage extends StatefulWidget {
   final String academyId;
   final List<Aluno> allParticipants;
@@ -3636,7 +3636,7 @@ class _SparringHistoryListPageState extends State<SparringHistoryListPage> {
                       leading: const Icon(Icons.event_note_rounded,
                           color: primaryAccent),
                       title: Text(
-                          'Treino de ${DateFormat('dd/MM/yyyy \'Ã s\' HH:mm').format(session.startedAt.toDate())}'),
+                          'Treino de ${DateFormat('dd/MM/yyyy \'À s\' HH:mm').format(session.startedAt.toDate())}'),
                       subtitle: Text(
                           '${session.participantIds.length} participantes'),
                       trailing:
@@ -3661,7 +3661,7 @@ class _SparringHistoryListPageState extends State<SparringHistoryListPage> {
   }
 }
 
-// --- TELA DE DETALHES DO HISTÃ“RICO DE TREINO ---
+// --- TELA DE DETALHES DO HISTÀ“RICO DE TREINO ---
 class SparringHistoryDetailPage extends StatelessWidget {
   final SparringSession session;
   final List<Aluno> allParticipants;
