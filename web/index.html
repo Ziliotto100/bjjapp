@@ -2,49 +2,238 @@
 <html>
 <head>
   <base href="$FLUTTER_BASE_HREF">
-
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <title>Match BJJ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <meta name="description" content="Seu aplicativo de gerenciamento para academias de Jiu-Jitsu.">
-  <meta name="apple-mobile-web-app-title" content="Match BJJ">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="theme-color" content="#0A0F14">
   <meta name="mobile-web-app-capable" content="yes">
-  <meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport">
-
-  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
-  <link rel="icon" type="image/png" sizes="32x32" href="favicon-32x32.png">
-  <link rel="icon" type="image/png" sizes="16x16" href="favicon-16x16.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Match BJJ">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" href="favicon.png"/>
+  <title>Match BJJ</title>
   <link rel="manifest" href="manifest.json">
-  <link rel="shortcut icon" href="favicon.ico">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #0A0F14; }
 
-  <style id="splash-screen-style">
-     /* SEU CSS DE SPLASH SCREEN VEM AQUI (SEM ALTERAÇÕES) */
+    #pwa-banner {
+      display: none;
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      /* ACIMA do canvas Flutter */
+      z-index: 2147483647;
+      pointer-events: all;
+      background: #151E2B;
+      border: 1.5px solid #D4AF37;
+      border-radius: 16px;
+      padding: 14px 16px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+      width: min(340px, 92vw);
+      animation: pwaUp 0.3s ease;
+    }
+    #pwa-banner.show { display: flex; }
+
+    @keyframes pwaUp {
+      from { opacity:0; transform: translateX(-50%) translateY(16px); }
+      to   { opacity:1; transform: translateX(-50%) translateY(0); }
+    }
+
+    #pwa-banner img {
+      width: 46px; height: 46px;
+      border-radius: 10px;
+      flex-shrink: 0;
+    }
+    .pwa-info { flex: 1; min-width: 0; }
+    .pwa-info b {
+      display: block;
+      color: #FFFFFF;
+      font: 600 14px/1.3 sans-serif;
+    }
+    .pwa-info small {
+      color: #7A90A8;
+      font: 12px/1.3 sans-serif;
+    }
+    #pwa-install-btn {
+      background: #D4AF37;
+      color: #0A0F14;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 15px;
+      font: 600 13px sans-serif;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: opacity .15s;
+    }
+    #pwa-install-btn:hover { opacity: .85; }
+    #pwa-close-btn {
+      background: none; border: none;
+      color: #7A90A8; font-size: 22px;
+      cursor: pointer; padding: 0 2px;
+      line-height: 1; flex-shrink: 0;
+    }
+
+    /* iOS */
+    #ios-banner {
+      display: none;
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 2147483647;
+      pointer-events: all;
+      background: #151E2B;
+      border: 1.5px solid #D4AF37;
+      border-radius: 16px;
+      padding: 18px 20px;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      width: min(320px, 92vw);
+      text-align: center;
+      animation: pwaUp 0.3s ease;
+    }
+    #ios-banner.show { display: flex; }
+    #ios-banner p {
+      margin: 0;
+      color: #CBD5E0;
+      font: 13px/1.6 sans-serif;
+    }
+    #ios-banner p strong { color: #D4AF37; }
+    #ios-banner button {
+      background: none;
+      border: 1px solid #7A90A8;
+      border-radius: 8px;
+      color: #7A90A8;
+      font: 13px sans-serif;
+      cursor: pointer;
+      padding: 7px 20px;
+      width: 100%;
+    }
   </style>
-  <script id="splash-screen-script">
-     /* SEU SCRIPT DE SPLASH SCREEN VEM AQUI (SEM ALTERAÇÕES) */
-  </script>
 </head>
 <body>
-  <picture id="splash">
-  </picture>
+  <script src="flutter_bootstrap.js" async></script>
+
+  <!-- Banner Android/Chrome -->
+  <div id="pwa-banner">
+    <img src="icons/Icon-192.png" alt="Match BJJ">
+    <div class="pwa-info">
+      <b>Match BJJ</b>
+      <small>Instalar como aplicativo</small>
+    </div>
+    <button id="pwa-install-btn">Instalar</button>
+    <button id="pwa-close-btn">×</button>
+  </div>
+
+  <!-- Banner iOS -->
+  <div id="ios-banner">
+    <p>Para instalar no iPhone ou iPad:<br>
+      Toque em <strong>Compartilhar ⬆</strong><br>
+      depois em <strong>"Adicionar à Tela Inicial"</strong>
+    </p>
+    <button id="ios-close-btn">Entendi</button>
+  </div>
 
   <script>
-    // Registro explícito do Service Worker para garantir o prompt de instalação no Android
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('flutter_service_worker.js', {
-          scope: './'
-        }).then(function (registration) {
-          console.log('Service Worker registrado com sucesso:', registration.scope);
-        }).catch(function (error) {
-          console.log('Falha ao registrar Service Worker:', error);
-        });
-      });
-    }
-  </script>
+    var _deferredPrompt = null;
+    var _bannerShown = false;
 
-  <script src="flutter_bootstrap.js" async=""></script>
+    var isIos = /iphone|ipad|ipod/i.test(navigator.userAgent.toLowerCase());
+    var isStandalone = window.matchMedia('(display-mode: standalone)').matches
+                    || window.navigator.standalone === true;
+
+    function showBanner(id) {
+      if (_bannerShown || isStandalone) return;
+      _bannerShown = true;
+      document.getElementById(id).classList.add('show');
+    }
+
+    function hideBanner(id) {
+      document.getElementById(id).classList.remove('show');
+    }
+
+    if (!isStandalone) {
+      if (isIos) {
+        var iosDismissed = localStorage.getItem('ios_pwa_dismissed');
+        if (!iosDismissed) {
+          // Aguarda Flutter montar (~4s) antes de mostrar
+          setTimeout(function() { showBanner('ios-banner'); }, 4000);
+        }
+        document.getElementById('ios-close-btn').addEventListener('click', function() {
+          hideBanner('ios-banner');
+          localStorage.setItem('ios_pwa_dismissed', '1');
+        });
+      } else {
+        var dismissed = localStorage.getItem('pwa_dismissed');
+
+        window.addEventListener('beforeinstallprompt', function(e) {
+          e.preventDefault();
+          _deferredPrompt = e;
+          window._deferredPrompt = e; // expor para Flutter
+          if (!dismissed) {
+            // Aguarda Flutter montar (~4s) antes de mostrar
+            setTimeout(function() { showBanner('pwa-banner'); }, 4000);
+          }
+        });
+
+        document.getElementById('pwa-install-btn').addEventListener('click', function() {
+          if (!_deferredPrompt) return;
+          _deferredPrompt.prompt();
+          _deferredPrompt.userChoice.then(function(result) {
+            _deferredPrompt = null;
+            window._deferredPrompt = null;
+            hideBanner('pwa-banner');
+            if (result.outcome === 'accepted') {
+              localStorage.setItem('pwa_dismissed', '1');
+            }
+          });
+        });
+
+        document.getElementById('pwa-close-btn').addEventListener('click', function() {
+          hideBanner('pwa-banner');
+          localStorage.setItem('pwa_dismissed', '1');
+        });
+
+        window.addEventListener('appinstalled', function() {
+          hideBanner('pwa-banner');
+          localStorage.setItem('pwa_dismissed', '1');
+        });
+      }
+    }
+
+    // Função chamável pelo Flutter via js interop
+    window.triggerPwaInstall = function() {
+      if (_deferredPrompt) {
+        _deferredPrompt.prompt();
+        return true;
+      }
+      if (isIos) {
+        showBanner('ios-banner');
+        return true;
+      }
+      return false;
+    };
+
+    // Função para o Flutter verificar se instalação está disponível
+    window.isPwaInstallable = function() {
+      return _deferredPrompt !== null;
+    };
+
+    // Função para resetar o dismiss (debug)
+    window.resetPwaDismiss = function() {
+      localStorage.removeItem('pwa_dismissed');
+      localStorage.removeItem('ios_pwa_dismissed');
+      _bannerShown = false;
+    };
+  </script>
 </body>
 </html>

@@ -569,7 +569,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     if (_allPageModules.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(title: Text(widget.user.name)),
+        appBar: AppBar(title: Text(widget.user.name.capitalizeWords())),
         drawer: AppDrawer(
           user: _currentUser,
           drawerModules: _drawerModules,
@@ -2310,53 +2310,46 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                       ),
                     const SizedBox(height: 14),
 
-                    // ── Telefone + Nascimento (lado a lado) ─────────
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: phoneC,
-                            decoration: const InputDecoration(
-                              labelText: 'Telefone',
-                              prefixIcon: Icon(Icons.phone_outlined),
-                            ),
-                            keyboardType: TextInputType.phone,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              PhoneInputFormatter(),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: TextFormField(
-                            controller: dNascC,
-                            decoration: const InputDecoration(
-                              labelText: 'Nascimento',
-                              hintText: 'DD/MM/AAAA',
-                              prefixIcon: Icon(Icons.cake_outlined),
-                              counterText: '',
-                            ),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              DateInputFormatter(),
-                            ],
-                            maxLength: 10,
-                            validator: (v) {
-                              if (v == null || v.trim().isEmpty) return null;
-                              if (v.length != 10) return 'Data incompleta.';
-                              try {
-                                DateFormat('dd/MM/yyyy').parseStrict(v);
-                                return null;
-                              } catch (e) {
-                                return 'Data inválida.';
-                              }
-                            },
-                          ),
-                        ),
+                    // ── Telefone ────────────────────────────────────
+                    TextFormField(
+                      controller: phoneC,
+                      decoration: const InputDecoration(
+                        labelText: 'Telefone',
+                        prefixIcon: Icon(Icons.phone_outlined),
+                      ),
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        PhoneInputFormatter(),
                       ],
+                    ),
+                    const SizedBox(height: 14),
+
+                    // ── Nascimento ───────────────────────────────────
+                    TextFormField(
+                      controller: dNascC,
+                      decoration: const InputDecoration(
+                        labelText: 'Data de Nascimento',
+                        hintText: 'DD/MM/AAAA',
+                        prefixIcon: Icon(Icons.cake_outlined),
+                        counterText: '',
+                      ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        DateInputFormatter(),
+                      ],
+                      maxLength: 10,
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) return null;
+                        if (v.length != 10) return 'Data incompleta.';
+                        try {
+                          DateFormat('dd/MM/yyyy').parseStrict(v);
+                          return null;
+                        } catch (e) {
+                          return 'Data inválida.';
+                        }
+                      },
                     ),
                     const SizedBox(height: 14),
 
@@ -3517,9 +3510,18 @@ class AdicionarProfessorDialog extends StatefulWidget {
 }
 
 class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
+  final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
-  final _formKey = GlobalKey<FormState>();
+  final _phoneController = TextEditingController();
+  final _pesoController = TextEditingController();
+  final _dNascController = TextEditingController();
+  final _logradouroController = TextEditingController();
+  final _numeroController = TextEditingController();
+  final _bairroController = TextEditingController();
+  final _cidadeController = TextEditingController();
+  final _cepController = TextEditingController();
+
   bool _isLoading = false;
   String? _faixa;
   int? _graus;
@@ -3527,6 +3529,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
   String? selectedUnitName;
   List<DocumentSnapshot> units = [];
   bool isLoadingUnits = true;
+
   final List<String> _faixasList = [
     'Branca',
     'Cinza/Branca',
@@ -3544,7 +3547,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
     'Azul',
     'Roxa',
     'Marrom',
-    'Preta'
+    'Preta',
   ];
   List<int> _grausList = [];
 
@@ -3552,6 +3555,21 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
   void initState() {
     super.initState();
     _fetchUnits();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    _pesoController.dispose();
+    _dNascController.dispose();
+    _logradouroController.dispose();
+    _numeroController.dispose();
+    _bairroController.dispose();
+    _cidadeController.dispose();
+    _cepController.dispose();
+    super.dispose();
   }
 
   Future<void> _fetchUnits() async {
@@ -3584,11 +3602,33 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
 
   void _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_faixa == null) {
+      showBjjSnackBar(context, 'Selecione uma faixa.', type: 'error');
+      return;
+    }
     setState(() => _isLoading = true);
 
     const temporaryPassword = 'mudar123';
     final name = _nameController.text.trim().capitalizeWords();
     final email = _emailController.text.trim();
+
+    // Nascimento
+    DateTime? dataNascimento;
+    if (_dNascController.text.isNotEmpty) {
+      try {
+        dataNascimento =
+            DateFormat('dd/MM/yyyy').parseStrict(_dNascController.text);
+      } catch (_) {}
+    }
+
+    // Endereço
+    final address = {
+      'logradouro': _logradouroController.text.trim(),
+      'numero': _numeroController.text.trim(),
+      'bairro': _bairroController.text.trim(),
+      'cidade': _cidadeController.text.trim(),
+      'cep': _cepController.text.trim(),
+    };
 
     try {
       final tempApp = await Firebase.initializeApp(
@@ -3619,7 +3659,11 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
         'role': 'teacher',
         'faixa': _faixa,
         'graus': _graus,
-        'peso': null,
+        'peso': double.tryParse(_pesoController.text.replaceAll(',', '.')),
+        'phoneNumber': _phoneController.text.trim(),
+        'dataNascimento':
+            dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
+        'address': address,
         'unitId': selectedUnitId,
         'unitName': selectedUnitName,
         'mustChangePassword': true,
@@ -3644,7 +3688,6 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
       batch.set(historyRef, historyEntry.toMap());
 
       await batch.commit();
-
       await tempApp.delete();
 
       await _createAuditLog(
@@ -3657,10 +3700,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
       );
 
       if (mounted) {
-        Navigator.of(context).pop({
-          'name': name,
-          'email': email,
-        });
+        Navigator.of(context).pop({'name': name, 'email': email});
       }
     } on FirebaseAuthException catch (e) {
       String message = 'Erro ao criar professor.';
@@ -3682,25 +3722,61 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Iniciais para o avatar
+    final nameParts = _nameController.text.trim().split(' ');
+    final initials = nameParts.length >= 2
+        ? '${nameParts.first[0]}${nameParts.last[0]}'.toUpperCase()
+        : nameParts.isNotEmpty && nameParts.first.isNotEmpty
+            ? nameParts.first[0].toUpperCase()
+            : '?';
+
     return AlertDialog(
-      title: const Text('Adicionar Novo Professor'),
-      content: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
+      titlePadding: const EdgeInsets.fromLTRB(24, 16, 16, 0),
+      title: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          const Expanded(child: Text('Adicionar Novo Professor')),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // ── Avatar ──────────────────────────────────────
+              CircleAvatar(
+                radius: 40,
+                backgroundColor: primaryAccent.withOpacity(0.15),
+                child: Text(
+                  initials,
+                  style: const TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: primaryAccent),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // ── Nome ────────────────────────────────────────
               TextFormField(
                 controller: _nameController,
                 decoration: const InputDecoration(
-                  labelText: 'Nome do Professor',
-                  prefixIcon: Icon(Icons.person_add_alt_1_rounded),
+                  labelText: 'Nome Completo',
+                  prefixIcon: Icon(Icons.person_rounded),
                 ),
                 textCapitalization: TextCapitalization.words,
+                onChanged: (_) => setState(() {}),
                 validator: (v) =>
                     (v == null || v.trim().isEmpty) ? 'Nome inválido' : null,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+
+              // ── E-mail ───────────────────────────────────────
               TextFormField(
                 controller: _emailController,
                 decoration: const InputDecoration(
@@ -3711,7 +3787,9 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                 validator: (v) =>
                     (v == null || !v.contains('@')) ? 'E-mail inválido' : null,
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
+
+              // ── Unidade ─────────────────────────────────────
               if (isLoadingUnits)
                 const Center(child: CircularProgressIndicator())
               else
@@ -3738,29 +3816,156 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                   },
                   validator: (v) => v == null ? 'Selecione uma unidade' : null,
                 ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                isExpanded: true,
-                value: _faixa,
+              const SizedBox(height: 14),
+
+              // ── Telefone ─────────────────────────────────────
+              TextFormField(
+                controller: _phoneController,
                 decoration: const InputDecoration(
-                    labelText: 'Faixa',
-                    prefixIcon: Icon(Icons.shield_outlined)),
-                hint: const Text("Selecione a Faixa"),
-                items: _faixasList
-                    .map((faixa) => DropdownMenuItem(
-                        value: faixa,
-                        child: Text(faixa, overflow: TextOverflow.ellipsis)))
-                    .toList(),
-                onChanged: (value) => setState(() {
-                  _faixa = value;
-                  _grausList = _getGrausForFaixa(_faixa);
-                  _graus = null;
-                }),
-                validator: (value) =>
-                    value == null ? 'Selecione a faixa' : null,
+                  labelText: 'Telefone',
+                  prefixIcon: Icon(Icons.phone_outlined),
+                ),
+                keyboardType: TextInputType.phone,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  PhoneInputFormatter(),
+                ],
               ),
-              if (_faixa != null) ...[
-                const SizedBox(height: 16),
+              const SizedBox(height: 14),
+
+              // ── Nascimento ───────────────────────────────────
+              TextFormField(
+                controller: _dNascController,
+                decoration: const InputDecoration(
+                  labelText: 'Data de Nascimento',
+                  hintText: 'DD/MM/AAAA',
+                  prefixIcon: Icon(Icons.cake_outlined),
+                  counterText: '',
+                ),
+                keyboardType: TextInputType.number,
+                inputFormatters: [
+                  FilteringTextInputFormatter.digitsOnly,
+                  DateInputFormatter(),
+                ],
+                maxLength: 10,
+                validator: (v) {
+                  if (v == null || v.trim().isEmpty) return null;
+                  if (v.length != 10) return 'Data incompleta.';
+                  try {
+                    DateFormat('dd/MM/yyyy').parseStrict(v);
+                    return null;
+                  } catch (e) {
+                    return 'Data inválida.';
+                  }
+                },
+              ),
+              const SizedBox(height: 14),
+
+              // ── Faixa — chips visuais ────────────────────────
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    const Icon(Icons.shield_outlined,
+                        size: 18, color: textHint),
+                    const SizedBox(width: 8),
+                    Text('Faixa',
+                        style: Theme.of(context)
+                            .textTheme
+                            .bodySmall
+                            ?.copyWith(color: textHint)),
+                  ]),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: _faixasList.map((faixa) {
+                      final isSelected = _faixa == faixa;
+                      Color faixaColor;
+                      switch (faixa.toLowerCase()) {
+                        case 'branca':
+                          faixaColor = Colors.white;
+                          break;
+                        case 'azul':
+                          faixaColor = const Color(0xFF1E5AA8);
+                          break;
+                        case 'roxa':
+                          faixaColor = const Color(0xFF7B2FBE);
+                          break;
+                        case 'marrom':
+                          faixaColor = const Color(0xFF6B3A2A);
+                          break;
+                        case 'preta':
+                          faixaColor = const Color(0xFF2C2C2A);
+                          break;
+                        default:
+                          faixaColor = textHint;
+                      }
+                      return GestureDetector(
+                        onTap: () => setState(() {
+                          _faixa = faixa;
+                          _grausList = _getGrausForFaixa(_faixa);
+                          _graus = null;
+                        }),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 7),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? faixaColor.withOpacity(0.15)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected
+                                  ? faixaColor
+                                  : textHint.withOpacity(0.3),
+                              width: isSelected ? 1.5 : 0.5,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Container(
+                                width: 8,
+                                height: 8,
+                                decoration: BoxDecoration(
+                                  color: faixaColor,
+                                  shape: BoxShape.circle,
+                                  border: faixa.toLowerCase() == 'branca'
+                                      ? Border.all(
+                                          color: textHint.withOpacity(0.4))
+                                      : null,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                faixa,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: isSelected
+                                      ? FontWeight.w600
+                                      : FontWeight.normal,
+                                  color: isSelected
+                                      ? (faixa.toLowerCase() == 'branca' ||
+                                              faixa.toLowerCase() == 'preta'
+                                          ? textSecondary
+                                          : faixaColor)
+                                      : textHint,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+
+              // ── Graus ────────────────────────────────────────
+              if (_faixa != null)
                 DropdownButtonFormField<int>(
                   isExpanded: true,
                   value: _graus,
@@ -3768,18 +3973,105 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                       isDense: true,
                       labelText: 'Graus',
                       prefixIcon: Icon(Icons.star_outline_rounded)),
-                  hint: const Text("Selecione os Graus"),
+                  hint: const Text("Graus (opcional)"),
                   items: [
                     const DropdownMenuItem<int>(
                         value: null, child: Text("Nenhum")),
                     ..._grausList.map((g) => DropdownMenuItem(
                         value: g,
-                        child: Text("$gÂº Grau",
-                            overflow: TextOverflow.ellipsis))),
+                        child:
+                            Text("$gº Grau", overflow: TextOverflow.ellipsis))),
                   ],
                   onChanged: (value) => setState(() => _graus = value),
                 ),
-              ],
+              const SizedBox(height: 14),
+
+              // ── Peso ─────────────────────────────────────────
+              TextFormField(
+                controller: _pesoController,
+                decoration: const InputDecoration(
+                  labelText: 'Peso (kg)',
+                  prefixIcon: Icon(Icons.monitor_weight_outlined),
+                ),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                validator: (v) {
+                  if (v == null || v.isEmpty) return null;
+                  final x = double.tryParse(v.replaceAll(',', '.'));
+                  return (x == null || x <= 0)
+                      ? 'Peso inválido (deve ser > 0)'
+                      : null;
+                },
+              ),
+              const SizedBox(height: 20),
+
+              // ── Endereço ─────────────────────────────────────
+              Row(children: [
+                const Icon(Icons.location_on_outlined,
+                    size: 18, color: textHint),
+                const SizedBox(width: 8),
+                Text('Endereço',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(color: textHint)),
+              ]),
+              const SizedBox(height: 10),
+              TextFormField(
+                controller: _logradouroController,
+                decoration: const InputDecoration(
+                    labelText: 'Logradouro (Rua, Av...)',
+                    prefixIcon: Icon(Icons.map_outlined)),
+                textCapitalization: TextCapitalization.words,
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _numeroController,
+                      decoration: const InputDecoration(labelText: 'Nº'),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      controller: _bairroController,
+                      decoration: const InputDecoration(labelText: 'Bairro'),
+                      textCapitalization: TextCapitalization.words,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    flex: 3,
+                    child: TextFormField(
+                      controller: _cidadeController,
+                      decoration: const InputDecoration(labelText: 'Cidade'),
+                      textCapitalization: TextCapitalization.words,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    flex: 2,
+                    child: TextFormField(
+                      controller: _cepController,
+                      decoration: const InputDecoration(labelText: 'CEP'),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                        CepInputFormatter(),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -4063,7 +4355,7 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text(student.nome,
+                                        Text(student.nome.capitalizeWords(),
                                             style: Theme.of(context)
                                                 .textTheme
                                                 .titleMedium),
@@ -4508,7 +4800,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_capitalize(widget.student.nome)),
+        title: Text(_capitalize(widget.student.nome.capitalizeWords())),
         actions: [
           IconButton(
             icon: const Icon(Icons.history_rounded),
@@ -5096,7 +5388,7 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_capitalize(widget.professor.name)),
+        title: Text(_capitalize(widget.professor.name.capitalizeWords())),
         actions: [
           IconButton(
             icon: const Icon(Icons.history_rounded),

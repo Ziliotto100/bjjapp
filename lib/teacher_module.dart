@@ -416,7 +416,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     if (_allPageModules.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(title: Text(widget.user.name)),
+        appBar: AppBar(title: Text(widget.user.name.capitalizeWords())),
         drawer: AppDrawer(
           user: widget.user,
           drawerModules: _drawerModules,
@@ -1786,7 +1786,7 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
                                 child: ListTile(
                                   leading: const Icon(Icons.check_circle,
                                       color: successColor),
-                                  title: Text(student.nome),
+                                  title: Text(student.nome.capitalizeWords()),
                                   subtitle: Text(subtitleText),
                                   trailing: IconButton(
                                     icon: const Icon(Icons.delete_outline,
@@ -2036,7 +2036,7 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
                               _selectedStudentIds.contains(aluno.id);
                           return Card(
                             child: CheckboxListTile(
-                              title: Text(aluno.nome),
+                              title: Text(aluno.nome.capitalizeWords()),
                               subtitle: Text(aluno.faixa),
                               value: isSelected,
                               onChanged: (bool? value) {
@@ -2316,7 +2316,7 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
                               _selectedStudentIds.contains(aluno.id);
                           return Card(
                             child: CheckboxListTile(
-                              title: Text(aluno.nome),
+                              title: Text(aluno.nome.capitalizeWords()),
                               subtitle: Text(aluno.faixa),
                               value: isSelected,
                               onChanged: (bool? value) {
@@ -2363,6 +2363,7 @@ class RankingTeacherPage extends StatefulWidget {
 class _RankingTeacherPageState extends State<RankingTeacherPage> {
   Map<String, int> _checkinCounts = {};
   List<Aluno> _todosParticipantes = [];
+  Map<String, String> _profileImages = {}; // userId → profileImagePath
   bool _isLoading = true;
 
   // 'mes_atual', 'ano', 'total', ou 'mes_YYYY-MM' para mês específico
@@ -2421,6 +2422,48 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
           .toList();
 
       final allParticipants = [...fetchedAlunos, ...fetchedUsersAsAlunos];
+
+      // Buscar fotos dos usuários (alunos com login + professores)
+      final Map<String, String> profileImages = {};
+      try {
+        // Fotos dos professores (já temos os docs)
+        for (final doc in usersSnapshot.docs) {
+          final uid = doc.id;
+          final path = doc.data()['profileImagePath'] as String?;
+          if (path != null && path.isNotEmpty) {
+            profileImages[uid] = path;
+          }
+        }
+        // Fotos dos alunos com userId vinculado
+        final alunosComLogin = fetchedAlunos
+            .where((a) => a.userId != null && a.userId!.isNotEmpty)
+            .toList();
+        if (alunosComLogin.isNotEmpty) {
+          final userIds = alunosComLogin.map((a) => a.userId!).toList();
+          // Buscar em lotes de 10 (limitação do Firestore)
+          for (var i = 0; i < userIds.length; i += 10) {
+            final batch = userIds.sublist(
+                i, i + 10 > userIds.length ? userIds.length : i + 10);
+            final usersQuery = await firestore
+                .collection('users')
+                .where(FieldPath.documentId, whereIn: batch)
+                .get();
+            for (final doc in usersQuery.docs) {
+              final path = doc.data()['profileImagePath'] as String?;
+              if (path != null && path.isNotEmpty) {
+                // Mapear pelo userId, que coincide com o aluno.userId
+                profileImages[doc.id] = path;
+              }
+            }
+          }
+          // Remapear: aluno.id → foto (via aluno.userId)
+          for (final aluno in alunosComLogin) {
+            if (profileImages.containsKey(aluno.userId)) {
+              profileImages[aluno.id] = profileImages[aluno.userId]!;
+            }
+          }
+        }
+      } catch (_) {}
 
       final checkinsSnapshot = await firestore
           .collection('academies')
@@ -2488,6 +2531,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
           _todosParticipantes = allParticipants;
           _checkinCounts = counts;
           _mesesDisponiveis = mesesDisponiveis;
+          _profileImages = profileImages;
           _isLoading = false;
         });
       }
@@ -2773,21 +2817,33 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                         // Emoji do lugar
                         Text(label, style: const TextStyle(fontSize: 20)),
                         const SizedBox(height: 4),
-                        // Avatar
-                        CircleAvatar(
-                          radius: avatarSize / 2,
-                          backgroundColor: color.withOpacity(0.2),
-                          child: Text(
-                            aluno.nome.isNotEmpty
-                                ? aluno.nome[0].toUpperCase()
-                                : '?',
-                            style: TextStyle(
-                              color: color,
-                              fontWeight: FontWeight.bold,
-                              fontSize: avatarSize * 0.4,
-                            ),
-                          ),
-                        ),
+                        // Avatar com foto ou inicial
+                        Builder(builder: (context) {
+                          final photoUrl = _profileImages[aluno.id] ??
+                              _profileImages[aluno.userId ?? ''];
+                          return CircleAvatar(
+                            radius: avatarSize / 2,
+                            backgroundColor: color.withOpacity(0.2),
+                            backgroundImage:
+                                (photoUrl != null && photoUrl.isNotEmpty)
+                                    ? NetworkImage(photoUrl)
+                                    : null,
+                            onBackgroundImageError:
+                                photoUrl != null ? (_, __) {} : null,
+                            child: (photoUrl == null || photoUrl.isEmpty)
+                                ? Text(
+                                    aluno.nome.isNotEmpty
+                                        ? aluno.nome[0].toUpperCase()
+                                        : '?',
+                                    style: TextStyle(
+                                      color: color,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: avatarSize * 0.4,
+                                    ),
+                                  )
+                                : null,
+                          );
+                        }),
                         const SizedBox(height: 6),
                         // Nome
                         Text(
@@ -3547,7 +3603,7 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
                               final s = _alunosAtuaisSelecionados.contains(a);
                               return Card(
                                 child: CheckboxListTile(
-                                  title: Text(a.nome),
+                                  title: Text(a.nome.capitalizeWords()),
                                   subtitle: Text('${a.faixa} - ${a.peso}kg'),
                                   value: s,
                                   onChanged: (v) => setState(() {

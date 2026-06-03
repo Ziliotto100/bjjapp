@@ -195,7 +195,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     if (_allPageModules.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(title: Text(widget.user.name)),
+        appBar: AppBar(title: Text(widget.user.name.capitalizeWords())),
         drawer: AppDrawer(
           user: widget.user,
           drawerModules: _drawerModules,

@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart'; // Importe o pacote uuid
 
-// --- INÍCIO DA ALTERAÇÃO ---
+// --- INÃCIO DA ALTERAÇÃƒO ---
 // Novo modelo para os Currículos
 class Curriculum {
   final String id;
@@ -32,7 +32,7 @@ class Curriculum {
     };
   }
 }
-// --- FIM DA ALTERAÇÃO ---
+// --- FIM DA ALTERAÇÃƒO ---
 
 // Enum para os diferentes tipos de papéis de usuário no sistema.
 enum UserRole {
@@ -739,6 +739,13 @@ extension StringExtension on String {
     if (trim().isEmpty) return '';
     return trim().split(RegExp(r'\\s+')).map((word) {
       if (word.isEmpty) return '';
+      // Primeira letra maiúscula, resto minúsculo
+      // Preserva abreviações com ponto: "Prof." → "Prof."
+      if (word.endsWith('.') && word.length > 1) {
+        return word[0].toUpperCase() +
+            word.substring(1, word.length - 1).toLowerCase() +
+            '.';
+      }
       return word[0].toUpperCase() + word.substring(1).toLowerCase();
     }).join(' ');
   }
@@ -1228,7 +1235,7 @@ class Tutorial {
 }
 
 // =========================================================================
-// ==           MODELOS PARA O DIÁRIO DE TREINOS (ATUALIZADOS)            ==
+// ==           MODELOS PARA O DIÃRIO DE TREINOS (ATUALIZADOS)            ==
 // =========================================================================
 
 enum SparringEventType {
@@ -1517,9 +1524,9 @@ class LessonPlan {
   final String academyId;
   final String classId;
   final DateTime classDate;
-  // --- INÍCIO DA CORREÇÃO ---
+  // --- INÃCIO DA CORREÇÃƒO ---
   final String? curriculumId; // Campo que estava faltando
-  // --- FIM DA CORREÇÃO ---
+  // --- FIM DA CORREÇÃƒO ---
   String warmup;
   List<TaughtTechnique> techniques;
   String observations;
@@ -1671,7 +1678,7 @@ class SubscriptionPlan {
   }
 }
 
-// --- NOVOS MODELOS PARA O MÓDULO DE MUSCULAÇÃO ---
+// --- NOVOS MODELOS PARA O MÃ“DULO DE MUSCULAÇÃƒO ---
 
 /// Representa um único exercício na biblioteca.
 class Exercise {
