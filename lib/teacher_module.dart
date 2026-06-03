@@ -2748,7 +2748,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                                         style: Theme.of(context)
                                             .textTheme
                                             .titleMedium),
-                                    subtitle: Text(aluno.faixa ?? '',
+                                    subtitle: Text(aluno.faixa,
                                         style: const TextStyle(
                                             color: textHint, fontSize: 12)),
                                     trailing: Text(

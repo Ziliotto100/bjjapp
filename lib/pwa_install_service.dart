@@ -1,6 +1,8 @@
 // lib/pwa_install_service.dart
 // Serviço para acionar a instalação PWA a partir do Flutter (Web only)
 
+// ignore_for_file: deprecated_member_use
+
 import 'package:flutter/foundation.dart';
 
 // ignore: avoid_web_libraries_in_flutter

@@ -1,5 +1,5 @@
 // lib/manager_module.dart
-// ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps, deprecated_member_use, unused_element, unused_import
+// ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps, deprecated_member_use, unused_element, unused_import, unnecessary_null_comparison, curly_braces_in_flow_control_structures, curly_braces_in_flow_control_structures, duplicate_ignore
 
 import 'dart:async';
 import 'dart:io';
@@ -4974,7 +4974,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                           label: 'treinos no total',
                         ),
                       ),
-                      if ((widget.student.peso ?? 0) > 0) ...[
+                      if ((widget.student.peso) > 0) ...[
                         const SizedBox(width: 10),
                         Expanded(
                           child: _buildStatCard(
