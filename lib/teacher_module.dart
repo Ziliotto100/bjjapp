@@ -23,6 +23,20 @@ import 'user_card_widget.dart';
 import 'training_log_module.dart';
 import 'sparring_service.dart';
 
+// Helper para capitalizar nomes de forma segura
+String _capName(String? name) {
+  if (name == null || name.isEmpty) return '';
+  return name.trim().split(RegExp(r'\s+')).map((word) {
+    if (word.isEmpty) return '';
+    if (word.endsWith('.') && word.length > 1) {
+      return word[0].toUpperCase() +
+          word.substring(1, word.length - 1).toLowerCase() +
+          '.';
+    }
+    return word[0].toUpperCase() + word.substring(1).toLowerCase();
+  }).join(' ');
+}
+
 // --- FUNÇÀO DE LOG DE AUDITORIA ---
 /// Função auxiliar para criar uma entrada no log de auditoria.
 Future<void> _createAuditLog({
@@ -416,7 +430,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
     if (_allPageModules.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(title: Text(widget.user.name.capitalizeWords())),
+        appBar: AppBar(title: Text(_capName(widget.user.name))),
         drawer: AppDrawer(
           user: widget.user,
           drawerModules: _drawerModules,
@@ -1786,7 +1800,7 @@ class _CheckinHistoryPageState extends State<CheckinHistoryPage> {
                                 child: ListTile(
                                   leading: const Icon(Icons.check_circle,
                                       color: successColor),
-                                  title: Text(student.nome.capitalizeWords()),
+                                  title: Text(_capName(student.nome)),
                                   subtitle: Text(subtitleText),
                                   trailing: IconButton(
                                     icon: const Icon(Icons.delete_outline,
@@ -2036,7 +2050,7 @@ class _BulkCheckinPageState extends State<BulkCheckinPage> {
                               _selectedStudentIds.contains(aluno.id);
                           return Card(
                             child: CheckboxListTile(
-                              title: Text(aluno.nome.capitalizeWords()),
+                              title: Text(_capName(aluno.nome)),
                               subtitle: Text(aluno.faixa),
                               value: isSelected,
                               onChanged: (bool? value) {
@@ -2316,7 +2330,7 @@ class _RetroactiveCheckinPageState extends State<RetroactiveCheckinPage> {
                               _selectedStudentIds.contains(aluno.id);
                           return Card(
                             child: CheckboxListTile(
-                              title: Text(aluno.nome.capitalizeWords()),
+                              title: Text(_capName(aluno.nome)),
                               subtitle: Text(aluno.faixa),
                               value: isSelected,
                               onChanged: (bool? value) {
@@ -2429,8 +2443,14 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
         // Fotos dos professores (já temos os docs)
         for (final doc in usersSnapshot.docs) {
           final uid = doc.id;
-          final path = doc.data()['profileImagePath'] as String?;
-          if (path != null && path.isNotEmpty) {
+          final data2 = doc.data();
+          final path =
+              (data2['profileImagePath'] as String?)?.isNotEmpty == true
+                  ? data2['profileImagePath'] as String
+                  : (data2['photoURL'] as String?)?.isNotEmpty == true
+                      ? data2['photoURL'] as String
+                      : null;
+          if (path != null) {
             profileImages[uid] = path;
           }
         }
@@ -2449,9 +2469,14 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                 .where(FieldPath.documentId, whereIn: batch)
                 .get();
             for (final doc in usersQuery.docs) {
-              final path = doc.data()['profileImagePath'] as String?;
-              if (path != null && path.isNotEmpty) {
-                // Mapear pelo userId, que coincide com o aluno.userId
+              final data = doc.data();
+              final path =
+                  (data['profileImagePath'] as String?)?.isNotEmpty == true
+                      ? data['profileImagePath'] as String
+                      : (data['photoURL'] as String?)?.isNotEmpty == true
+                          ? data['photoURL'] as String
+                          : null;
+              if (path != null) {
                 profileImages[doc.id] = path;
               }
             }
@@ -2463,7 +2488,9 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
             }
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('Erro ao buscar fotos do ranking: $e');
+      }
 
       final checkinsSnapshot = await firestore
           .collection('academies')
@@ -2748,7 +2775,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                                         style: Theme.of(context)
                                             .textTheme
                                             .titleMedium),
-                                    subtitle: Text(aluno.faixa,
+                                    subtitle: Text(aluno.faixa ?? '',
                                         style: const TextStyle(
                                             color: textHint, fontSize: 12)),
                                     trailing: Text(
@@ -3603,7 +3630,7 @@ class _SelecaoAlunosTeacherPageState extends State<SelecaoAlunosTeacherPage> {
                               final s = _alunosAtuaisSelecionados.contains(a);
                               return Card(
                                 child: CheckboxListTile(
-                                  title: Text(a.nome.capitalizeWords()),
+                                  title: Text(_capName(a.nome)),
                                   subtitle: Text('${a.faixa} - ${a.peso}kg'),
                                   value: s,
                                   onChanged: (v) => setState(() {

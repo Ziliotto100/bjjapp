@@ -13,6 +13,20 @@ import 'app_theme.dart';
 import 'common_widgets.dart';
 import 'manager_module.dart';
 
+// Helper para capitalizar nomes de forma segura
+String _capName(String? name) {
+  if (name == null || name.isEmpty) return '';
+  return name.trim().split(RegExp(r'\s+')).map((word) {
+    if (word.isEmpty) return '';
+    if (word.endsWith('.') && word.length > 1) {
+      return word[0].toUpperCase() +
+          word.substring(1, word.length - 1).toLowerCase() +
+          '.';
+    }
+    return word[0].toUpperCase() + word.substring(1).toLowerCase();
+  }).join(' ');
+}
+
 Future<void> _createAuditLog({
   required String academyId,
   required UserModel actor,
@@ -97,7 +111,18 @@ class UserCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isStudent = user is Aluno;
-    final String name = isStudent ? user.nome : user.name;
+    final String rawName = isStudent ? user.nome : user.name;
+    final String name = rawName.trim().isEmpty
+        ? rawName
+        : rawName.trim().split(RegExp(r'\s+')).map((w) {
+            if (w.isEmpty) return '';
+            if (w.endsWith('.') && w.length > 1) {
+              return w[0].toUpperCase() +
+                  w.substring(1, w.length - 1).toLowerCase() +
+                  '.';
+            }
+            return w[0].toUpperCase() + w.substring(1).toLowerCase();
+          }).join(' ');
     final String? belt = isStudent ? user.faixa : user.faixa;
     final String heroTag = 'profile_pic_${isStudent ? user.id : user.uid}';
 
@@ -127,7 +152,7 @@ class UserCard extends StatelessWidget {
               },
               child: Hero(
                 tag: heroTag,
-                // --- INÍCIO DA ALTERAÇÃO ---
+                // --- INÃCIO DA ALTERAÃ‡ÃƒO ---
                 // Alterado para usar CachedNetworkImage como filho, o que permite
                 // tratar erros de carregamento sem quebrar a tela.
                 child: CircleAvatar(
@@ -150,7 +175,7 @@ class UserCard extends StatelessWidget {
                         )
                       : Center(child: childText),
                 ),
-                // --- FIM DA ALTERAÇÃO ---
+                // --- FIM DA ALTERAÃ‡ÃƒO ---
               ),
             ),
             const SizedBox(width: 16),

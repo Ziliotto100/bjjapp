@@ -23,19 +23,32 @@ import 'auth_gate.dart';
 import 'navigation_service.dart';
 import 'app_drawer.dart';
 import 'graduation_timeline_page.dart';
-import 'teacher_class_log_module.dart';
+
+// Helper para capitalizar nomes de forma segura
+String _capName(String? name) {
+  if (name == null || name.trim().isEmpty) return name ?? '';
+  return name.trim().split(RegExp(r'\s+')).map((w) {
+    if (w.isEmpty) return '';
+    if (w.endsWith('.') && w.length > 1) {
+      return w[0].toUpperCase() +
+          w.substring(1, w.length - 1).toLowerCase() +
+          '.';
+    }
+    return w[0].toUpperCase() + w.substring(1).toLowerCase();
+  }).join(' ');
+}
 
 // --- TELAS DO ALUNO ---
 class StudentHomePage extends StatefulWidget {
   final UserModel user;
   final bool isImpersonating;
-  final SubscriptionPlan? currentPlan; // NOVO PARÂMETRO
+  final SubscriptionPlan? currentPlan; // NOVO PARÃ‚METRO
 
   const StudentHomePage({
     super.key,
     required this.user,
     this.isImpersonating = false,
-    this.currentPlan, // NOVO PARÂMETRO
+    this.currentPlan, // NOVO PARÃ‚METRO
   });
 
   @override
@@ -59,11 +72,10 @@ class _StudentHomePageState extends State<StudentHomePage> {
   @override
   void initState() {
     super.initState();
-    // --- ALTERAÇÃO: Passa o plano para o NavigationService ---
     _navService = NavigationService(
       userId: widget.user.uid,
       userRole: widget.user.role,
-      currentPlan: widget.currentPlan, // Passando o plano
+      currentPlan: widget.currentPlan,
     );
     _loadInitialData();
   }
@@ -125,7 +137,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     }
   }
 
-  // --- CORREÇÃO APLICADA AQUI ---
+  // --- CORREÇÃƒO APLICADA AQUI ---
   void _configureNavigation(DocumentSnapshot? settingsDoc) {
     Map<String, dynamic> settings;
     if (settingsDoc != null && settingsDoc.exists) {
@@ -195,7 +207,7 @@ class _StudentHomePageState extends State<StudentHomePage> {
     if (_allPageModules.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(title: Text(widget.user.name.capitalizeWords())),
+        appBar: AppBar(title: Text(_capName(widget.user.name))),
         drawer: AppDrawer(
           user: widget.user,
           drawerModules: _drawerModules,
@@ -592,7 +604,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                             controller: _nameController,
                             decoration: const InputDecoration(
                                 labelText: 'Nome Completo'),
-                            textCapitalization: TextCapitalization.words,
                             validator: (v) => v == null || v.trim().isEmpty
                                 ? 'Nome não pode ser vazio'
                                 : null,
@@ -661,7 +672,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                             controller: _logradouroController,
                             decoration: const InputDecoration(
                                 labelText: 'Logradouro (Rua, Av...)'),
-                            textCapitalization: TextCapitalization.words,
                           ),
                           const SizedBox(height: 16),
                           Row(
@@ -681,7 +691,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                   controller: _bairroController,
                                   decoration: const InputDecoration(
                                       labelText: 'Bairro'),
-                                  textCapitalization: TextCapitalization.words,
                                 ),
                               ),
                             ],
@@ -695,7 +704,6 @@ class _EditStudentProfilePageState extends State<EditStudentProfilePage> {
                                   controller: _cidadeController,
                                   decoration: const InputDecoration(
                                       labelText: 'Cidade'),
-                                  textCapitalization: TextCapitalization.words,
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -748,30 +756,6 @@ class MyCheckinsPage extends StatefulWidget {
 
 class _MyCheckinsPageState extends State<MyCheckinsPage> {
   DateTime _focusedDay = DateTime.now();
-  DateTime? _systemStartDate;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadSystemStartDate();
-  }
-
-  Future<void> _loadSystemStartDate() async {
-    try {
-      final doc = await FirebaseFirestore.instance
-          .collection('academies')
-          .doc(widget.user.academyId)
-          .get();
-      final data = doc.data();
-      if (data != null && data['systemStartDate'] != null) {
-        final ts = data['systemStartDate'] as Timestamp;
-        final d = ts.toDate();
-        if (mounted) {
-          setState(() => _systemStartDate = DateTime(d.year, d.month, d.day));
-        }
-      }
-    } catch (_) {}
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -799,18 +783,11 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
           return const Center(child: CircularProgressIndicator());
         }
 
-        final rawCheckins = snapshot.data?.docs
+        final allCheckins = snapshot.data?.docs
                 .map((doc) => CheckinEntry.fromJson(
                     doc.id, doc.data() as Map<String, dynamic>))
                 .toList() ??
             [];
-
-        // Filtrar pela data de início do sistema, se definida
-        final allCheckins = _systemStartDate == null
-            ? rawCheckins
-            : rawCheckins
-                .where((c) => !c.date.isBefore(_systemStartDate!))
-                .toList();
 
         final eventosAgrupados = <DateTime, List<CheckinEntry>>{};
         for (var checkin in allCheckins) {
@@ -917,28 +894,6 @@ class _MyCheckinsPageState extends State<MyCheckinsPage> {
                 ),
               ),
             ),
-            if (widget.user.role == UserRole.teacher)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.calendar_month_rounded,
-                        color: primaryAccent),
-                    title: const Text('Histórico de Aulas Ministradas'),
-                    trailing:
-                        const Icon(Icons.arrow_forward_ios_rounded, size: 16),
-                    onTap: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (_) => TeacherClassLogPage(
-                          professor: widget.user,
-                          academyId: widget.user.academyId,
-                          canEdit: true,
-                        ),
-                      ));
-                    },
-                  ),
-                ),
-              ),
           ],
         );
       },
@@ -1732,7 +1687,9 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
       };
 
       final Map<String, dynamic> updateData = {
-        'name': _nameController.text.trim().capitalizeWords(),
+        'name': widget.user.role == UserRole.manager
+            ? _nameController.text.trim()
+            : _nameController.text.trim().capitalizeWords(),
         'peso': double.tryParse(_weightController.text.replaceAll(',', '.')) ??
             widget.user.peso,
         'dataNascimento':
@@ -1884,7 +1841,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                       controller: _nameController,
                       decoration:
                           const InputDecoration(labelText: 'Nome Completo'),
-                      textCapitalization: TextCapitalization.words,
                       validator: (v) => v == null || v.trim().isEmpty
                           ? 'Nome não pode ser vazio'
                           : null,
@@ -1953,7 +1909,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                       controller: _logradouroController,
                       decoration: const InputDecoration(
                           labelText: 'Logradouro (Rua, Av...)'),
-                      textCapitalization: TextCapitalization.words,
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -1972,7 +1927,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                             controller: _bairroController,
                             decoration:
                                 const InputDecoration(labelText: 'Bairro'),
-                            textCapitalization: TextCapitalization.words,
                           ),
                         ),
                       ],
@@ -1986,7 +1940,6 @@ class _EditUserProfilePageState extends State<EditUserProfilePage> {
                             controller: _cidadeController,
                             decoration:
                                 const InputDecoration(labelText: 'Cidade'),
-                            textCapitalization: TextCapitalization.words,
                           ),
                         ),
                         const SizedBox(width: 16),

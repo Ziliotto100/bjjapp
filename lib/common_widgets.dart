@@ -12,7 +12,7 @@ import 'models.dart';
 import 'user_card_widget.dart';
 import 'auth_gate.dart'; // Import necessário para a navegação
 
-// --- WIDGETS COMUNS REUTILIZÁVEIS ---
+// --- WIDGETS COMUNS REUTILIZÃVEIS ---
 
 /// Plano de fundo padrão para a maioria das telas do aplicativo.
 class AppBackground extends StatelessWidget {
@@ -95,7 +95,7 @@ class EmptyStateWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(
-      // --- CORREÇÃO APLICADA AQUI ---
+      // --- CORREÇÃƒO APLICADA AQUI ---
       // Adicionado SingleChildScrollView para evitar overflow em telas pequenas.
       child: SingleChildScrollView(
         child: Padding(
@@ -165,6 +165,19 @@ String getBeltImagePath(String? beltName) {
 }
 
 /// Cabeçalho de perfil reutilizável.
+String _capNameWidget(String name) {
+  if (name.trim().isEmpty) return name;
+  return name.trim().split(RegExp(r'\s+')).map((w) {
+    if (w.isEmpty) return '';
+    if (w.endsWith('.') && w.length > 1) {
+      return w[0].toUpperCase() +
+          w.substring(1, w.length - 1).toLowerCase() +
+          '.';
+    }
+    return w[0].toUpperCase() + w.substring(1).toLowerCase();
+  }).join(' ');
+}
+
 class UserProfileHeader extends StatelessWidget {
   final UserModel user;
   final Aluno? studentData;
@@ -215,7 +228,7 @@ class UserProfileHeader extends StatelessWidget {
                     child: CircleAvatar(
                       radius: 70,
                       backgroundColor: primaryAccent.withOpacity(0.2),
-                      // --- INÍCIO DA CORREÇÃO ---
+                      // --- INÃCIO DA CORREÇÃƒO ---
                       // Lógica de exibição de imagem/ícone movida para dentro do child
                       // para garantir que a estrutura do Hero não mude.
                       child: (profileImagePath != null &&
@@ -235,7 +248,7 @@ class UserProfileHeader extends StatelessWidget {
                             )
                           : const Icon(Icons.person,
                               size: 80, color: primaryAccent),
-                      // --- FIM DA CORREÇÃO ---
+                      // --- FIM DA CORREÇÃƒO ---
                     ),
                   ),
                 ),
@@ -266,7 +279,7 @@ class UserProfileHeader extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              user.name,
+              _capNameWidget(user.name),
               style: theme.textTheme.headlineSmall,
               textAlign: TextAlign.center,
             ),
@@ -454,7 +467,7 @@ class ImpersonationBanner extends StatelessWidget {
   }
 }
 
-// --- INÍCIO DA ALTERAÇÃO ---
+// --- INÃCIO DA ALTERAÇÃƒO ---
 // Novo Widget centralizado para exibir os aniversariantes do dia.
 
 class TodaysBirthdaysCard extends StatefulWidget {
@@ -547,7 +560,7 @@ class _TodaysBirthdaysCardState extends State<TodaysBirthdaysCard> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Text('🎉', style: TextStyle(fontSize: 24)),
+                const Text('ðŸŽ‰', style: TextStyle(fontSize: 24)),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(

@@ -26,6 +26,7 @@ import 'admin_notifications_page.dart';
 import 'class_plan_module.dart';
 import 'features.dart';
 import 'strength_training_module.dart';
+import 'student_ranking_page.dart';
 
 /// Representa um módulo ou tela principal do aplicativo.
 class AppModule {
@@ -420,13 +421,23 @@ class NavigationService {
                 BirthdaysPage(academyId: user.academyId, currentUser: user),
           ),
           AppModule(
+            id: 'student_ranking',
+            title: 'Ranking',
+            icon: Icons.emoji_events_rounded,
+            requiredRoles: [UserRole.student],
+            pageBuilder: (user, teachers, students, plan) => StudentRankingPage(
+              user: user,
+              students: students,
+              teachers: teachers,
+            ),
+          ),
+          AppModule(
             id: 'teacher_checkin',
             title: 'Check-in',
             icon: Icons.check_circle_outline_rounded,
             requiredRoles: [
-              UserRole.teacher,
-              UserRole.manager,
-            ], // Professor e gerente fazem check-in
+              UserRole.teacher
+            ], // Só professor faz check-in por aqui
             pageBuilder: (user, teachers, students, plan) => CheckinTeacherPage(
                 user: user,
                 academyId: user.academyId,
@@ -674,7 +685,6 @@ class NavigationService {
           'manager_dashboard', // Início (Gerente)
           'manager_students', // Alunos
           'manager_fees', // Mensalidades
-          'teacher_checkin', // Check-in
           'common_schedule', // Grade
           'common_training_log', // Diário
         ];

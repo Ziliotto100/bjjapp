@@ -1,5 +1,5 @@
 // lib/manager_module.dart
-// ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps, deprecated_member_use, unused_element, unused_import, unnecessary_null_comparison, curly_braces_in_flow_control_structures, curly_braces_in_flow_control_structures, duplicate_ignore
+// ignore_for_file: use_build_context_synchronously, unnecessary_brace_in_string_interps, deprecated_member_use, unused_element, unused_import
 
 import 'dart:async';
 import 'dart:io';
@@ -30,6 +30,20 @@ import 'manager_reports_page.dart';
 import 'financial_student_list_page.dart';
 import 'tutorials_module.dart';
 import 'teacher_class_log_module.dart';
+
+// Helper para capitalizar nomes de forma segura
+String _capName(String? name) {
+  if (name == null || name.isEmpty) return '';
+  return name.trim().split(RegExp(r'\s+')).map((word) {
+    if (word.isEmpty) return '';
+    if (word.endsWith('.') && word.length > 1) {
+      return word[0].toUpperCase() +
+          word.substring(1, word.length - 1).toLowerCase() +
+          '.';
+    }
+    return word[0].toUpperCase() + word.substring(1).toLowerCase();
+  }).join(' ');
+}
 
 // --- FUNÇÃO DE LOG DE AUDITORIA ---
 Future<void> _createAuditLog({
@@ -569,7 +583,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
     if (_allPageModules.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.transparent,
-        appBar: AppBar(title: Text(widget.user.name.capitalizeWords())),
+        appBar: AppBar(title: Text(widget.user.name)),
         drawer: AppDrawer(
           user: _currentUser,
           drawerModules: _drawerModules,
@@ -4355,7 +4369,7 @@ class _MonthlyFeeManagerPageState extends State<MonthlyFeeManagerPage> {
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
-                                        Text(student.nome.capitalizeWords(),
+                                        Text(_capName(student.nome),
                                             style: Theme.of(context)
                                                 .textTheme
                                                 .titleMedium),
@@ -4800,7 +4814,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_capitalize(widget.student.nome.capitalizeWords())),
+        title: Text(_capName(_capitalize(widget.student.nome))),
         actions: [
           IconButton(
             icon: const Icon(Icons.history_rounded),
@@ -4974,7 +4988,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                           label: 'treinos no total',
                         ),
                       ),
-                      if ((widget.student.peso) > 0) ...[
+                      if ((widget.student.peso ?? 0) > 0) ...[
                         const SizedBox(width: 10),
                         Expanded(
                           child: _buildStatCard(
@@ -5388,7 +5402,7 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       appBar: AppBar(
-        title: Text(_capitalize(widget.professor.name.capitalizeWords())),
+        title: Text(_capName(_capitalize(widget.professor.name))),
         actions: [
           IconButton(
             icon: const Icon(Icons.history_rounded),
