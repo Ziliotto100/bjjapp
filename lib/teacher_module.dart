@@ -23,15 +23,14 @@ import 'user_card_widget.dart';
 import 'training_log_module.dart';
 import 'sparring_service.dart';
 
+
 // Helper para capitalizar nomes de forma segura
 String _capName(String? name) {
   if (name == null || name.isEmpty) return '';
   return name.trim().split(RegExp(r'\s+')).map((word) {
     if (word.isEmpty) return '';
     if (word.endsWith('.') && word.length > 1) {
-      return word[0].toUpperCase() +
-          word.substring(1, word.length - 1).toLowerCase() +
-          '.';
+      return word[0].toUpperCase() + word.substring(1, word.length - 1).toLowerCase() + '.';
     }
     return word[0].toUpperCase() + word.substring(1).toLowerCase();
   }).join(' ');
@@ -125,6 +124,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   bool _isSparringMode = false;
   StreamSubscription? _sparringStateSubscription;
   StreamSubscription? _settingsSubscription;
+  StreamSubscription? _studentsSubscription;
 
   // Chave Global para acessar o estado da Dashboard
   final GlobalKey<_TeacherDashboardPageState> _dashboardKey =
@@ -157,6 +157,7 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
   void dispose() {
     _sparringStateSubscription?.cancel();
     _settingsSubscription?.cancel();
+    _studentsSubscription?.cancel();
     super.dispose();
   }
 
@@ -175,18 +176,27 @@ class _TeacherHomePageState extends State<TeacherHomePage> {
           .map((doc) => UserModel.fromFirestore(doc))
           .toList();
 
-      final studentsSnapshot = await firestore
+      // Stream de alunos — atualiza automaticamente quando isActive muda
+      _studentsSubscription?.cancel();
+      _studentsSubscription = firestore
           .collection('academies')
           .doc(academyId)
           .collection('students')
-          .get();
-      final studentParticipants = studentsSnapshot.docs
-          .map((doc) => Aluno.fromJson(doc.id, doc.data()))
-          .toList();
-      final teacherParticipants =
-          _teachers.map((user) => Aluno.fromUserModel(user)).toList();
-      _students = [...studentParticipants, ...teacherParticipants]
-        ..sort((a, b) => a.nome.compareTo(b.nome));
+          .snapshots()
+          .listen((studentsSnapshot) {
+        final studentParticipants = studentsSnapshot.docs
+            .map((doc) => Aluno.fromJson(doc.id, doc.data()))
+            .where((aluno) => aluno.isActive)
+            .toList();
+        final teacherParticipants =
+            _teachers.map((user) => Aluno.fromUserModel(user)).toList();
+        if (mounted) {
+          setState(() {
+            _students = [...studentParticipants, ...teacherParticipants]
+              ..sort((a, b) => a.nome.compareTo(b.nome));
+          });
+        }
+      });
 
       _settingsSubscription =
           _navService.getTabSettingsStream().listen((settingsDoc) {
@@ -858,6 +868,11 @@ class _AlunosTeacherPageState extends State<AlunosTeacherPage> {
                   }).toList();
 
                   List<Aluno> processedAlunos = List.from(allAlunos);
+
+                  // Alunos desativados pelo gerente não aparecem para o professor
+                  processedAlunos = processedAlunos
+                      .where((aluno) => aluno.isActive)
+                      .toList();
 
                   if (_searchQuery.isNotEmpty) {
                     processedAlunos = processedAlunos.where((aluno) {
@@ -2407,8 +2422,7 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
       // Buscar data de início do sistema
       DateTime? systemStartDate;
       try {
-        final academyDoc =
-            await firestore.collection('academies').doc(academyId).get();
+        final academyDoc = await firestore.collection('academies').doc(academyId).get();
         final data = academyDoc.data();
         if (data != null && data['systemStartDate'] != null) {
           final ts = data['systemStartDate'] as Timestamp;
@@ -2444,12 +2458,11 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
         for (final doc in usersSnapshot.docs) {
           final uid = doc.id;
           final data2 = doc.data();
-          final path =
-              (data2['profileImagePath'] as String?)?.isNotEmpty == true
-                  ? data2['profileImagePath'] as String
-                  : (data2['photoURL'] as String?)?.isNotEmpty == true
-                      ? data2['photoURL'] as String
-                      : null;
+          final path = (data2['profileImagePath'] as String?)?.isNotEmpty == true
+              ? data2['profileImagePath'] as String
+              : (data2['photoURL'] as String?)?.isNotEmpty == true
+                  ? data2['photoURL'] as String
+                  : null;
           if (path != null) {
             profileImages[uid] = path;
           }
@@ -2470,12 +2483,11 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                 .get();
             for (final doc in usersQuery.docs) {
               final data = doc.data();
-              final path =
-                  (data['profileImagePath'] as String?)?.isNotEmpty == true
-                      ? data['profileImagePath'] as String
-                      : (data['photoURL'] as String?)?.isNotEmpty == true
-                          ? data['photoURL'] as String
-                          : null;
+              final path = (data['profileImagePath'] as String?)?.isNotEmpty == true
+                  ? data['profileImagePath'] as String
+                  : (data['photoURL'] as String?)?.isNotEmpty == true
+                      ? data['photoURL'] as String
+                      : null;
               if (path != null) {
                 profileImages[doc.id] = path;
               }
@@ -2506,20 +2518,19 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
       // Filtrar pela data de início do sistema
       final allCheckins = systemStartDate == null
           ? rawCheckins
-          : rawCheckins
-              .where((c) => !c.date.isBefore(systemStartDate!))
-              .toList();
+          : rawCheckins.where((c) => !c.date.isBefore(systemStartDate!)).toList();
 
       // Gerar lista de meses disponíveis (únicos, ordenados do mais recente)
       final mesesSet = <String>{};
       for (var c in allCheckins) {
-        mesesSet
-            .add('${c.date.year}-${c.date.month.toString().padLeft(2, '0')}');
+        mesesSet.add('${c.date.year}-${c.date.month.toString().padLeft(2, '0')}');
       }
-      final mesesDisponiveis = mesesSet.map((s) {
-        final parts = s.split('-');
-        return DateTime(int.parse(parts[0]), int.parse(parts[1]));
-      }).toList()
+      final mesesDisponiveis = mesesSet
+          .map((s) {
+            final parts = s.split('-');
+            return DateTime(int.parse(parts[0]), int.parse(parts[1]));
+          })
+          .toList()
         ..sort((a, b) => b.compareTo(a));
 
       final now = DateTime.now();
@@ -2637,17 +2648,16 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                     setState(() => _showMonthPicker = !_showMonthPicker);
                   },
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
                     decoration: BoxDecoration(
                       color: (!['mes_atual', 'ano', 'total'].contains(_filter))
                           ? primaryAccent.withOpacity(0.15)
                           : Colors.transparent,
                       border: Border.all(
-                        color:
-                            (!['mes_atual', 'ano', 'total'].contains(_filter))
-                                ? primaryAccent
-                                : textHint.withOpacity(0.3),
+                        color: (!['mes_atual', 'ano', 'total'].contains(_filter))
+                            ? primaryAccent
+                            : textHint.withOpacity(0.3),
                         width: 1,
                       ),
                       borderRadius: BorderRadius.circular(8),
@@ -2704,15 +2714,15 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                       final key =
                           'mes_${mes.year}-${mes.month.toString().padLeft(2, '0')}';
                       final isSelected = _filter == key;
-                      final label =
-                          DateFormat('MMMM yyyy', 'pt_BR').format(mes);
+                      final label = DateFormat('MMMM yyyy', 'pt_BR').format(mes);
                       final capitalizado =
                           label[0].toUpperCase() + label.substring(1);
                       return ListTile(
                         dense: true,
                         title: Text(capitalizado,
                             style: TextStyle(
-                              color: isSelected ? primaryAccent : textSecondary,
+                              color:
+                                  isSelected ? primaryAccent : textSecondary,
                               fontWeight: isSelected
                                   ? FontWeight.bold
                                   : FontWeight.normal,
@@ -2744,10 +2754,12 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                             icon: Icons.group_off_rounded,
                             title: 'Nenhum participante encontrado.')
                         : ListView(
-                            padding: const EdgeInsets.fromLTRB(8, 4, 8, 24),
+                            padding:
+                                const EdgeInsets.fromLTRB(8, 4, 8, 24),
                             children: [
                               // ── Pódio ─────────────────────────
-                              if (top3.isNotEmpty) _buildPodium(top3),
+                              if (top3.isNotEmpty)
+                                _buildPodium(top3),
 
                               const SizedBox(height: 8),
 
@@ -2761,7 +2773,8 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                                   child: ListTile(
                                     leading: CircleAvatar(
                                       radius: 14,
-                                      backgroundColor: darkSurface,
+                                      backgroundColor:
+                                          darkSurface,
                                       child: Text(
                                         '$rank',
                                         style: const TextStyle(
@@ -2846,17 +2859,17 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                         const SizedBox(height: 4),
                         // Avatar com foto ou inicial
                         Builder(builder: (context) {
-                          final photoUrl = _profileImages[aluno.id] ??
-                              _profileImages[aluno.userId ?? ''];
+                          final photoUrl = _profileImages[aluno.id]
+                              ?? _profileImages[aluno.userId ?? ''];
                           return CircleAvatar(
                             radius: avatarSize / 2,
                             backgroundColor: color.withOpacity(0.2),
-                            backgroundImage:
-                                (photoUrl != null && photoUrl.isNotEmpty)
-                                    ? NetworkImage(photoUrl)
-                                    : null,
-                            onBackgroundImageError:
-                                photoUrl != null ? (_, __) {} : null,
+                            backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                                ? NetworkImage(photoUrl)
+                                : null,
+                            onBackgroundImageError: photoUrl != null
+                                ? (_, __) {}
+                                : null,
                             child: (photoUrl == null || photoUrl.isEmpty)
                                 ? Text(
                                     aluno.nome.isNotEmpty
@@ -2887,7 +2900,8 @@ class _RankingTeacherPageState extends State<RankingTeacherPage> {
                         // Contagem
                         Text(
                           '$count ${count == 1 ? 'treino' : 'treinos'}',
-                          style: const TextStyle(color: textHint, fontSize: 11),
+                          style: const TextStyle(
+                              color: textHint, fontSize: 11),
                         ),
                         const SizedBox(height: 8),
                         // Base do pódio
@@ -3004,7 +3018,8 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
 
   Future<void> _navegarParaSelecaoAlunos() async {
     final alunosDaUnidade = widget.todosParticipantesDaAcademia.where((aluno) {
-      return _selectedUnitId == 'all' || aluno.unitId == _selectedUnitId;
+      final unitOk = _selectedUnitId == 'all' || aluno.unitId == _selectedUnitId;
+      return unitOk && aluno.isActive;
     }).toList();
 
     final List<Aluno>? r = await Navigator.of(context).push(MaterialPageRoute(
@@ -3031,7 +3046,8 @@ class _SorteioTeacherPageState extends State<SorteioTeacherPage> {
     }
 
     final todosDaUnidade = widget.todosParticipantesDaAcademia.where((aluno) {
-      return _selectedUnitId == 'all' || aluno.unitId == _selectedUnitId;
+      final unitOk = _selectedUnitId == 'all' || aluno.unitId == _selectedUnitId;
+      return unitOk && aluno.isActive;
     }).toList();
 
     final ultimosParticipantes =

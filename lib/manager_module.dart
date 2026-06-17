@@ -31,15 +31,14 @@ import 'financial_student_list_page.dart';
 import 'tutorials_module.dart';
 import 'teacher_class_log_module.dart';
 
+
 // Helper para capitalizar nomes de forma segura
 String _capName(String? name) {
   if (name == null || name.isEmpty) return '';
   return name.trim().split(RegExp(r'\s+')).map((word) {
     if (word.isEmpty) return '';
     if (word.endsWith('.') && word.length > 1) {
-      return word[0].toUpperCase() +
-          word.substring(1, word.length - 1).toLowerCase() +
-          '.';
+      return word[0].toUpperCase() + word.substring(1, word.length - 1).toLowerCase() + '.';
     }
     return word[0].toUpperCase() + word.substring(1).toLowerCase();
   }).join(' ');
@@ -254,6 +253,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   bool _isSparringMode = false;
   StreamSubscription? _sparringStateSubscription;
   StreamSubscription? _settingsSubscription;
+  StreamSubscription? _studentsSubscription;
 
   @override
   void initState() {
@@ -282,6 +282,7 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
   void dispose() {
     _sparringStateSubscription?.cancel();
     _settingsSubscription?.cancel();
+    _studentsSubscription?.cancel();
     super.dispose();
   }
 
@@ -325,14 +326,24 @@ class _ManagerHomePageState extends State<ManagerHomePage> {
           .map((doc) => UserModel.fromFirestore(doc))
           .toList();
 
-      _students = (await firestore
-              .collection('academies')
-              .doc(academyId)
-              .collection('students')
-              .get())
-          .docs
-          .map((doc) => Aluno.fromJson(doc.id, doc.data()))
-          .toList();
+      // Stream de alunos — atualiza automaticamente quando isActive muda
+      _studentsSubscription?.cancel();
+      _studentsSubscription = firestore
+          .collection('academies')
+          .doc(academyId)
+          .collection('students')
+          .snapshots()
+          .listen((snap) {
+        if (mounted) {
+          setState(() {
+            _students = snap.docs
+                .map((doc) => Aluno.fromJson(doc.id, doc.data()))
+                .where((aluno) => aluno.isActive)
+                .toList();
+            if (!_isLoading) _rebuildScreens();
+          });
+        }
+      });
 
       _settingsSubscription?.cancel();
       _settingsSubscription =
@@ -1106,6 +1117,7 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
   String? _beltFilter;
   String? _unitFilter;
   String _sortOption = 'nome';
+  bool _showInactive = false;
   final List<String> _beltOptions = [
     'Branca',
     'Cinza/Branca',
@@ -1258,7 +1270,7 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
   Widget _buildFilterSortMenu() {
     return PopupMenuButton<String>(
       icon: Icon(Icons.filter_list,
-          color: _beltFilter != null || _unitFilter != null
+          color: _beltFilter != null || _unitFilter != null || _showInactive
               ? primaryAccent
               : null),
       tooltip: 'Filtrar e Ordenar',
@@ -1269,10 +1281,13 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
           _showBeltFilterDialog();
         } else if (value == 'filter_unit') {
           _showUnitFilterDialog();
+        } else if (value == 'toggle_inactive') {
+          setState(() => _showInactive = !_showInactive);
         } else if (value == 'clear_filter') {
           setState(() {
             _beltFilter = null;
             _unitFilter = null;
+            _showInactive = false;
           });
         }
       },
@@ -1300,7 +1315,24 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
               ? 'Filtrar por Faixa...'
               : 'Filtrar: $_beltFilter'),
         ),
-        if (_beltFilter != null || _unitFilter != null)
+        const PopupMenuDivider(),
+        PopupMenuItem<String>(
+          value: 'toggle_inactive',
+          child: Row(
+            children: [
+              Icon(
+                _showInactive
+                    ? Icons.check_box_rounded
+                    : Icons.check_box_outline_blank_rounded,
+                size: 18,
+                color: _showInactive ? primaryAccent : textHint,
+              ),
+              const SizedBox(width: 8),
+              const Text('Mostrar Inativos'),
+            ],
+          ),
+        ),
+        if (_beltFilter != null || _unitFilter != null || _showInactive)
           const PopupMenuItem<String>(
             value: 'clear_filter',
             child: Text('Limpar Filtros'),
@@ -1378,6 +1410,13 @@ class _AlunosManagerPageState extends State<AlunosManagerPage> {
                   }).toList();
 
                   List<Aluno> processedAlunos = List.from(allAlunos);
+
+                  // Oculta alunos inativos por padrão (só o gerente pode mostrar)
+                  if (!_showInactive) {
+                    processedAlunos = processedAlunos
+                        .where((aluno) => aluno.isActive)
+                        .toList();
+                  }
 
                   // A busca por nome continua no cliente para permitir busca parcial.
                   if (_searchQuery.isNotEmpty) {
@@ -2171,8 +2210,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                             child: _newProfileImageFile != null && kIsWeb
                                 ? ClipOval(
                                     child: FutureBuilder<Uint8List>(
-                                      future:
-                                          _newProfileImageFile!.readAsBytes(),
+                                      future: _newProfileImageFile!.readAsBytes(),
                                       builder: (context, snapshot) {
                                         if (snapshot.hasData) {
                                           return Image.memory(snapshot.data!,
@@ -2192,8 +2230,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                                             color: primaryAccent))
                                     : null,
                           ),
-                          if (isEditing &&
-                              widget.alunoParaEditar?.userId != null)
+                          if (isEditing && widget.alunoParaEditar?.userId != null)
                             Positioned(
                               bottom: 0,
                               right: 0,
@@ -2302,7 +2339,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                         value: selectedUnitId,
                         decoration: const InputDecoration(
                           labelText: 'Unidade (Matriz/Filial)',
-                          prefixIcon: Icon(Icons.store_mall_directory_outlined),
+                          prefixIcon:
+                              Icon(Icons.store_mall_directory_outlined),
                         ),
                         isExpanded: true,
                         hint: const Text("Selecione a Unidade"),
@@ -2315,8 +2353,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                         onChanged: (value) {
                           setState(() {
                             selectedUnitId = value;
-                            selectedUnitName =
-                                units.firstWhere((u) => u.id == value)['name'];
+                            selectedUnitName = units
+                                .firstWhere((u) => u.id == value)['name'];
                           });
                         },
                         validator: (v) =>
@@ -2440,8 +2478,7 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                                         shape: BoxShape.circle,
                                         border: faixa.toLowerCase() == 'branca'
                                             ? Border.all(
-                                                color:
-                                                    textHint.withOpacity(0.4))
+                                                color: textHint.withOpacity(0.4))
                                             : null,
                                       ),
                                     ),
@@ -2454,10 +2491,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                                             ? FontWeight.w600
                                             : FontWeight.normal,
                                         color: isSelected
-                                            ? (faixa.toLowerCase() ==
-                                                        'branca' ||
-                                                    faixa.toLowerCase() ==
-                                                        'preta'
+                                            ? (faixa.toLowerCase() == 'branca' ||
+                                                    faixa.toLowerCase() == 'preta'
                                                 ? textSecondary
                                                 : faixaColor)
                                             : textHint,
@@ -2547,7 +2582,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                           flex: 2,
                           child: TextFormField(
                             controller: numeroC,
-                            decoration: const InputDecoration(labelText: 'Nº'),
+                            decoration:
+                                const InputDecoration(labelText: 'Nº'),
                             keyboardType: TextInputType.number,
                           ),
                         ),
@@ -2580,7 +2616,8 @@ class _AdicionarAlunoDialogState extends State<AdicionarAlunoDialog> {
                           flex: 2,
                           child: TextFormField(
                             controller: cepC,
-                            decoration: const InputDecoration(labelText: 'CEP'),
+                            decoration:
+                                const InputDecoration(labelText: 'CEP'),
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
@@ -3058,6 +3095,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+
                     // ── Avatar ──────────────────────────────────────
                     Center(
                       child: Stack(
@@ -3069,8 +3107,7 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                             child: _newProfileImageFile != null && kIsWeb
                                 ? ClipOval(
                                     child: FutureBuilder<Uint8List>(
-                                      future:
-                                          _newProfileImageFile!.readAsBytes(),
+                                      future: _newProfileImageFile!.readAsBytes(),
                                       builder: (context, snapshot) {
                                         if (snapshot.hasData) {
                                           return Image.memory(snapshot.data!,
@@ -3242,8 +3279,8 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                                           border: faixa.toLowerCase() ==
                                                   'branca'
                                               ? Border.all(
-                                                  color:
-                                                      textHint.withOpacity(0.4))
+                                                  color: textHint
+                                                      .withOpacity(0.4))
                                               : null,
                                         ),
                                       ),
@@ -3273,7 +3310,8 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                           ),
                           if (_faixa == null)
                             Padding(
-                              padding: const EdgeInsets.only(top: 6, left: 4),
+                              padding:
+                                  const EdgeInsets.only(top: 6, left: 4),
                               child: Text('Selecione uma faixa',
                                   style: TextStyle(
                                       color: errorColor.withOpacity(0.8),
@@ -3301,7 +3339,8 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                                 child: Text("$gº Grau",
                                     overflow: TextOverflow.ellipsis))),
                           ],
-                          onChanged: (value) => setState(() => _graus = value),
+                          onChanged: (value) =>
+                              setState(() => _graus = value),
                         ),
                       const SizedBox(height: 14),
 
@@ -3351,7 +3390,8 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                           flex: 2,
                           child: TextFormField(
                             controller: _numeroController,
-                            decoration: const InputDecoration(labelText: 'Nº'),
+                            decoration:
+                                const InputDecoration(labelText: 'Nº'),
                             keyboardType: TextInputType.number,
                           ),
                         ),
@@ -3384,7 +3424,8 @@ class _EditarProfessorDialogState extends State<EditarProfessorDialog> {
                           flex: 2,
                           child: TextFormField(
                             controller: _cepController,
-                            decoration: const InputDecoration(labelText: 'CEP'),
+                            decoration:
+                                const InputDecoration(labelText: 'CEP'),
                             keyboardType: TextInputType.number,
                             inputFormatters: [
                               FilteringTextInputFormatter.digitsOnly,
@@ -3545,23 +3586,11 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
   bool isLoadingUnits = true;
 
   final List<String> _faixasList = [
-    'Branca',
-    'Cinza/Branca',
-    'Cinza',
-    'Cinza/Preta',
-    'Amarela/Branca',
-    'Amarela',
-    'Amarela/Preta',
-    'Laranja/Branca',
-    'Laranja',
-    'Laranja/Preta',
-    'Verde/Branca',
-    'Verde',
-    'Verde/Preta',
-    'Azul',
-    'Roxa',
-    'Marrom',
-    'Preta',
+    'Branca', 'Cinza/Branca', 'Cinza', 'Cinza/Preta',
+    'Amarela/Branca', 'Amarela', 'Amarela/Preta',
+    'Laranja/Branca', 'Laranja', 'Laranja/Preta',
+    'Verde/Branca', 'Verde', 'Verde/Preta',
+    'Azul', 'Roxa', 'Marrom', 'Preta',
   ];
   List<int> _grausList = [];
 
@@ -3630,8 +3659,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
     DateTime? dataNascimento;
     if (_dNascController.text.isNotEmpty) {
       try {
-        dataNascimento =
-            DateFormat('dd/MM/yyyy').parseStrict(_dNascController.text);
+        dataNascimento = DateFormat('dd/MM/yyyy').parseStrict(_dNascController.text);
       } catch (_) {}
     }
 
@@ -3675,8 +3703,9 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
         'graus': _graus,
         'peso': double.tryParse(_pesoController.text.replaceAll(',', '.')),
         'phoneNumber': _phoneController.text.trim(),
-        'dataNascimento':
-            dataNascimento != null ? Timestamp.fromDate(dataNascimento) : null,
+        'dataNascimento': dataNascimento != null
+            ? Timestamp.fromDate(dataNascimento)
+            : null,
         'address': address,
         'unitId': selectedUnitId,
         'unitName': selectedUnitName,
@@ -3726,8 +3755,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
       if (mounted) showBjjSnackBar(context, message, type: 'error');
     } catch (e) {
       if (mounted) {
-        showBjjSnackBar(context, 'Ocorreu um erro inesperado: $e',
-            type: 'error');
+        showBjjSnackBar(context, 'Ocorreu um erro inesperado: $e', type: 'error');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -3762,6 +3790,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+
               // ── Avatar ──────────────────────────────────────
               CircleAvatar(
                 radius: 40,
@@ -3880,8 +3909,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
-                    const Icon(Icons.shield_outlined,
-                        size: 18, color: textHint),
+                    const Icon(Icons.shield_outlined, size: 18, color: textHint),
                     const SizedBox(width: 8),
                     Text('Faixa',
                         style: Theme.of(context)
@@ -3897,23 +3925,12 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                       final isSelected = _faixa == faixa;
                       Color faixaColor;
                       switch (faixa.toLowerCase()) {
-                        case 'branca':
-                          faixaColor = Colors.white;
-                          break;
-                        case 'azul':
-                          faixaColor = const Color(0xFF1E5AA8);
-                          break;
-                        case 'roxa':
-                          faixaColor = const Color(0xFF7B2FBE);
-                          break;
-                        case 'marrom':
-                          faixaColor = const Color(0xFF6B3A2A);
-                          break;
-                        case 'preta':
-                          faixaColor = const Color(0xFF2C2C2A);
-                          break;
-                        default:
-                          faixaColor = textHint;
+                        case 'branca': faixaColor = Colors.white; break;
+                        case 'azul': faixaColor = const Color(0xFF1E5AA8); break;
+                        case 'roxa': faixaColor = const Color(0xFF7B2FBE); break;
+                        case 'marrom': faixaColor = const Color(0xFF6B3A2A); break;
+                        case 'preta': faixaColor = const Color(0xFF2C2C2A); break;
+                        default: faixaColor = textHint;
                       }
                       return GestureDetector(
                         onTap: () => setState(() {
@@ -3941,14 +3958,12 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
-                                width: 8,
-                                height: 8,
+                                width: 8, height: 8,
                                 decoration: BoxDecoration(
                                   color: faixaColor,
                                   shape: BoxShape.circle,
                                   border: faixa.toLowerCase() == 'branca'
-                                      ? Border.all(
-                                          color: textHint.withOpacity(0.4))
+                                      ? Border.all(color: textHint.withOpacity(0.4))
                                       : null,
                                 ),
                               ),
@@ -3989,12 +4004,10 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                       prefixIcon: Icon(Icons.star_outline_rounded)),
                   hint: const Text("Graus (opcional)"),
                   items: [
-                    const DropdownMenuItem<int>(
-                        value: null, child: Text("Nenhum")),
+                    const DropdownMenuItem<int>(value: null, child: Text("Nenhum")),
                     ..._grausList.map((g) => DropdownMenuItem(
                         value: g,
-                        child:
-                            Text("$gº Grau", overflow: TextOverflow.ellipsis))),
+                        child: Text("$gº Grau", overflow: TextOverflow.ellipsis))),
                   ],
                   onChanged: (value) => setState(() => _graus = value),
                 ),
@@ -4007,8 +4020,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
                   labelText: 'Peso (kg)',
                   prefixIcon: Icon(Icons.monitor_weight_outlined),
                 ),
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 validator: (v) {
                   if (v == null || v.isEmpty) return null;
                   final x = double.tryParse(v.replaceAll(',', '.'));
@@ -4021,8 +4033,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
 
               // ── Endereço ─────────────────────────────────────
               Row(children: [
-                const Icon(Icons.location_on_outlined,
-                    size: 18, color: textHint),
+                const Icon(Icons.location_on_outlined, size: 18, color: textHint),
                 const SizedBox(width: 8),
                 Text('Endereço',
                     style: Theme.of(context)
@@ -4099,8 +4110,7 @@ class _AdicionarProfessorDialogState extends State<AdicionarProfessorDialog> {
           onPressed: _isLoading ? null : _submit,
           child: _isLoading
               ? const SizedBox(
-                  height: 20,
-                  width: 20,
+                  height: 20, width: 20,
                   child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('Adicionar'),
         ),
@@ -4784,26 +4794,19 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
   // Cor da faixa do aluno
   Color _beltColor(String? faixa) {
     switch (faixa?.toLowerCase()) {
-      case 'branca':
-        return Colors.white;
-      case 'azul':
-        return const Color(0xFF1E5AA8);
-      case 'roxa':
-        return const Color(0xFF7B2FBE);
-      case 'marrom':
-        return const Color(0xFF6B3A2A);
-      case 'preta':
-        return const Color(0xFF1A1A1A);
-      default:
-        return textHint;
+      case 'branca': return Colors.white;
+      case 'azul': return const Color(0xFF1E5AA8);
+      case 'roxa': return const Color(0xFF7B2FBE);
+      case 'marrom': return const Color(0xFF6B3A2A);
+      case 'preta': return const Color(0xFF1A1A1A);
+      default: return textHint;
     }
   }
 
   // Iniciais do nome
   String _initials(String name) {
     final parts = name.trim().split(' ');
-    if (parts.length >= 2)
-      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    if (parts.length >= 2) return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 
@@ -4857,25 +4860,20 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
-                return Center(
-                    child:
-                        Text("Erro ao carregar detalhes: ${snapshot.error}"));
+                return Center(child: Text("Erro ao carregar detalhes: ${snapshot.error}"));
               }
               if (!snapshot.hasData) {
-                return const EmptyStateWidget(
-                    icon: Icons.person_off, title: "Aluno não encontrado");
+                return const EmptyStateWidget(icon: Icons.person_off, title: "Aluno não encontrado");
               }
 
               final details = snapshot.data!;
-              final groupedCheckins =
-                  details['groupedCheckins'] as Map<String, List<CheckinEntry>>;
+              final groupedCheckins = details['groupedCheckins'] as Map<String, List<CheckinEntry>>;
               _studentUserModel = details['studentUser'] as UserModel?;
 
               // Treinos do mês atual
               final mesAtual = DateFormat.yMMMM('pt_BR').format(now);
               final treinosMes = groupedCheckins[mesAtual]?.length ?? 0;
-              final totalTreinos =
-                  groupedCheckins.values.fold(0, (s, l) => s + l.length);
+              final totalTreinos = groupedCheckins.values.fold(0, (s, l) => s + l.length);
 
               final beltColor = _beltColor(widget.student.faixa);
               final initials = _initials(widget.student.nome);
@@ -4884,33 +4882,28 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
               return ListView(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
                 children: [
+
                   // ── Hero: foto + nome + faixa ────────────────────
                   Card(
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 24, horizontal: 16),
+                      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
                       child: Column(
                         children: [
                           CircleAvatar(
                             radius: 40,
                             backgroundColor: primaryAccent.withOpacity(0.15),
-                            backgroundImage:
-                                (_studentUserModel?.profileImagePath != null &&
-                                        _studentUserModel!
-                                            .profileImagePath!.isNotEmpty)
-                                    ? NetworkImage(
-                                        _studentUserModel!.profileImagePath!)
-                                    : null,
-                            child:
-                                (_studentUserModel?.profileImagePath == null ||
-                                        _studentUserModel!
-                                            .profileImagePath!.isEmpty)
-                                    ? Text(initials,
-                                        style: const TextStyle(
-                                            fontSize: 28,
-                                            fontWeight: FontWeight.bold,
-                                            color: primaryAccent))
-                                    : null,
+                            backgroundImage: (_studentUserModel?.profileImagePath != null &&
+                                    _studentUserModel!.profileImagePath!.isNotEmpty)
+                                ? NetworkImage(_studentUserModel!.profileImagePath!)
+                                : null,
+                            child: (_studentUserModel?.profileImagePath == null ||
+                                    _studentUserModel!.profileImagePath!.isEmpty)
+                                ? Text(initials,
+                                    style: const TextStyle(
+                                        fontSize: 28,
+                                        fontWeight: FontWeight.bold,
+                                        color: primaryAccent))
+                                : null,
                           ),
                           const SizedBox(height: 14),
                           Text(
@@ -4923,8 +4916,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                           ),
                           const SizedBox(height: 10),
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14, vertical: 6),
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                             decoration: BoxDecoration(
                               color: beltColor == const Color(0xFF1A1A1A)
                                   ? Colors.white.withOpacity(0.08)
@@ -4940,8 +4932,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Container(
-                                  width: 10,
-                                  height: 10,
+                                  width: 10, height: 10,
                                   decoration: BoxDecoration(
                                       color: beltColor, shape: BoxShape.circle),
                                 ),
@@ -4950,13 +4941,10 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                                   '${widget.student.faixa}'
                                   '${(widget.student.graus != null && widget.student.graus! > 0) ? ' · ${widget.student.graus}º grau' : ''}',
                                   style: TextStyle(
-                                      color: (beltColor == Colors.white ||
-                                              beltColor ==
-                                                  const Color(0xFF1A1A1A))
+                                      color: (beltColor == Colors.white || beltColor == const Color(0xFF1A1A1A))
                                           ? textSecondary
                                           : beltColor,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500),
+                                      fontSize: 13, fontWeight: FontWeight.w500),
                                 ),
                               ],
                             ),
@@ -5007,36 +4995,30 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                   // ── Seção: Contato ──────────────────────────────
                   _buildSection(context, 'Contato', [
                     if (_studentUserModel != null)
-                      _buildInfoRow(context, Icons.email_outlined, 'E-mail',
-                          _studentUserModel!.email),
+                      _buildInfoRow(context, Icons.email_outlined, 'E-mail', _studentUserModel!.email),
                     if (widget.student.phoneNumber!.isNotEmpty) ...[
-                      _buildInfoRow(context, Icons.phone_outlined, 'Telefone',
-                          widget.student.phoneNumber!),
-                      _buildWhatsAppButton(
-                          context, widget.student.phoneNumber!),
+                      _buildInfoRow(context, Icons.phone_outlined, 'Telefone', widget.student.phoneNumber!),
+                      _buildWhatsAppButton(context, widget.student.phoneNumber!),
                     ],
                     if (widget.student.dataNascimento != null)
-                      _buildInfoRow(context, Icons.cake_rounded, 'Nascimento',
+                      _buildInfoRow(
+                          context, Icons.cake_rounded, 'Nascimento',
                           '${DateFormat('dd/MM/yyyy').format(widget.student.dataNascimento!)} · ${widget.student.idade} anos'),
                   ]),
 
                   // ── Seção: Endereço ─────────────────────────────
-                  if (address != null &&
-                      address.values.any((v) => v.toString().isNotEmpty))
+                  if (address != null && address.values.any((v) => v.toString().isNotEmpty))
                     _buildSection(context, 'Endereço', [
                       if ((address['logradouro'] ?? '').isNotEmpty)
                         _buildInfoRow(context, Icons.map_outlined, 'Logradouro',
                             '${address['logradouro']}${(address['numero'] ?? '').isNotEmpty ? ', ${address['numero']}' : ''}'),
                       if ((address['bairro'] ?? '').isNotEmpty)
-                        _buildInfoRow(context, Icons.location_on_outlined,
-                            'Bairro', _capitalize(address['bairro'] ?? '')),
+                        _buildInfoRow(context, Icons.location_on_outlined, 'Bairro', _capitalize(address['bairro'] ?? '')),
                       if ((address['cidade'] ?? '').isNotEmpty)
-                        _buildInfoRow(
-                            context,
-                            Icons.location_city_outlined,
-                            'Cidade',
+                        _buildInfoRow(context, Icons.location_city_outlined, 'Cidade',
                             '${address['cidade']}${(address['cep'] ?? '').isNotEmpty ? '  ·  CEP ${address['cep']}' : ''}'),
                     ]),
+
                 ],
               );
             },
@@ -5075,8 +5057,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
           style: OutlinedButton.styleFrom(
             side: const BorderSide(color: Color(0xFF25D366), width: 1),
             padding: const EdgeInsets.symmetric(vertical: 10),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8)),
           ),
           onPressed: () async {
             final uri = Uri.parse('https://wa.me/$number');
@@ -5084,8 +5066,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
               await launchUrl(uri, mode: LaunchMode.externalApplication);
             } else {
               if (context.mounted) {
-                showBjjSnackBar(context, 'Não foi possível abrir o WhatsApp.',
-                    type: 'error');
+                showBjjSnackBar(context,
+                    'Não foi possível abrir o WhatsApp.', type: 'error');
               }
             }
           },
@@ -5104,7 +5086,8 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
 
   void _showTrainingHistory(
       BuildContext context, Map<String, List<CheckinEntry>> groupedCheckins) {
-    final totalTreinos = groupedCheckins.values.fold(0, (s, l) => s + l.length);
+    final totalTreinos =
+        groupedCheckins.values.fold(0, (s, l) => s + l.length);
     showModalBottomSheet(
       context: context,
       backgroundColor: darkSurface,
@@ -5162,17 +5145,16 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
                       child: ExpansionTile(
-                        title: Text(
-                            '$month  ·  ${checkinsInMonth.length} treinos'),
+                        title: Text('$month  ·  ${checkinsInMonth.length} treinos'),
                         leading: const Icon(Icons.calendar_today_rounded,
                             color: primaryAccent),
                         initiallyExpanded: index == 0,
                         children: checkinsInMonth.map((checkin) {
                           return ListTile(
-                            title:
-                                Text(checkin.className ?? 'Check-in Aprovado'),
-                            subtitle: Text(DateFormat.yMMMEd('pt_BR')
-                                .format(checkin.date)),
+                            title: Text(
+                                checkin.className ?? 'Check-in Aprovado'),
+                            subtitle: Text(
+                                DateFormat.yMMMEd('pt_BR').format(checkin.date)),
                             leading: const Icon(Icons.check_circle_outline,
                                 color: successColor),
                           );
@@ -5282,9 +5264,7 @@ class _StudentDetailPageState extends State<StudentDetailPage> {
             const SizedBox(height: 6),
             Text(value,
                 style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: primaryAccent)),
+                    fontSize: 20, fontWeight: FontWeight.bold, color: primaryAccent)),
             const SizedBox(height: 2),
             Text(label,
                 style: const TextStyle(color: textHint, fontSize: 11),
@@ -5368,27 +5348,21 @@ class ProfessorDetailPage extends StatefulWidget {
 }
 
 class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
+
   Color _beltColor(String? faixa) {
     switch (faixa?.toLowerCase()) {
-      case 'branca':
-        return Colors.white;
-      case 'azul':
-        return const Color(0xFF1E5AA8);
-      case 'roxa':
-        return const Color(0xFF7B2FBE);
-      case 'marrom':
-        return const Color(0xFF6B3A2A);
-      case 'preta':
-        return const Color(0xFF1A1A1A);
-      default:
-        return textHint;
+      case 'branca': return Colors.white;
+      case 'azul': return const Color(0xFF1E5AA8);
+      case 'roxa': return const Color(0xFF7B2FBE);
+      case 'marrom': return const Color(0xFF6B3A2A);
+      case 'preta': return const Color(0xFF1A1A1A);
+      default: return textHint;
     }
   }
 
   String _initials(String name) {
     final parts = name.trim().split(' ');
-    if (parts.length >= 2)
-      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    if (parts.length >= 2) return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     return name.isNotEmpty ? name[0].toUpperCase() : '?';
   }
 
@@ -5444,19 +5418,18 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
           child: ListView(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
             children: [
+
               // ── Hero: foto + nome + cargo + faixa ───────────────
               Card(
                 child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
                   child: Column(
                     children: [
                       // Foto de perfil ou iniciais
                       CircleAvatar(
                         radius: 40,
                         backgroundColor: primaryAccent.withOpacity(0.15),
-                        backgroundImage: (widget.professor.profileImagePath !=
-                                    null &&
+                        backgroundImage: (widget.professor.profileImagePath != null &&
                                 widget.professor.profileImagePath!.isNotEmpty)
                             ? NetworkImage(widget.professor.profileImagePath!)
                             : null,
@@ -5485,8 +5458,7 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
                         style: const TextStyle(color: textHint, fontSize: 13),
                       ),
                       // Badge de faixa (só professor)
-                      if (!isManager &&
-                          widget.professor.faixa != null &&
+                      if (!isManager && widget.professor.faixa != null &&
                           widget.professor.faixa!.isNotEmpty) ...[
                         const SizedBox(height: 10),
                         Container(
@@ -5494,8 +5466,8 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
                               horizontal: 14, vertical: 6),
                           decoration: BoxDecoration(
                             color: beltColor == const Color(0xFF1A1A1A)
-                                ? Colors.white.withOpacity(0.08)
-                                : beltColor.withOpacity(0.12),
+                              ? Colors.white.withOpacity(0.08)
+                              : beltColor.withOpacity(0.12),
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
                               color: beltColor == const Color(0xFF1A1A1A)
@@ -5514,14 +5486,13 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
                               ),
                               const SizedBox(width: 8),
                               Text(
-                                _capitalize(widget.professor.faixa!) +
-                                    ((widget.professor.graus != null &&
+                                _capitalize(widget.professor.faixa!)
+                                    + ((widget.professor.graus != null &&
                                             widget.professor.graus! > 0)
                                         ? ' · ${widget.professor.graus}º grau'
                                         : ''),
                                 style: TextStyle(
-                                  color: (beltColor == Colors.white ||
-                                          beltColor == const Color(0xFF1A1A1A))
+                                  color: (beltColor == Colors.white || beltColor == const Color(0xFF1A1A1A))
                                       ? textSecondary
                                       : beltColor,
                                   fontSize: 13,
@@ -5541,8 +5512,8 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
 
               // ── Seção: Contato ───────────────────────────────────
               _buildSection(context, 'Contato', [
-                _buildInfoRow(context, Icons.email_outlined, 'E-mail de Login',
-                    widget.professor.email),
+                _buildInfoRow(context, Icons.email_outlined,
+                    'E-mail de Login', widget.professor.email),
                 if (widget.professor.phoneNumber != null &&
                     widget.professor.phoneNumber!.isNotEmpty) ...[
                   _buildInfoRow(context, Icons.phone_outlined, 'Telefone',
@@ -5551,11 +5522,14 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
                 ],
                 if (widget.professor.dataNascimento != null &&
                     widget.professor.idade != null)
-                  _buildInfoRow(context, Icons.cake_rounded, 'Nascimento',
+                  _buildInfoRow(
+                      context,
+                      Icons.cake_rounded,
+                      'Nascimento',
                       '${DateFormat('dd/MM/yyyy').format(widget.professor.dataNascimento!)} · ${widget.professor.idade} anos'),
                 if (widget.professor.peso != null && !isManager)
-                  _buildInfoRow(context, Icons.monitor_weight_outlined, 'Peso',
-                      '${widget.professor.peso} kg'),
+                  _buildInfoRow(context, Icons.monitor_weight_outlined,
+                      'Peso', '${widget.professor.peso} kg'),
               ]),
 
               // ── Seção: Endereço ──────────────────────────────────
@@ -5571,18 +5545,19 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
                         '${_capitalize(address['logradouro'] ?? '')}'
                             '${(address['numero'] ?? '').isNotEmpty ? ', ${address['numero']}' : ''}'),
                   if ((address['bairro'] ?? '').isNotEmpty)
-                    _buildInfoRow(context, Icons.location_on_outlined, 'Bairro',
-                        _capitalize(address['bairro'] ?? '')),
+                    _buildInfoRow(context, Icons.location_on_outlined,
+                        'Bairro', _capitalize(address['bairro'] ?? '')),
                   if ((address['cidade'] ?? '').isNotEmpty)
                     _buildInfoRow(
                         context,
                         Icons.location_city_outlined,
                         'Cidade',
-                        _capitalize(address['cidade'] ?? '') +
-                            (((address['cep'] ?? '').isNotEmpty)
+                        _capitalize(address['cidade'] ?? '')
+                            + (((address['cep'] ?? '').isNotEmpty)
                                 ? '  ·  CEP ${address['cep']}'
                                 : '')),
                 ]),
+
             ],
           ),
         ),
@@ -5676,13 +5651,13 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
               children: [
                 Text(label,
                     style: const TextStyle(
-                        color: textHint,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500)),
+                        color: textHint, fontSize: 11, fontWeight: FontWeight.w500)),
                 const SizedBox(height: 2),
                 Text(value,
-                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500, color: textPrimary)),
+                    style: Theme.of(context)
+                        .textTheme
+                        .bodyMedium
+                        ?.copyWith(fontWeight: FontWeight.w500, color: textPrimary)),
                 Text(date,
                     style: const TextStyle(color: textHint, fontSize: 11)),
               ],
@@ -5775,8 +5750,8 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
           style: OutlinedButton.styleFrom(
             side: const BorderSide(color: Color(0xFF25D366), width: 1),
             padding: const EdgeInsets.symmetric(vertical: 10),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8)),
           ),
           onPressed: () async {
             final uri = Uri.parse('https://wa.me/$number');
@@ -5784,8 +5759,8 @@ class _ProfessorDetailPageState extends State<ProfessorDetailPage> {
               await launchUrl(uri, mode: LaunchMode.externalApplication);
             } else {
               if (context.mounted) {
-                showBjjSnackBar(context, 'Não foi possível abrir o WhatsApp.',
-                    type: 'error');
+                showBjjSnackBar(context,
+                    'Não foi possível abrir o WhatsApp.', type: 'error');
               }
             }
           },
@@ -6477,7 +6452,6 @@ class _EditGraduationDialogState extends State<EditGraduationDialog> {
     );
   }
 }
-
 // ─────────────────────────────────────────────────────────────
 // Página: Data de Início do Sistema
 // ─────────────────────────────────────────────────────────────
@@ -6514,8 +6488,7 @@ class _SystemStartDatePageState extends State<SystemStartDatePage> {
       }
     } catch (e) {
       if (mounted) {
-        showBjjSnackBar(context, 'Erro ao carregar configuração.',
-            type: 'error');
+        showBjjSnackBar(context, 'Erro ao carregar configuração.', type: 'error');
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -6653,8 +6626,9 @@ class _SystemStartDatePageState extends State<SystemStartDatePage> {
                               const Icon(Icons.info_outline, color: infoColor),
                               const SizedBox(width: 8),
                               Text('Como funciona',
-                                  style:
-                                      Theme.of(context).textTheme.titleMedium),
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium),
                             ]),
                             const SizedBox(height: 12),
                             const Text(
@@ -6665,8 +6639,7 @@ class _SystemStartDatePageState extends State<SystemStartDatePage> {
                               '• Relatórios de alunos inativos\n\n'
                               'Os dados antigos não são apagados — ficam apenas ocultos. '
                               'Você pode alterar ou remover esta data quando quiser.',
-                              style:
-                                  TextStyle(color: textSecondary, height: 1.5),
+                              style: TextStyle(color: textSecondary, height: 1.5),
                             ),
                           ],
                         ),
@@ -6683,7 +6656,8 @@ class _SystemStartDatePageState extends State<SystemStartDatePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('Configuração atual',
-                                style: Theme.of(context).textTheme.titleMedium),
+                                style:
+                                    Theme.of(context).textTheme.titleMedium),
                             const SizedBox(height: 12),
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -6738,7 +6712,8 @@ class _SystemStartDatePageState extends State<SystemStartDatePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text('Definir nova data de início',
-                                style: Theme.of(context).textTheme.titleMedium),
+                                style:
+                                    Theme.of(context).textTheme.titleMedium),
                             const SizedBox(height: 12),
                             InkWell(
                               onTap: _isSaving ? null : _pickDate,
@@ -6792,8 +6767,8 @@ class _SystemStartDatePageState extends State<SystemStartDatePage> {
                       const SizedBox(height: 8),
                       Card(
                         child: ListTile(
-                          leading: const Icon(Icons.delete_outline,
-                              color: errorColor),
+                          leading:
+                              const Icon(Icons.delete_outline, color: errorColor),
                           title: const Text('Remover Data de Início',
                               style: TextStyle(color: errorColor)),
                           subtitle: const Text(

@@ -108,9 +108,78 @@ class UserCard extends StatelessWidget {
     this.profileImageUrl,
   });
 
+  Future<void> _toggleActiveStatus(BuildContext context, Aluno aluno) async {
+    final willActivate = !aluno.isActive;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(willActivate ? 'Reativar Aluno' : 'Desativar Aluno'),
+        content: Text(willActivate
+            ? '${_capName(aluno.nome)} voltará a aparecer nas listas de alunos.'
+            : '${_capName(aluno.nome)} ficará oculto das listas de alunos. Você pode reativá-lo a qualquer momento.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: willActivate ? successColor : errorColor,
+            ),
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(willActivate ? 'Reativar' : 'Desativar'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !context.mounted) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('academies')
+          .doc(academyId)
+          .collection('students')
+          .doc(aluno.id)
+          .update({
+        'isActive': willActivate,
+        'lastUpdatedByUid': currentUser.uid,
+        'lastUpdatedByName': currentUser.name,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      await _createAuditLog(
+        academyId: academyId,
+        actor: currentUser,
+        actionType: willActivate ? 'ACTIVATE_STUDENT' : 'DEACTIVATE_STUDENT',
+        description:
+            '${currentUser.name} ${willActivate ? 'reativou' : 'desativou'} o aluno ${aluno.nome}.',
+        targetUid: aluno.id,
+        targetName: aluno.nome,
+      );
+
+      if (context.mounted) {
+        showBjjSnackBar(
+          context,
+          willActivate
+              ? 'Aluno reativado com sucesso.'
+              : 'Aluno desativado com sucesso.',
+          type: 'success',
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        showBjjSnackBar(context, 'Erro ao atualizar status: $e', type: 'error');
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isStudent = user is Aluno;
+    final bool isInactive = isStudent && !(user.isActive as bool);
+    final bool canManageActiveStatus =
+        isStudent && currentUser.role == UserRole.manager;
     final String rawName = isStudent ? user.nome : user.name;
     final String name = rawName.trim().isEmpty
         ? rawName
@@ -135,6 +204,7 @@ class UserCard extends StatelessWidget {
     );
 
     return Card(
+      color: isInactive ? darkSurface.withOpacity(0.5) : null,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
         child: Row(
@@ -150,32 +220,35 @@ class UserCard extends StatelessWidget {
                   ));
                 }
               },
-              child: Hero(
-                tag: heroTag,
-                // --- INÃCIO DA ALTERAÃ‡ÃƒO ---
-                // Alterado para usar CachedNetworkImage como filho, o que permite
-                // tratar erros de carregamento sem quebrar a tela.
-                child: CircleAvatar(
-                  radius: 28,
-                  backgroundColor: primaryAccent,
-                  child: hasImage
-                      ? ClipOval(
-                          child: CachedNetworkImage(
-                            imageUrl: profileImageUrl!,
-                            fit: BoxFit.cover,
-                            width: 56, // 2x o raio
-                            height: 56, // 2x o raio
-                            placeholder: (context, url) =>
-                                Container(color: darkSurface),
-                            errorWidget: (context, url, error) {
-                              // Se a imagem falhar, mostra as iniciais do nome
-                              return Center(child: childText);
-                            },
-                          ),
-                        )
-                      : Center(child: childText),
+              child: Opacity(
+                opacity: isInactive ? 0.5 : 1.0,
+                child: Hero(
+                  tag: heroTag,
+                  // --- INÃCIO DA ALTERAÃ‡ÃƒO ---
+                  // Alterado para usar CachedNetworkImage como filho, o que permite
+                  // tratar erros de carregamento sem quebrar a tela.
+                  child: CircleAvatar(
+                    radius: 28,
+                    backgroundColor: primaryAccent,
+                    child: hasImage
+                        ? ClipOval(
+                            child: CachedNetworkImage(
+                              imageUrl: profileImageUrl!,
+                              fit: BoxFit.cover,
+                              width: 56, // 2x o raio
+                              height: 56, // 2x o raio
+                              placeholder: (context, url) =>
+                                  Container(color: darkSurface),
+                              errorWidget: (context, url, error) {
+                                // Se a imagem falhar, mostra as iniciais do nome
+                                return Center(child: childText);
+                              },
+                            ),
+                          )
+                        : Center(child: childText),
+                  ),
+                  // --- FIM DA ALTERAÃ‡ÃƒO ---
                 ),
-                // --- FIM DA ALTERAÃ‡ÃƒO ---
               ),
             ),
             const SizedBox(width: 16),
@@ -183,7 +256,39 @@ class UserCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(name, style: Theme.of(context).textTheme.titleMedium),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(name,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                                    color: isInactive ? textHint : null)),
+                      ),
+                      if (isInactive) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: errorColor.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(4),
+                            border:
+                                Border.all(color: errorColor.withOpacity(0.4)),
+                          ),
+                          child: const Text(
+                            'Inativo',
+                            style: TextStyle(
+                                color: errorColor,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                   const SizedBox(height: 4),
                   if (belt != null)
                     Container(
@@ -195,8 +300,9 @@ class UserCard extends StatelessWidget {
                       ),
                       child: Text(
                         belt,
-                        style:
-                            const TextStyle(color: textSecondary, fontSize: 12),
+                        style: TextStyle(
+                            color: isInactive ? textHint : textSecondary,
+                            fontSize: 12),
                       ),
                     ),
                 ],
@@ -238,6 +344,17 @@ class UserCard extends StatelessWidget {
                         context, user, academyId, currentUser);
                   }
                 },
+              ),
+            if (canManageActiveStatus)
+              IconButton(
+                icon: Icon(
+                  isInactive
+                      ? Icons.check_circle_outline_rounded
+                      : Icons.block_rounded,
+                  color: isInactive ? successColor : errorColor,
+                ),
+                tooltip: isInactive ? 'Reativar Aluno' : 'Desativar Aluno',
+                onPressed: () => _toggleActiveStatus(context, user as Aluno),
               ),
           ],
         ),
